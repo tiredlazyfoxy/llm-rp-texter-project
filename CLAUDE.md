@@ -55,6 +55,13 @@ See `architecture/` for full documentation.
 - **Frontend**: TypeScript `.d.ts` interfaces matching backend schemas exactly
 - **No free dictionaries** on backend, **no `any`** on frontend
 
+## DB Import/Export
+
+- **All DB-persistent models must have JSONL import/export support**
+- Format: gzipped JSONL files (`.jsonl.gz`)
+- **Every time a DB model is added or changed, update the import/export logic as part of the same change**
+- This is not optional — treat it as part of the model definition process
+
 ## Backend Conventions
 
 - **Pydantic `BaseModel`**: All API models, tool parameter schemas
