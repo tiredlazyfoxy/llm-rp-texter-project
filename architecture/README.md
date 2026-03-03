@@ -18,16 +18,18 @@ The goal is to research and validate whether this approach produces coherent, en
 
 | Component | Tech | Purpose |
 |-----------|------|---------|
-| Backend (Agent) | FastAPI, Python 3.13, SQLite | LLM orchestration, MCP tools, world data |
-| Backend (API) | FastAPI | Users, game states, chat histories |
-| Backend (Admin API) | FastAPI | User management, world database management |
+| Backend (Agent) | FastAPI, Python 3.13, PythonLLMClient | LLM orchestration, tool calling, world data |
+| Backend (API) | FastAPI, SQLModel, SQLite | Users, game states, chat histories |
+| Backend (Admin API) | FastAPI, SQLModel | User management, world database management |
 | User SPA | TypeScript, React, MobX, Vite | Player-facing chat interface |
 | Admin SPA | TypeScript, React, MobX, Vite | World & user management interface |
 
 ## Key Architectural Decisions
 
-- **MCP over RAG**: The LLM collects context via tool calls, not vector search
-- **MCP tools are internal**: 100% in-process async functions, no external HTTP or bash
-- **LLM backends**: Supports llama.cpp and OpenAI-compatible APIs via HTTP
+- **Tool calling over RAG**: The LLM collects context via function calls, not vector search
+- **Tools are internal**: 100% in-process async functions, no external HTTP or bash
+- **LLM client**: PythonLLMClient — supports Ollama, OpenAI, llama-swap backends
+- **Strict typing**: Pydantic models for API/tools, SQLModel for DB, TypedDict for internals — no untyped data
+- **ORM**: SQLModel (SQLAlchemy + Pydantic)
 - **Two SPAs**: User and Admin are separate apps sharing only the login flow
 - **JWT authentication**: Stateless tokens shared across both SPAs

@@ -45,3 +45,12 @@ See `architecture/` for full documentation.
 - Planning docs go to `plans/` (git ignored)
 - Final architecture docs go to `architecture/`
 - Every project subfolder must have a `CLAUDE.md`
+
+## Backend Conventions
+
+- **Pydantic `BaseModel`**: All API models, tool parameter schemas
+- **SQLModel**: All database models
+- **`TypedDict`**: Internal data passing
+- **No free dictionaries, no untyped data**
+- **LLM client**: PythonLLMClient — tool schemas via `pydantic_to_openai_tool()`
+- **Logging**: Python `logging`, INFO for requests, DEBUG for full flow
