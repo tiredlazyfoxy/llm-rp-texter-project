@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                    nginx                         │
+│                    nginx                        │
 │  / ──► User SPA (static)                        │
 │  /admin ──► Admin SPA (static)                  │
 │  /api ──► FastAPI backend (proxy)               │
@@ -12,15 +12,15 @@
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│              FastAPI Backend                      │
-│                                                   │
+│              FastAPI Backend                    │
+│                                                 │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────┐ │
-│  │  Agent API   │  │ Users/Chats  │  │ Admin   │ │
-│  │  /api/agent  │  │ /api/users   │  │ /api/   │ │
-│  │              │  │ /api/chats   │  │  admin  │ │
+│  │  Agent API  │  │ Users/Chats  │  │ Admin   │ │
+│  │  /api/agent │  │ /api/users   │  │ /api/   │ │
+│  │             │  │ /api/chats   │  │  admin  │ │
 │  └──────┬───── ┘  └──────┬───────┘  └────┬────┘ │
-│         │                │                │      │
-│         ▼                ▼                ▼      │
+│         │                │               │      │
+│         ▼                ▼               ▼      │
 │  ┌─────────────┐  ┌──────────────────────────┐  │
 │  │ Tool Fns    │  │   SQLite (via SQLModel)  │  │
 │  │ (internal   │  │  - users                 │  │
@@ -28,13 +28,13 @@
 │  └──────┬──────┘  │  - chat histories        │  │
 │         │         │  - world data            │  │
 │         ▼         └──────────────────────────┘  │
-│  ┌──────────────────┐                            │
-│  │ PythonLLMClient  │                            │
-│  │ (HTTP API)       │                            │
-│  │ - Ollama         │                            │
-│  │ - OpenAI         │                            │
-│  │ - llama-swap     │                            │
-│  └──────────────────┘                            │
+│  ┌──────────────────┐                           │
+│  │ PythonLLMClient  │                           │
+│  │ (HTTP API)       │                           │
+│  │ - Ollama         │                           │
+│  │ - OpenAI         │                           │
+│  │ - llama-swap     │                           │
+│  └──────────────────┘                           │
 └─────────────────────────────────────────────────┘
 ```
 
