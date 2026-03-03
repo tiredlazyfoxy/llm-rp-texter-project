@@ -12,6 +12,11 @@ Vite multi-page application — TypeScript, React, MobX.
 - Routing: History API (back/forward button support)
 - Dev server: `npx vite --port 8094`
 
+## Typing
+- **Strict TypeScript — no `any` anywhere**
+- All API request/response types defined as `.d.ts` interfaces matching backend Pydantic schemas
+- All API calls are strongly typed end-to-end
+
 ## Key Constraints
 - User and Admin SPAs are separate apps with separate builds
 - They share **only** the login/auth flow

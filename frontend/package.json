@@ -1,0 +1,27 @@
+{
+  "name": "llmrp-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 8094",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.1",
+    "react-dom": "^19.1",
+    "@mantine/core": "^7.17",
+    "@mantine/hooks": "^7.17",
+    "@mantine/form": "^7.17",
+    "mobx": "^6.13",
+    "mobx-react-lite": "^4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.8",
+    "vite": "^6.3",
+    "@vitejs/plugin-react": "^4.4",
+    "@types/react": "^19.1",
+    "@types/react-dom": "^19.1"
+  }
+}

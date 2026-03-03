@@ -48,6 +48,13 @@ See `architecture/` for full documentation.
 - Final architecture docs go to `architecture/`
 - Every project subfolder must have a `CLAUDE.md`
 
+## API Typing — Full Stack
+
+- **All API contracts are strictly typed on both sides** — no `any`, no untyped data
+- **Backend**: Pydantic `BaseModel` for all request/response schemas
+- **Frontend**: TypeScript `.d.ts` interfaces matching backend schemas exactly
+- **No free dictionaries** on backend, **no `any`** on frontend
+
 ## Backend Conventions
 
 - **Pydantic `BaseModel`**: All API models, tool parameter schemas
