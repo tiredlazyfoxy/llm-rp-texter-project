@@ -1,0 +1,27 @@
+[project]
+name = "llmrp-backend"
+version = "0.1.0"
+description = "LLM-driven RPG chat backend"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "sqlmodel>=0.0.22",
+    "aiosqlite>=0.21",
+    "pyjwt[crypto]>=2.10",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "python-multipart>=0.0.20",
+    "llm-client @ git+https://github.com/Iezious/PythonLLMClient.git",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
