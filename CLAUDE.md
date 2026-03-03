@@ -1,0 +1,47 @@
+# Project Rules
+
+## Environment
+
+- **OS**: Windows 11
+- **Preferred shell**: PowerShell (use PowerShell over bash when possible)
+- **Path separators**: Use backslashes (`\`) for Windows paths in PowerShell; forward slashes are acceptable in git commands
+
+## File System Access
+
+- Freely run `ls`, `dir`, `Get-ChildItem`, search, and other read-only commands on the project folder and subfolders
+- No restrictions on reading files within the project
+
+## Git Policy
+
+- **Read-only commands** (no permission needed): `git status`, `git log`, `git diff`, `git branch`, `git remote`, etc.
+- **Write commands** (require explicit user permission): `git add`, `git commit`, `git push`, `git merge`, `git rebase`, `git checkout -b`, and any other commands that modify the repo
+
+## Project Overview
+
+LLM-driven RPG chat application. World, NPCs, rules, and interactions are defined — actions and dialogue are generated dynamically by an LLM agent using MCP tools.
+
+See `architecture/` for full documentation.
+
+## Tech Stack
+
+- **Backend**: FastAPI, Python 3.13, SQLite, pyproject.toml
+- **Frontend**: TypeScript, React, MobX, Vite
+- **Auth**: JWT tokens
+- **Prod**: Docker (nginx + FastAPI), no CORS
+- **Dev**: API on :8085, Frontend on :8094, CORS enabled
+
+## Project Structure
+
+- `architecture/` — Architecture documents and design decisions
+- `plans/` — Project plans and task breakdowns (git ignored)
+- `backend/` — FastAPI backend (agent, users/chats API, admin API)
+- `frontend/` — Vite multi-page app (User SPA + Admin SPA)
+- `docker-compose.dev.yml` — Dev Docker setup with build
+- `docker-compose.prod.yml` — Production Docker setup
+- Each subfolder has its own `CLAUDE.md` for context
+
+## Conventions
+
+- Planning docs go to `plans/` (git ignored)
+- Final architecture docs go to `architecture/`
+- Every project subfolder must have a `CLAUDE.md`

@@ -1,0 +1,21 @@
+# Development Docker Compose
+# Builds services locally for development/testing
+# Usage: docker compose -f docker-compose.dev.yml up --build
+
+version: "3.9"
+
+services:
+  # TODO: Configure when backend and frontend are implemented
+  backend:
+    build: ./backend
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./data:/app/data
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    depends_on:
+      - backend

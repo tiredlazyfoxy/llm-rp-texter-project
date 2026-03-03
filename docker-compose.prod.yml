@@ -1,0 +1,23 @@
+# Production Docker Compose
+# Uses pre-built images for production deployment
+# Usage: docker compose -f docker-compose.prod.yml up -d
+
+version: "3.9"
+
+services:
+  # TODO: Configure with production images when ready
+  backend:
+    build: ./backend
+    expose:
+      - "8085"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
