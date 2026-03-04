@@ -33,7 +33,7 @@ See `architecture/` for full documentation.
 ## Project Structure
 
 - `architecture/` — Architecture documents and design decisions
-- `plans/` — Project plans and task breakdowns (git ignored)
+- `plans/` — Project plans and task breakdowns (tracked in git)
 - `backend/` — FastAPI backend (agent, users/chats API, admin API)
 - `frontend/` — Vite multi-page app (User SPA + Admin SPA)
 - `docker-compose.dev.yml` — Dev Docker setup with build
@@ -42,7 +42,7 @@ See `architecture/` for full documentation.
 
 ## Conventions
 
-- Planning docs go to `plans/` folder (git ignored) — **not** `~/.claude/plans/`
+- Planning docs go to `plans/` folder (tracked in git) — **not** `~/.claude/plans/`
 - Plan naming: `stageN_stepM_somename.md` (e.g. `stage1_step1_backend_setup.md`)
 - When a plan is done: rename to `stageN_stepM_somename.done.md` for retrospective
 - Final architecture docs go to `architecture/`
