@@ -23,6 +23,10 @@ Adds a chat panel below the text editor where editors discuss edits with an LLM.
 
 ### `build_document_editor_system(doc_type, world_name, world_description, world_lore, current_content) -> str`
 
+**File**: `backend/app/services/prompts/document_editor_system_prompt.py`
+
+This function lives in the prompts package (not in `llm_chat.py`) to keep all prompt logic centralized. Must include a module docstring with documentation header (PURPOSE, USAGE, VARIABLES as function params, DESIGN RATIONALE, CHANGELOG — see `plans/stage4_step1_prompt_tuning.md`). Re-exported via `prompts/__init__.py`.
+
 Builds system prompt for document editing context:
 - Task: "Assisting an editor writing/editing a {doc_type} document for the RPG world '{world_name}'"
 - World description and lore as background context

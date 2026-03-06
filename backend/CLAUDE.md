@@ -18,7 +18,7 @@ backend/
       database.py        — SQLModel async engine, DB init
       auth.py            — JWT create/verify, password hashing
       db_import_export.py — gzipped JSONL per table
-      prompts.py         — All LLM prompt constants (single file)
+      prompts/           — LLM prompt package (one documented file per prompt)
       chat_tools.py      — Agent tools, NPC logic, stat parsing
       chat_service.py    — Chat generation, regeneration, rewind
   pyproject.toml         — Dependencies

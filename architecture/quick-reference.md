@@ -144,7 +144,7 @@ Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel`
 
 ## Key Patterns
 
-- **Prompts**: All in `backend/app/services/prompts.py` — single file, no prompts elsewhere
+- **Prompts**: All in `backend/app/services/prompts/` — one documented file per prompt, re-exported via `__init__.py`
 - **LLM client**: PythonLLMClient, `pydantic_to_openai_tool()` for tool schemas
 - **Auth**: Per-user HS256 JWT signing key (no global secret), key rotation on login (30-day interval)
 - **Password**: App-level salt + bcrypt via passlib

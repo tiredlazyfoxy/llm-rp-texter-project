@@ -6,13 +6,17 @@ Before building the chat API and UI, we need the service-layer building blocks: 
 
 ---
 
-## 1. Prompts Constants File
+## 1. Prompts Package
 
-**File**: `backend/app/services/prompts.py`
+**Folder**: `backend/app/services/prompts/`
 
-All LLM prompts live in this single file. **No prompts in route or service files.** Each prompt is a documented string constant explaining when it's used, what variables get interpolated, and what the LLM is expected to produce.
+All LLM prompts live in this package — one file per prompt constant, each with a full documentation header. **No prompts in route or service files.** The `__init__.py` re-exports all constants so imports remain `from app.services.prompts import CHAT_SYSTEM_PROMPT`.
+
+Each prompt file must include a module docstring with 5 mandatory sections: PURPOSE, USAGE, VARIABLES, DESIGN RATIONALE, CHANGELOG. See `plans/stage4_step1_prompt_tuning.md` for the full documentation standard and example.
 
 ### `CHAT_SYSTEM_PROMPT`
+
+**File**: `backend/app/services/prompts/chat_system_prompt.py`
 
 Used as the system message for every chat generation call.
 
@@ -86,6 +90,8 @@ Note: `{user_instructions_block}` is built by the formatting helper — empty st
 
 ### `CHAT_INITIAL_MESSAGE`
 
+**File**: `backend/app/services/prompts/chat_initial_message.py`
+
 Used at chat creation for the initial narrative system message.
 
 Variables: `{character_name}`, `{location_name}`, `{location_summary}`
@@ -99,6 +105,8 @@ CHAT_INITIAL_MESSAGE = """\
 ```
 
 ### `SUMMARIZE_SYSTEM_PROMPT`
+
+**File**: `backend/app/services/prompts/summarize_system_prompt.py`
 
 Used in step 4 for summarization calls.
 
@@ -116,6 +124,8 @@ in the LLM context window for future turns.
 ```
 
 ### `SUMMARIZE_USER_PROMPT`
+
+**File**: `backend/app/services/prompts/summarize_user_prompt.py`
 
 Used in step 4 as the user message for summarization.
 
@@ -317,7 +327,11 @@ def get_location_summary(location: WorldLocation) -> str:
 
 | File | Purpose |
 |---|---|
-| `backend/app/services/prompts.py` | All LLM prompt constants with documentation |
+| `backend/app/services/prompts/__init__.py` | Re-exports all prompt constants |
+| `backend/app/services/prompts/chat_system_prompt.py` | CHAT_SYSTEM_PROMPT + documentation |
+| `backend/app/services/prompts/chat_initial_message.py` | CHAT_INITIAL_MESSAGE + documentation |
+| `backend/app/services/prompts/summarize_system_prompt.py` | SUMMARIZE_SYSTEM_PROMPT + documentation |
+| `backend/app/services/prompts/summarize_user_prompt.py` | SUMMARIZE_USER_PROMPT + documentation |
 | `backend/app/services/chat_tools.py` | Tool schemas, implementations, NPC logic, stat parsing, formatting helpers |
 
 ---
@@ -346,3 +360,4 @@ def get_location_summary(location: WorldLocation) -> str:
 8. **parse_stat_updates**: Test with response without block → verify content unchanged, empty updates
 9. **validate_and_apply_stat_updates**: Test int stat clamping, enum validation, set validation, unknown stat name handling
 10. **Tool registration**: Call `get_chat_tools()` — verify returns valid tool definitions and callables
+11. **Prompt documentation**: Each prompt file has complete module docstring with all 5 required sections (PURPOSE, USAGE, VARIABLES, DESIGN RATIONALE, CHANGELOG)

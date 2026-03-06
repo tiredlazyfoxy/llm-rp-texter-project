@@ -71,7 +71,9 @@ Receives full context + tools. Calls tools iteratively (multi-loop, configurable
 
 ### 2b. Prompt
 
-New constant `THINKING_AGENT_SYSTEM_PROMPT` in `prompts.py`. Same variable interpolation as current `CHAT_SYSTEM_PROMPT` (world, location, NPCs, rules, character, stats). Different instructions:
+**File**: `backend/app/services/prompts/thinking_agent_system_prompt.py`
+
+New constant `THINKING_AGENT_SYSTEM_PROMPT` with full documentation header (PURPOSE, USAGE, VARIABLES, DESIGN RATIONALE, CHANGELOG — see `plans/stage4_step1_prompt_tuning.md`). Same variable interpolation as current `CHAT_SYSTEM_PROMPT` (world, location, NPCs, rules, character, stats). Different instructions:
 
 - "You are the PLANNING agent. Analyze the player's action, gather information using tools, produce a structured generation plan."
 - "Do NOT write narrative prose. Only produce the JSON plan."
@@ -116,14 +118,18 @@ Stats are NOT in the writer's output. They come from the thinking agent's JSON p
 
 ### 3b. Prompt
 
-New constant `PROSE_WRITER_SYSTEM_PROMPT` in `prompts.py`:
+**File**: `backend/app/services/prompts/prose_writer_system_prompt.py`
+
+New constant `PROSE_WRITER_SYSTEM_PROMPT` with full documentation header (PURPOSE, USAGE, VARIABLES, DESIGN RATIONALE, CHANGELOG):
 
 - World description + character info (lighter context than thinking agent -- no stat definitions, no tool instructions)
 - "Follow the generation plan faithfully. Do not add/remove/change plot points."
 - "Write immersive prose. Include all NPC dialogue specified in the plan."
 - "Your output is ONLY narrative prose. Do NOT include stat updates, JSON, tags, tool calls, or meta-information."
 
-New constant `PROSE_WRITER_PLAN_MESSAGE` -- template for injecting plan into writer context:
+**File**: `backend/app/services/prompts/prose_writer_plan_message.py`
+
+New constant `PROSE_WRITER_PLAN_MESSAGE` with full documentation header -- template for injecting plan into writer context:
 
 - Collected context section
 - Decisions section
@@ -383,7 +389,7 @@ Add pipeline config section to world editor:
 
 ## 9. Prompts Summary
 
-All in `backend/app/services/prompts.py`:
+All in `backend/app/services/prompts/` package (one file per constant, re-exported via `__init__.py`):
 
 | Constant | Usage |
 |---|---|
@@ -415,7 +421,7 @@ All in `backend/app/services/prompts.py`:
 |---|---|
 | `backend/app/models/world_stat_definition.py` | Add `hidden` column |
 | `backend/app/models/schemas/world.py` | Add `hidden` to StatDefinitionResponse |
-| `backend/app/services/prompts.py` | Add 3 new prompt constants |
+| `backend/app/services/prompts/` | Add 3 new prompt files (thinking_agent_system_prompt.py, prose_writer_system_prompt.py, prose_writer_plan_message.py) + update `__init__.py` |
 | `backend/app/services/chat_service.py` | Pipeline dispatch, extract single-step into own function |
 | `backend/app/services/chat_tools.py` | Add generation plan JSON schema model |
 | `backend/app/models/chat_session.py` | Add 5 pipeline override columns |
@@ -439,7 +445,7 @@ All in `backend/app/services/prompts.py`:
 1. Pipeline Pydantic schemas (`pipeline.py`)
 2. TypedDicts in `chat_types.py`
 3. DB columns: ChatSession (5 cols) + ChatMessage (1 col)
-4. New prompt constants in `prompts.py`
+4. New prompt files in `prompts/` package with full documentation headers
 5. Generation plan JSON schema in `chat_tools.py`
 6. Pipeline service (`pipeline_service.py`)
 7. Chat service dispatch logic
