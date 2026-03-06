@@ -82,7 +82,7 @@ Individual messages in a chat session.
 | `content` | str | TEXT | Message text content |
 | `turn_number` | int | INTEGER | Which turn this message belongs to, indexed |
 | `tool_calls` | str \| None | TEXT | JSON array of tool call records, or None |
-| `is_summarized` | bool | INTEGER (0/1) | True if included in a summary compaction |
+| `summary_id` | int64 \| None | INTEGER | FK → chat_summaries.id, nullable, indexed. Set when message is part of a summary. |
 | `is_active_variant` | bool | INTEGER (0/1) | True = selected/active message |
 | `created_at` | datetime | TEXT (ISO) | Auto-set on create |
 
@@ -98,7 +98,7 @@ class ChatMessage(SQLModel, table=True):
     content: str
     turn_number: int = Field(index=True)
     tool_calls: str | None = None
-    is_summarized: bool = Field(default=False)
+    summary_id: int | None = Field(default=None, foreign_key="chat_summaries.id", index=True)
     is_active_variant: bool = Field(default=True)
     created_at: datetime
 ```
@@ -122,7 +122,7 @@ Stored for debugging/display. Tool results are already incorporated into the ass
 ### Key Behaviors
 
 - **Ordering**: By `turn_number` ASC, then `created_at` ASC within a turn.
-- **is_summarized**: True when a Summary covers this message. Message stays in DB but excluded from LLM context (summary replaces it).
+- **summary_id**: FK to `chat_summaries.id`. Set when a summary covers this message. `NULL` for non-summarized messages. Check `summary_id IS NOT NULL` to determine if summarized. Denormalized back-reference for efficient querying (`WHERE summary_id = X`).
 - **is_active_variant**: For regeneration. Active variant = True, superseded variants = False. Only active variants shown in chat view (except during variant selection).
 - **System messages**: Used for the initial setup message at chat creation.
 
@@ -229,10 +229,10 @@ class ChatSummary(SQLModel, table=True):
 
 ### Key Behaviors
 
-- **Message range**: `start_message_id` through `end_message_id` inclusive. All messages in range get `is_summarized=True`.
+- **Message range**: `start_message_id` through `end_message_id` inclusive. All messages in range get `summary_id` set to this summary's ID.
 - **Sequential**: Summaries do not overlap. New summary starts from message after previous summary's `end_message_id`.
 - **Context building order**: system prompt → [summary blocks ordered by start_turn ASC] → [raw non-summarized active messages].
-- **Rewind interaction**: If rewinding to a turn within or before a summary range, the summary is deleted and `is_summarized=False` restored on affected messages.
+- **Rewind interaction**: If rewinding to a turn within or before a summary range, the summary is deleted and `summary_id` set to `NULL` on affected messages.
 
 ---
 
@@ -276,9 +276,9 @@ All new tables must have JSONL import/export support (`.jsonl.gz`). Extend `back
 2. `worlds`, `world_locations` (stage 1)
 3. `llm_servers` (stage 1)
 4. `chat_sessions` (references users, worlds, locations, llm_servers)
-5. `chat_messages` (references chat_sessions)
-6. `chat_state_snapshots` (references chat_sessions)
-7. `chat_summaries` (references chat_sessions, chat_messages)
+5. `chat_summaries` (references chat_sessions)
+6. `chat_messages` (references chat_sessions, chat_summaries via summary_id FK)
+7. `chat_state_snapshots` (references chat_sessions)
 
 ---
 
@@ -287,7 +287,7 @@ All new tables must have JSONL import/export support (`.jsonl.gz`). Extend `back
 | Table | Key Fields |
 |---|---|
 | `chat_sessions` | user_id, world_id, character_name, character_description, character_stats, world_stats, current_location_id, current_turn, status |
-| `chat_messages` | session_id, role, content, turn_number, tool_calls, is_summarized, is_active_variant |
+| `chat_messages` | session_id, role, content, turn_number, tool_calls, summary_id, is_active_variant |
 | `chat_state_snapshots` | session_id, turn_number, location_id, character_stats, world_stats |
 | `chat_summaries` | session_id, start/end_message_id, start/end_turn, content |
 

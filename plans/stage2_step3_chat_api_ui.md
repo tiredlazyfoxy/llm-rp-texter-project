@@ -16,7 +16,7 @@ Builds the message list for the LLM call:
 
 1. System message from `CHAT_SYSTEM_PROMPT` (from `prompts.py`) with all variables interpolated using helpers from `chat_tools.py`.
 2. For summarized sections: inject summary content as system message: `"[Summary of turns {start}–{end}]:\n{summary.content}"`.
-3. For non-summarized active messages: include as-is with their role.
+3. For non-summarized active messages (`summary_id IS NULL`): include as-is with their role.
 4. Returns the full message list ready for LLM.
 
 ### `generate_response(session_id, user_message, db) -> AsyncGenerator[SSEEvent]`
@@ -65,7 +65,7 @@ Main generation flow, yields SSE events:
 
 1. Delete all `ChatMessage` rows where `turn_number > target_turn`.
 2. Delete all `ChatStateSnapshot` rows where `turn_number > target_turn`.
-3. Delete any `ChatSummary` rows whose `end_turn > target_turn`. If a summary's `start_turn <= target_turn < end_turn`, delete the entire summary and restore `is_summarized=False` on affected messages.
+3. Delete any `ChatSummary` rows whose `end_turn > target_turn`. If a summary's `start_turn <= target_turn < end_turn`, delete the entire summary and set `summary_id = NULL` on affected messages.
 4. Restore session stats from snapshot at `target_turn`.
 5. Set `session.current_turn = target_turn`.
 
@@ -183,7 +183,7 @@ class ChatStateSnapshotResponse(BaseModel):
 
 class ChatDetailResponse(BaseModel):
     session: ChatSessionResponse
-    messages: list[ChatMessageResponse]
+    messages: list[ChatMessageResponse]       # only non-summarized (summary_id IS NULL), active variant messages
     snapshots: list[ChatStateSnapshotResponse]
     variants: list[ChatMessageResponse]   # all variants for latest turn
 

@@ -4,6 +4,12 @@
 
 With the chat system running (steps 1–3), this step adds conversation compaction/summarization. As chats grow long, users can compact older messages into LLM-generated summaries, keeping the context window manageable. This affects both the summarization endpoints and the context-building logic in the chat generation service.
 
+Key design decisions:
+- **Denormalized `summary_id`** on `chat_messages` replaces `is_summarized` boolean (defined in step 1)
+- **Lazy loading**: Chat load returns only summaries + non-summarized messages. Original summarized messages are fetched on-demand when user expands a summary block.
+- **DOM management**: Collapsed summary blocks destroy message DOM elements entirely — no hidden HTML kept in the DOM.
+- **Regeneration**: Users can regenerate a summary if the LLM output is unsatisfactory.
+
 ---
 
 ## 1. Summarization Service
@@ -19,7 +25,7 @@ Main compaction flow:
 3. Determine compaction start point:
    - No previous summaries → start from the first message (after initial system message).
    - Previous summaries exist → start from message after last summary's `end_message_id`.
-4. Gather all active messages from start through `up_to_message_id` (inclusive). Filter: `is_active_variant=True`, ordered by `turn_number` ASC, `created_at` ASC.
+4. Gather all active messages from start through `up_to_message_id` (inclusive). Filter: `is_active_variant=True`, `summary_id IS NULL`, ordered by `turn_number` ASC, `created_at` ASC.
 5. If no messages to summarize (start == end): raise error.
 6. Format messages for summarization:
    ```
@@ -32,8 +38,19 @@ Main compaction flow:
 8. Use session's `llm_model_id` and `llm_server_id` for the call (same model as chat).
 9. Call LLM — **non-streaming**, simple completion, **no tools**.
 10. Create `ChatSummary` record with response content, message range, turn range.
-11. Mark all messages in range as `is_summarized=True`.
+11. Set `summary_id = new_summary.id` on all messages in range.
 12. Return the new `ChatSummary`.
+
+### `regenerate_summary(summary_id, db) -> ChatSummary`
+
+Re-generate an existing summary with a new LLM call:
+
+1. Load `ChatSummary` by ID, load parent `ChatSession`, verify ownership.
+2. Load all messages where `summary_id == this summary's ID`, ordered by `turn_number` ASC, `created_at` ASC.
+3. Format messages same as `compact_messages` step 6.
+4. Call LLM with SUMMARIZE prompts (non-streaming, no tools).
+5. Update `ChatSummary.content` with new LLM response.
+6. Return updated summary.
 
 ---
 
@@ -57,7 +74,7 @@ async def build_chat_context(session: ChatSession, db: AsyncSession) -> list[Cha
             content=f"[Summary of turns {summary.start_turn}–{summary.end_turn}]:\n{summary.content}"
         ))
 
-    # 3. Non-summarized active messages
+    # 3. Non-summarized active messages (summary_id IS NULL)
     raw_messages = await load_active_unsummarized_messages(session.id, db)
     for msg in raw_messages:
         messages.append(ChatMessageIn(role=msg.role, content=msg.content))
@@ -92,7 +109,7 @@ class ChatSummaryResponse(BaseModel):
 
 class CompactResponse(BaseModel):
     summary: ChatSummaryResponse
-    updated_message_count: int  # how many messages marked as summarized
+    updated_message_count: int  # how many messages got summary_id set
 ```
 
 ### Endpoints
@@ -100,35 +117,44 @@ class CompactResponse(BaseModel):
 | Method | Path | Request | Response | Purpose |
 |---|---|---|---|---|
 | POST | `/api/chats/:id/compact` | `CompactRequest` | `CompactResponse` | Summarize messages up to specified message |
+| POST | `/api/chats/:id/summaries/:summaryId/regenerate` | — | `ChatSummaryResponse` | Regenerate summary with new LLM call |
 | GET | `/api/chats/:id/summaries` | — | `list[ChatSummaryResponse]` | List all summaries for a chat |
-| GET | `/api/chats/:id/messages/original/:summaryId` | — | `list[ChatMessageResponse]` | Get original messages for a summary |
+| GET | `/api/chats/:id/summaries/:summaryId/messages` | — | `list[ChatMessageResponse]` | Get original messages for a summary (lazy load) |
 
 **POST `/api/chats/:id/compact`**:
 1. Verify session ownership.
 2. Call `compact_messages(session_id, up_to_message_id, db)`.
 3. Return summary and count of affected messages.
 
+**POST `/api/chats/:id/summaries/:summaryId/regenerate`**:
+1. Verify session ownership.
+2. Call `regenerate_summary(summary_id, db)`.
+3. Return updated summary.
+
 **GET `/api/chats/:id/summaries`**:
 - Returns all summaries ordered by `start_turn` ASC.
 
-**GET `/api/chats/:id/messages/original/:summaryId`**:
-- Load all messages between `summary.start_message_id` and `summary.end_message_id` (inclusive).
-- Used by frontend to show original messages when expanding a summary.
+**GET `/api/chats/:id/summaries/:summaryId/messages`**:
+- Load all messages where `summary_id == summaryId`.
+- Returns original messages for expanding a summary block in the UI.
+- Ordered by `turn_number` ASC, `created_at` ASC.
 
 ---
 
 ## 4. ChatDetailResponse Update
 
-Extend the response from step 3 to include summaries:
+Extend the response from step 3. **Excludes summarized messages** — only non-summarized messages are returned on chat load:
 
 ```python
 class ChatDetailResponse(BaseModel):
     session: ChatSessionResponse
-    messages: list[ChatMessageResponse]       # non-summarized active messages
+    messages: list[ChatMessageResponse]       # only WHERE summary_id IS NULL AND is_active_variant=True
     snapshots: list[ChatStateSnapshotResponse]
     variants: list[ChatMessageResponse]       # variants for latest turn
-    summaries: list[ChatSummaryResponse]      # all summaries for this session
+    summaries: list[ChatSummaryResponse]      # all summaries (content only, no original messages)
 ```
+
+On initial chat load, the backend does NOT send summarized message content. The frontend displays summary blocks for summarized ranges and only fetches original messages on-demand when the user expands a summary.
 
 ---
 
@@ -169,6 +195,7 @@ Add to `frontend/src/api/chat.ts`:
 async function compactChat(chatId: string, req: CompactRequest): Promise<CompactResponse>;
 async function listSummaries(chatId: string): Promise<ChatSummary[]>;
 async function getOriginalMessages(chatId: string, summaryId: string): Promise<ChatMessage[]>;
+async function regenerateSummary(chatId: string, summaryId: string): Promise<ChatSummaryResponse>;
 ```
 
 ---
@@ -180,14 +207,15 @@ Add to `ChatStore` in `frontend/src/user/stores/ChatStore.ts`:
 ```typescript
 // Additional observable state
 summaries: ChatSummary[] = [];
-expandedSummaryMessages: Map<string, ChatMessage[]> = new Map();  // summaryId -> original messages
+expandedSummaryMessages: Map<string, ChatMessage[]> = new Map();  // summaryId -> loaded messages
 isCompacting: boolean = false;
+isRegeneratingSummary: string | null = null;  // summaryId being regenerated, or null
 
 // Additional actions
 async compactUpTo(messageId: string): Promise<void>;
-async loadSummaries(): Promise<void>;
-async expandSummary(summaryId: string): Promise<void>;
-collapseSummary(summaryId: string): void;
+async regenerateSummary(summaryId: string): Promise<void>;
+async expandSummary(summaryId: string): Promise<void>;   // fetches from API, stores in map
+collapseSummary(summaryId: string): void;                 // removes from map → React unmounts DOM
 
 // Updated computed
 get displayItems(): Array<ChatMessage | ChatSummary>;
@@ -195,31 +223,56 @@ get displayItems(): Array<ChatMessage | ChatSummary>;
 // ChatViewPage renders this: SummaryBlock for summaries, MessageBubble for messages.
 ```
 
+### Key behaviors
+
+**`collapseSummary(summaryId)`** — Removes the summaryId entry from `expandedSummaryMessages` map entirely. Because the expanded messages are only rendered when present in the map, React unmounts the message components and the DOM elements are destroyed. No hidden elements are kept.
+
+**`expandSummary(summaryId)`** — Calls `GET /api/chats/:id/summaries/:summaryId/messages`. Stores the returned messages in `expandedSummaryMessages.set(summaryId, messages)`. React renders the message components only while the entry exists in the map.
+
+**`regenerateSummary(summaryId)`** — Sets `isRegeneratingSummary = summaryId`. Calls `POST /api/chats/:id/summaries/:summaryId/regenerate`. Updates the summary content in `summaries` array. Resets `isRegeneratingSummary = null`.
+
+**Initial chat load** — `summaries` populated from `ChatDetailResponse.summaries`. `expandedSummaryMessages` starts empty — no original messages loaded. All summary blocks start collapsed.
+
 ---
 
 ## 8. Frontend — Components
 
 ### SummaryBlock — `frontend/src/user/components/SummaryBlock.tsx`
 
-- Displayed inline in message history where summarized messages would have been
+Displayed inline in message history where summarized messages would have been.
+
+```
++----------------------------------------------+
+|  [Summary icon] Turns N–M                    |
+|  Summary text content...                     |
+|                                              |
+|  [Expand/Collapse] [Regenerate]              |
++----------------------------------------------+
+```
+
 - Distinct styling: muted background color, border, "Summary" label
 - Shows summary content as text
 - Turn range: "Turns N–M summarized"
-- **Expand button**: loads original messages via `getOriginalMessages()`, shows in a sub-list with dimmed/indented styling
-- **Collapse button**: hides expanded original messages
+- **Collapsed (default)**: Shows summary text, turn range, Expand button, Regenerate button. No hidden message DOM.
+- **Expanded**: Shows summary text + original messages below in dimmed/indented style + Collapse button + Regenerate button. Messages rendered as regular `<MessageBubble>` components with dimmed styling.
+- **Expand**: Calls `store.expandSummary(summaryId)` → API fetch → React renders message components below summary
+- **Collapse**: Calls `store.collapseSummary(summaryId)` → removes from MobX map → React unmounts message components → DOM destroyed
+- **Regenerate**: Calls `store.regenerateSummary(summaryId)` → shows spinner overlay on summary block → replaces content when done
+- While regenerating: disable Expand/Collapse buttons, show loading indicator
 
 ### MessageHistory Update — `frontend/src/user/components/MessageHistory.tsx`
 
 Modify from step 3:
 - Render from `displayItems` computed (interleaved summaries + messages)
 - For each item:
-  - `ChatSummary` → render `<SummaryBlock>`
+  - `ChatSummary` → render `<SummaryBlock>` (with expanded messages from `expandedSummaryMessages` if present)
   - `ChatMessage` → render `<MessageBubble>` as before
 - **Compact button**: shown on each assistant message that is:
-  - NOT already summarized
+  - NOT already summarized (`summary_id` is null — but frontend only has non-summarized messages anyway)
   - NOT the latest turn (need messages after summary for chat to continue)
 - Click → confirm dialog ("Summarize all messages up to this point?") → `compactUpTo(messageId)`
 - While compacting: spinner/loading overlay
+- After compaction: affected messages removed from `messages` array, new summary added to `summaries`, `displayItems` recomputed automatically
 
 ### Button Layout on Assistant Messages
 
@@ -238,8 +291,8 @@ Modify from step 3:
 Already handled by `rewind_to_turn()` in step 3:
 - Deletes summaries whose `end_turn > target_turn`
 - For summaries where `start_turn <= target_turn < end_turn`: deletes entire summary
-- Restores `is_summarized=False` on messages covered by deleted summaries
-- Frontend reloads full chat detail after rewind
+- Sets `summary_id = NULL` on messages covered by deleted summaries
+- Frontend reloads full chat detail after rewind (which re-fetches summaries + non-summarized messages)
 
 ---
 
@@ -247,20 +300,20 @@ Already handled by `rewind_to_turn()` in step 3:
 
 | File | Purpose |
 |---|---|
-| `backend/app/services/summarization_service.py` | Compaction logic, LLM summarization call |
-| `frontend/src/user/components/SummaryBlock.tsx` | Summary display component |
+| `backend/app/services/summarization_service.py` | Compaction logic, regeneration, LLM summarization call |
+| `frontend/src/user/components/SummaryBlock.tsx` | Summary display component with expand/collapse/regenerate |
 
 ## Modified Files
 
 | File | Change |
 |---|---|
-| `backend/app/routes/chat.py` | Add compact, summaries, original-messages endpoints |
+| `backend/app/routes/chat.py` | Add compact, regenerate, summaries, original-messages endpoints |
 | `backend/app/models/schemas/chat.py` | Add CompactRequest, ChatSummaryResponse, CompactResponse; update ChatDetailResponse |
-| `backend/app/services/chat_service.py` | Update `build_chat_context()` to incorporate summaries |
+| `backend/app/services/chat_service.py` | Update `build_chat_context()` to incorporate summaries; update `rewind_to_turn()` to clear `summary_id` |
 | `frontend/src/types/chat.d.ts` | Add ChatSummary, CompactRequest, CompactResponse; update ChatDetail |
-| `frontend/src/api/chat.ts` | Add compactChat, listSummaries, getOriginalMessages |
-| `frontend/src/user/stores/ChatStore.ts` | Add summary state, compaction actions, displayItems computed |
-| `frontend/src/user/components/MessageHistory.tsx` | Render summaries inline, add compact button |
+| `frontend/src/api/chat.ts` | Add compactChat, listSummaries, getOriginalMessages, regenerateSummary |
+| `frontend/src/user/stores/ChatStore.ts` | Add summary state, expandedSummaryMessages map, compaction/expand/collapse/regenerate actions, displayItems computed |
+| `frontend/src/user/components/MessageHistory.tsx` | Render summaries inline, add compact button, render expanded messages |
 | `frontend/src/user/pages/ChatViewPage.tsx` | Wire up summary display |
 
 ---
@@ -270,6 +323,7 @@ Already handled by `rewind_to_turn()` in step 3:
 | Action | Required Role |
 |---|---|
 | Compact own chat | player |
+| Regenerate summary of own chat | player |
 | View summaries of own chat | player |
 | Expand summary to see originals | player |
 
@@ -277,7 +331,7 @@ Already handled by `rewind_to_turn()` in step 3:
 
 ## Dependencies
 
-- Stage 2 Step 1 (ChatSummary model)
+- Stage 2 Step 1 (ChatSummary model, `summary_id` FK on ChatMessage)
 - Stage 2 Step 2 (prompts: SUMMARIZE_SYSTEM_PROMPT, SUMMARIZE_USER_PROMPT)
 - Stage 2 Step 3 (chat API, context building, chat UI)
 
@@ -286,13 +340,17 @@ Already handled by `rewind_to_turn()` in step 3:
 ## Verification
 
 1. Create a chat and generate 5–6 turns of conversation
-2. **Compact**: POST `/api/chats/:id/compact` with mid-conversation assistant message ID → verify summary created, messages marked as summarized
+2. **Compact**: POST `/api/chats/:id/compact` with mid-conversation assistant message ID → verify summary created, messages get `summary_id` set
 3. **Context building**: Send new message after compaction → verify LLM receives summary block + raw tail (check DEBUG logs)
 4. **Multiple compactions**: Compact again at a later message → verify second summary starts after first ends
-5. **Expand**: GET original messages for a summary → verify all messages in range returned
-6. **Rewind through summary**: Rewind to a turn within a summarized range → verify summary deleted, messages restored
-7. **Frontend**: Summary blocks appear inline with distinct styling
-8. **Frontend**: Click "Compact" on assistant message → loading → summary block replaces messages
-9. **Frontend**: Click "Expand" on summary → original messages shown below
-10. **Frontend**: Compact button NOT shown on latest turn's assistant message
-11. **Export**: DB export includes `chat_summaries.jsonl.gz`; import restores correctly
+5. **Lazy load**: GET chat detail → verify response contains summaries but NOT summarized message content
+6. **Expand**: GET `/api/chats/:id/summaries/:summaryId/messages` → verify all messages with that `summary_id` returned
+7. **DOM check**: Expand a summary → messages appear in DOM. Collapse → messages removed from DOM (check React DevTools)
+8. **Regenerate**: POST regenerate → verify summary content updated, original messages unchanged
+9. **Rewind through summary**: Rewind to a turn within a summarized range → verify summary deleted, `summary_id` cleared on messages
+10. **Frontend**: Summary blocks appear inline with distinct styling, collapsed by default
+11. **Frontend**: Click "Expand" → loading → original messages shown below summary
+12. **Frontend**: Click "Collapse" → messages disappear, DOM elements destroyed
+13. **Frontend**: Click "Regenerate" → spinner → summary content updated
+14. **Frontend**: Compact button NOT shown on latest turn's assistant message
+15. **Export**: DB export includes `chat_summaries.jsonl.gz`; import restores correctly
