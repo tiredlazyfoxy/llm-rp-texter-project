@@ -20,7 +20,6 @@ Established in stage 2 step 2, extended in stage 3 step 1 and stage 1 step 5.
 backend/app/services/prompts/
     __init__.py                          # Re-exports all constants + functions
     chat_system_prompt.py                # CHAT_SYSTEM_PROMPT
-    chat_initial_message.py              # CHAT_INITIAL_MESSAGE
     summarize_system_prompt.py           # SUMMARIZE_SYSTEM_PROMPT
     summarize_user_prompt.py             # SUMMARIZE_USER_PROMPT
     thinking_agent_system_prompt.py      # THINKING_AGENT_SYSTEM_PROMPT
@@ -166,7 +165,6 @@ Testing prompts requires observing LLM behavior across multiple scenarios. There
 | Prompt | Key quality signals |
 |---|---|
 | CHAT_SYSTEM_PROMPT | Stays in character, uses NPC names correctly, respects rules, stat updates are valid and reasonable |
-| CHAT_INITIAL_MESSAGE | Sets scene without being overwrought, uses location details |
 | SUMMARIZE_SYSTEM_PROMPT | Summary is factual, preserves all plot points, no editorializing, correct tense/person |
 | SUMMARIZE_USER_PROMPT | Messages formatted clearly enough for LLM to parse |
 | THINKING_AGENT_SYSTEM_PROMPT | JSON output is valid, tool calls are purposeful (not redundant), decisions are logical |
@@ -259,7 +257,7 @@ None — this plan defines standards applied during stage 2 and stage 3 implemen
 
 ## Verification
 
-1. All 8 prompt files exist in `backend/app/services/prompts/` with complete documentation headers
+1. All 7 prompt files exist in `backend/app/services/prompts/` with complete documentation headers
 2. `from app.services.prompts import CHAT_SYSTEM_PROMPT` works (and all other constants/functions)
 3. Each prompt file is self-sufficient: a developer can read just that file and understand what to change, why, and how to test
 4. DESIGN RATIONALE sections contain actual rationale (not placeholder text)

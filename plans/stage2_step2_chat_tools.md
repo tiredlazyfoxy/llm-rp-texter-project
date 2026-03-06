@@ -88,22 +88,6 @@ Note: `{user_instructions_block}` is built by the formatting helper — empty st
 {user_instructions}
 ```
 
-### `CHAT_INITIAL_MESSAGE`
-
-**File**: `backend/app/services/prompts/chat_initial_message.py`
-
-Used at chat creation for the initial narrative system message.
-
-Variables: `{character_name}`, `{location_name}`, `{location_summary}`
-
-```python
-CHAT_INITIAL_MESSAGE = """\
-*{character_name} arrives at {location_name}.*
-
-{location_summary}
-"""
-```
-
 ### `SUMMARIZE_SYSTEM_PROMPT`
 
 **File**: `backend/app/services/prompts/summarize_system_prompt.py`
@@ -329,7 +313,6 @@ def get_location_summary(location: WorldLocation) -> str:
 |---|---|
 | `backend/app/services/prompts/__init__.py` | Re-exports all prompt constants |
 | `backend/app/services/prompts/chat_system_prompt.py` | CHAT_SYSTEM_PROMPT + documentation |
-| `backend/app/services/prompts/chat_initial_message.py` | CHAT_INITIAL_MESSAGE + documentation |
 | `backend/app/services/prompts/summarize_system_prompt.py` | SUMMARIZE_SYSTEM_PROMPT + documentation |
 | `backend/app/services/prompts/summarize_user_prompt.py` | SUMMARIZE_USER_PROMPT + documentation |
 | `backend/app/services/chat_tools.py` | Tool schemas, implementations, NPC logic, stat parsing, formatting helpers |

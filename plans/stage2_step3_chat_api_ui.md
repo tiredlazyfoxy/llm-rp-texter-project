@@ -241,7 +241,7 @@ class WorldInfoResponse(BaseModel):
 3. Parse `character_template` — extract `{PLACEHOLDER}` tokens, verify `template_variables` provides all values
 4. Build `character_description` by replacing placeholders
 5. Initialize stats from `WorldStatDefinition` defaults
-6. Create `ChatSession`, `ChatStateSnapshot` (turn 0), initial system `ChatMessage` using `CHAT_INITIAL_MESSAGE`
+6. Create `ChatSession`, `ChatStateSnapshot` (turn 0), initial system `ChatMessage` using `World.initial_message` (interpolate `{character_name}`, `{location_name}`, `{location_summary}`)
 7. Return new session
 
 **POST `/api/chats/:id/message`** and **POST `/api/chats/:id/regenerate`**:

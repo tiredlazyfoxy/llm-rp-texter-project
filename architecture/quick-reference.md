@@ -18,7 +18,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **users**: id, username, pwdhash, salt, role (admin/editor/player), jwt_signing_key, last_login, last_key_update
 
-**worlds**: id, name, description, lore, system_prompt, character_template (with `{PLACEHOLDER}` tokens), pipeline (JSON), status (draft/public/archived), created_at, modified_at
+**worlds**: id, name, description, lore, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline (JSON), status (draft/public/archived), created_at, modified_at
 
 **world_locations**: id, world_id, name, content (markdown), exits (JSON array of location IDs or None), created_at, modified_at
 

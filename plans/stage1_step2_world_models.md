@@ -18,6 +18,7 @@ Top-level entity. Server can host multiple worlds. Editors (role >= editor) can 
 | `lore` | str (text) | Visible to users — world lore/background |
 | `system_prompt` | str (text) | Hidden from users — injected into LLM context |
 | `character_template` | str (text) | Character description with `{PLACEHOLDER}` tokens — `{NAME}` is mandatory, editors can define additional custom placeholders. Users fill all placeholders when starting a chat. |
+| `initial_message` | str (text) | Template for the first message when a chat starts. Supports placeholders: `{character_name}`, `{location_name}`, `{location_summary}`. Filled at chat creation time. |
 | `pipeline` | str (JSON) | Chat generation pipeline definition. Stored as JSON string in SQLite, default `"{}"`. Internal model TBD — for now treated as opaque JSON. |
 | `status` | enum: draft / public / archived | Controls visibility |
 | `created_at` | datetime | Auto-set on create |
@@ -192,7 +193,7 @@ Vector index is **rebuilt from source documents** on import (not exported direct
 
 | Table | Scope | Key Fields |
 |---|---|---|
-| `worlds` | Global | name, description, lore, system_prompt, character_template, pipeline, status |
+| `worlds` | Global | name, description, lore, system_prompt, character_template, initial_message, pipeline, status |
 | `world_locations` | Per world | name, content, exits |
 | `world_npcs` | Per world | name, content |
 | `world_lore_facts` | Per world | content |
