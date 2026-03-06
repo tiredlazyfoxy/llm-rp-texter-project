@@ -13,8 +13,9 @@
 
 ## Git Policy
 
-- **Read-only commands** (no permission needed): `git status`, `git log`, `git diff`, `git branch`, `git remote`, etc.
-- **Write commands** (require explicit user permission): `git add`, `git commit`, `git push`, `git merge`, `git rebase`, `git checkout -b`, and any other commands that modify the repo
+- **Read-only commands** (run freely, no permission needed): `git status`, `git log`, `git diff`, `git branch`, `git remote`, `git show`, `git stash list`, and any other non-modifying commands
+- **`git add` and `git commit`** (require explicit user permission before running)
+- **Other write commands** (run freely): `git push`, `git merge`, `git rebase`, `git checkout`, `git stash`, etc.
 
 ## Project Overview
 
@@ -70,3 +71,10 @@ See `architecture/` for full documentation.
 - **No free dictionaries, no untyped data**
 - **LLM client**: PythonLLMClient — tool schemas via `pydantic_to_openai_tool()`
 - **Logging**: Python `logging`, INFO for requests, DEBUG for full flow
+
+## Workflow: COLLECT Mode
+
+- When the user starts a chat with **COLLECT** or writes **COLLECT** mid-conversation, enter collect mode
+- In collect mode: **only accumulate context** from subsequent messages — no execution, no coding, no planning, no tool calls, no suggestions
+- Just acknowledge each message briefly (e.g. "Got it", "Noted")
+- When the user writes **START**, process all collected context together and begin working
