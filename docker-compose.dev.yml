@@ -1,21 +1,45 @@
-# Development Docker Compose
-# Builds services locally for development/testing
-# Usage: docker compose -f docker-compose.dev.yml up --build
-
-version: "3.9"
+# Development Docker Compose — no build, hot-reload, nginx proxy
+# Mounts local source code, watches for changes
+# Usage: docker compose -f docker-compose.dev.yml up
 
 services:
-  # TODO: Configure when backend and frontend are implemented
   backend:
-    build: ./backend
-    ports:
-      - "8085:8085"
+    image: python:3.13
+    working_dir: /app
+    command: >
+      bash -c "pip install -e . && uvicorn app.main:app --host 0.0.0.0 --port 8085 --reload"
     volumes:
-      - ./data:/app/data
+      - ./backend:/app
+      - backend-pip-cache:/root/.cache/pip
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLAMA_SWAP_URL=${LLAMA_SWITCH_URL}
+      - SEARCH_CSE_ID=${SEARCH_CSE_ID}
+      - SEARCH_CSE_KEY=${SEARCH_CSE_KEY}
+    expose:
+      - "8085"
+
+  frontend:
+    image: node:lts-slim
+    working_dir: /app
+    command: >
+      bash -c "npm install && npx vite --port 8094 --host 0.0.0.0"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    expose:
+      - "8094"
 
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
+      - "8094:80"
+    volumes:
+      - ./nginx/dev.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
+      - frontend
+
+volumes:
+  backend-pip-cache:
+  frontend-node-modules:
