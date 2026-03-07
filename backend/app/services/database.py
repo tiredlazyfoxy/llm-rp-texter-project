@@ -8,6 +8,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.user import User, UserRole
+import app.models.world  # noqa: F401 — register world tables with SQLModel metadata
 from app.services.snowflake import generate_id
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,7 @@ async def import_database(zip_data: bytes) -> None:
     global _db_ready
 
     from app.services.db_import_export import import_all
+    from app.services.vector_storage import rebuild_all_worlds_index
 
     _DB_DIR.mkdir(parents=True, exist_ok=True)
     await create_all_tables()
@@ -97,6 +99,10 @@ async def import_database(zip_data: bytes) -> None:
     async with AsyncSession(_engine) as session:
         await import_all(session, zip_data)
         await session.commit()
+
+    # Rebuild vector indices from imported documents
+    async with AsyncSession(_engine) as session:
+        await rebuild_all_worlds_index(session)
 
     _db_ready = True
     logger.info("Database imported from zip")
