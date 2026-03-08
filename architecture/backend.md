@@ -48,6 +48,44 @@ class AgentContext(TypedDict):
     active_npcs: list[str]
 ```
 
+## DB Layer — DB-Agnostic Interface
+
+The `db/` layer is a **fully abstracted data access interface**. No sessions, connections, or ORM-specific types leak to callers. Services and routes make pure business calls.
+
+### Design Principles
+
+- **Session-free public API**: All `db/` functions manage sessions internally. Callers never see `AsyncSession`, `select()`, or `session.exec()`.
+- **Injectable config**: `init_engine(config=DbConfig(...))` accepts DB path, connection params. Tests inject a temporary DB path; production uses defaults.
+- **Swappable backend**: The entire `db/` layer could be replaced with Mongo, Redis, or file-based storage without changing services or routes.
+- **Business-level signatures**: Functions accept/return model objects or plain types — e.g., `get_user_by_id(user_id: int) -> User | None`.
+
+### Import/Export Pattern
+
+**Export** — callback-based streaming:
+
+1. Service opens zip file, creates gzip stream inside
+2. Calls `db.export_table(ModelClass, callback)` — db iterates all rows, calls `callback(row)` per row
+3. Callback serializes row to JSONL and writes to gzip stream
+4. No bulk `SELECT *` into memory array
+
+**Import** — chunked upsert streaming:
+
+1. Service calls `db.init_db()` to create/reshape tables
+2. Service opens zip, reads gzip JSONL line-by-line
+3. Accumulates a batch of model instances (e.g., 100)
+4. Calls `db.upsert_batch(items)` — db merges batch into table
+5. Repeats until EOF
+6. **UPSERT** (not INSERT) — idempotent, can re-import safely
+
+### Config
+
+```python
+@dataclass
+class DbConfig:
+    db_path: Path       # SQLite file path (injectable for tests)
+    echo: bool = False  # SQLAlchemy echo for debugging
+```
+
 ## ORM — SQLModel
 
 - SQLModel combines SQLAlchemy and Pydantic into a single model

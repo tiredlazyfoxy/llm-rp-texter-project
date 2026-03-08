@@ -72,6 +72,14 @@ See `architecture/` for full documentation.
 - **LLM client**: PythonLLMClient — tool schemas via `pydantic_to_openai_tool()`
 - **Logging**: Python `logging`, INFO for requests, DEBUG for full flow
 
+## Backend Layer Separation
+
+- **`routes/`** — HTTP only (parse request, call service, return response)
+- **`services/`** — Business logic (no direct DB queries)
+- **`db/`** — All DB queries (every function takes `session` as first param)
+- Services and routes never call `session.exec()` directly — always go through `db/` layer
+- Use `session.exec()` (not deprecated `session.execute()`)
+
 ## Workflow: COLLECT Mode
 
 - When the user starts a chat with **COLLECT** or writes **COLLECT** mid-conversation, enter collect mode

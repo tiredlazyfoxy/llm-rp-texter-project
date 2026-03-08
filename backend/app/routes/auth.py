@@ -2,30 +2,24 @@ import asyncio
 import logging
 import random
 import time
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
+from fastapi import APIRouter, HTTPException, UploadFile, status
 
+from app.db.engine import is_db_ready
+from app.db.user_queries import get_user_by_username, update_user
 from app.models.schemas.auth import (
     AuthStatusResponse,
     CreateDBRequest,
     LoginRequest,
     LoginResponse,
 )
-from app.models.user import User
 from app.services.auth import (
     create_token,
-    create_user_credentials,
     maybe_rotate_signing_key,
     verify_password,
 )
-from app.services.database import (
-    create_database,
-    get_session,
-    import_database,
-    is_db_ready,
-)
+from app.services.database import create_database, import_database
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +41,7 @@ async def auth_status() -> AuthStatusResponse:
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(
-    body: LoginRequest,
-    session: AsyncSession = Depends(get_session),
-) -> LoginResponse:
+async def login(body: LoginRequest) -> LoginResponse:
     await _random_delay()
 
     if not is_db_ready():
@@ -68,8 +59,7 @@ async def login(
         if time.time() >= cooldown_until:
             _login_attempts.pop(body.username, None)
 
-    result = await session.execute(select(User).where(User.username == body.username))
-    user = result.scalar_one_or_none()
+    user = await get_user_by_username(body.username)
 
     if user is None or user.pwdhash is None or user.salt is None:
         _record_failure(body.username)
@@ -82,12 +72,9 @@ async def login(
     # Success — clear attempts, rotate key if needed, update last_login
     _login_attempts.pop(body.username, None)
     maybe_rotate_signing_key(user)
-    from datetime import datetime, timezone
     user.last_login = datetime.now(timezone.utc)
 
-    session.add(user)
-    await session.commit()
-    await session.refresh(user)
+    await update_user(user)
 
     token = create_token(user)
     return LoginResponse(token=token)

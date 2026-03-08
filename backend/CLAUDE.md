@@ -11,11 +11,15 @@ backend/
     models/              — SQLModel DB models + Pydantic API schemas
       schemas/           — Pydantic request/response schemas (auth.py, chat.py)
       user.py, world.py, llm_server.py, chat_session.py, chat_message.py, ...
-    routes/              — API route handlers
+    routes/              — API route handlers (HTTP layer only)
       auth.py, chat.py, llm_servers.py, admin/...
-    services/            — Business logic
+    db/                  — Data access layer (DB-agnostic interface)
+      engine.py          — Async engine, injectable config, DDL, state flags
+      user_queries.py    — User CRUD (session-free public API)
+      import_export_queries.py — export_table(), upsert_batch(), vector rebuild
+    services/            — Business logic (no direct DB queries, no session creation)
       snowflake.py       — Snowflake ID generator (int64)
-      database.py        — SQLModel async engine, DB init
+      database.py        — DB setup orchestration (create/import)
       auth.py            — JWT create/verify, password hashing
       db_import_export.py — gzipped JSONL per table
       prompts/           — LLM prompt package (one documented file per prompt)
@@ -38,6 +42,21 @@ backend/
 - Dependencies managed via `pyproject.toml`
 - Dev server: `uvicorn app.main:app --port 8085 --reload`
 - SQLite DB in `backend/data/` (dev), Docker volume `./data/` (prod)
+
+## Layer Separation
+
+- **`routes/`** — HTTP layer only: parse requests, call services, format responses. No business logic, no direct DB queries.
+- **`services/`** — Business logic: authentication, validation, orchestration. No `session`, `AsyncSession`, `select()`, `session.exec()`, or `session.add()`.
+- **`db/`** — DB-agnostic data access interface. Exposes **business-level functions only** — no sessions, connections, or ORM types leak out. All SQL/ORM internals are hidden. The entire `db/` layer could be replaced with Mongo/Redis/file without changing services or routes. Config is injectable via `DbConfig` for tests and environments.
+- **`models/`** — SQLModel table definitions + Pydantic schemas. No logic.
+
+**Rules:**
+- Routes depend on services and db
+- Services depend on db (never import from routes)
+- DB layer depends only on models (never import from services or routes)
+- **No `session`, `AsyncSession`, or connection objects outside `db/`**
+- **No `select()`, `session.exec()`, `session.add()` outside `db/`**
+- Import/export serialization (`db_import_export.py`) stays in `services/` — it's format logic, not DB logic
 
 ## Data Modeling — Strict Typing
 
@@ -69,6 +88,10 @@ backend/
 - **Every model must have JSONL import/export** — gzipped `.jsonl.gz` in a zip
 - Extend `db_import_export.py` whenever a model is added/changed
 - Vector index (LanceDB) is rebuilt from source documents on import, not exported
+- **Streaming**: export uses callback per row; import reads JSONL line-by-line, sends batched upserts
+- **No in-memory bulk load** — never decode entire file to array
+- **UPSERT semantics** — import is idempotent (can re-import without clearing)
+- `init_db()` creates/reshapes tables before import
 
 ## LLM Client
 

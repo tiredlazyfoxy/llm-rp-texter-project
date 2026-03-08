@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.auth import router as auth_router
-from app.services.database import init_engine
+from app.db.engine import init_engine
 from app.services.vector_storage import init_vector_store
 
 logging.basicConfig(

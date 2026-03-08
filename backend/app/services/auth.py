@@ -1,13 +1,13 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import bcrypt as _bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import bcrypt as _bcrypt
 
+from app.db.user_queries import get_user_by_id
 from app.models.user import User, UserRole
-from app.services.database import get_session
 
 _bearer_scheme = HTTPBearer()
 
@@ -50,50 +50,43 @@ def create_user_credentials(password: str) -> tuple[str, str, str]:
     return salt, pwdhash, signing_key
 
 
-async def verify_token(token: str) -> dict:
-    """Decode token without verification to get user_id, then verify with user's key."""
-    from sqlmodel import select
-
+def decode_token_unverified(token: str) -> dict:
+    """Decode JWT without signature verification. Returns payload or raises."""
     try:
-        unverified = jwt.decode(token, options={"verify_signature": False})
+        return jwt.decode(token, options={"verify_signature": False})
     except jwt.DecodeError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    user_id = int(unverified.get("user_id", 0))
-    if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    async for session in get_session():
-        result = await session.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-
-    if user is None or user.jwt_signing_key is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
+def verify_token_signature(token: str, signing_key: str) -> dict:
+    """Verify JWT signature with the user's signing key. Returns payload or raises."""
     try:
-        payload = jwt.decode(token, user.jwt_signing_key, algorithms=["HS256"])
+        return jwt.decode(token, signing_key, algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
-
-    return payload
 
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
 ) -> User:
     """FastAPI dependency: extracts and validates JWT, returns User."""
-    from sqlmodel import select
+    token = credentials.credentials
 
-    payload = await verify_token(credentials.credentials)
-    user_id = int(payload["user_id"])
+    unverified = decode_token_unverified(token)
+    user_id = int(unverified.get("user_id", 0))
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    async for session in get_session():
-        result = await session.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
+    user = await get_user_by_id(user_id)
 
-    if user is None or user.pwdhash is None:
+    if user is None or user.jwt_signing_key is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    verify_token_signature(token, user.jwt_signing_key)
+
+    if user.pwdhash is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User disabled")
 
     return user

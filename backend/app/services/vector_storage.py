@@ -259,18 +259,15 @@ async def rebuild_all_worlds_index(session: AsyncSession) -> None:
     await asyncio.to_thread(_reset_table)
 
     # Index all locations
-    result = await session.execute(select(WorldLocation))
-    for loc in result.scalars().all():
+    for loc in (await session.exec(select(WorldLocation))).all():
         await index_document(loc.world_id, "location", loc.id, loc.content)
 
     # Index all NPCs
-    result = await session.execute(select(WorldNPC))
-    for npc in result.scalars().all():
+    for npc in (await session.exec(select(WorldNPC))).all():
         await index_document(npc.world_id, "npc", npc.id, npc.content)
 
     # Index all lore facts
-    result = await session.execute(select(WorldLoreFact))
-    for fact in result.scalars().all():
+    for fact in (await session.exec(select(WorldLoreFact))).all():
         await index_document(fact.world_id, "lore_fact", fact.id, fact.content)
 
     logger.info("Vector index rebuilt for all worlds")

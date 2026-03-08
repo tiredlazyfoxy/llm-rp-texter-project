@@ -1,12 +1,17 @@
+"""Import/export serialization — gzipped JSONL per table in a zip archive.
+
+This is format/serialization logic (services layer). DB access is delegated
+to db.import_export_queries which manages its own sessions.
+"""
+
 import gzip
 import io
 import json
+import logging
 import zipfile
 from datetime import datetime
 
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
-
+from app.db.import_export_queries import export_table, upsert_batch
 from app.models.user import User, UserRole
 from app.models.world import (
     NPCLinkType,
@@ -21,6 +26,10 @@ from app.models.world import (
     WorldStatDefinition,
     WorldStatus,
 )
+
+logger = logging.getLogger(__name__)
+
+BATCH_SIZE = 100
 
 
 def _serialize_datetime(dt: datetime | None) -> str | None:
@@ -62,25 +71,6 @@ def _dict_to_user(d: dict) -> User:
     )
 
 
-async def export_users(session: AsyncSession) -> bytes:
-    """Export users to gzipped JSONL."""
-    result = await session.execute(select(User))
-    users = result.scalars().all()
-
-    lines = "\n".join(json.dumps(_user_to_dict(u)) for u in users)
-    return gzip.compress(lines.encode("utf-8"))
-
-
-async def import_users(session: AsyncSession, data: bytes) -> None:
-    """Import users from gzipped JSONL."""
-    raw = gzip.decompress(data).decode("utf-8")
-    for line in raw.strip().split("\n"):
-        if not line:
-            continue
-        user = _dict_to_user(json.loads(line))
-        session.add(user)
-
-
 # ---------------------------------------------------------------------------
 # Worlds
 # ---------------------------------------------------------------------------
@@ -118,21 +108,6 @@ def _dict_to_world(d: dict) -> World:
     )
 
 
-async def export_worlds(session: AsyncSession) -> bytes:
-    result = await session.execute(select(World))
-    items = result.scalars().all()
-    lines = "\n".join(json.dumps(_world_to_dict(i)) for i in items)
-    return gzip.compress(lines.encode("utf-8"))
-
-
-async def import_worlds(session: AsyncSession, data: bytes) -> None:
-    raw = gzip.decompress(data).decode("utf-8")
-    for line in raw.strip().split("\n"):
-        if not line:
-            continue
-        session.add(_dict_to_world(json.loads(line)))
-
-
 # ---------------------------------------------------------------------------
 # World Locations
 # ---------------------------------------------------------------------------
@@ -162,21 +137,6 @@ def _dict_to_location(d: dict) -> WorldLocation:
     )
 
 
-async def export_world_locations(session: AsyncSession) -> bytes:
-    result = await session.execute(select(WorldLocation))
-    items = result.scalars().all()
-    lines = "\n".join(json.dumps(_location_to_dict(i)) for i in items)
-    return gzip.compress(lines.encode("utf-8"))
-
-
-async def import_world_locations(session: AsyncSession, data: bytes) -> None:
-    raw = gzip.decompress(data).decode("utf-8")
-    for line in raw.strip().split("\n"):
-        if not line:
-            continue
-        session.add(_dict_to_location(json.loads(line)))
-
-
 # ---------------------------------------------------------------------------
 # World NPCs
 # ---------------------------------------------------------------------------
@@ -204,21 +164,6 @@ def _dict_to_npc(d: dict) -> WorldNPC:
     )
 
 
-async def export_world_npcs(session: AsyncSession) -> bytes:
-    result = await session.execute(select(WorldNPC))
-    items = result.scalars().all()
-    lines = "\n".join(json.dumps(_npc_to_dict(i)) for i in items)
-    return gzip.compress(lines.encode("utf-8"))
-
-
-async def import_world_npcs(session: AsyncSession, data: bytes) -> None:
-    raw = gzip.decompress(data).decode("utf-8")
-    for line in raw.strip().split("\n"):
-        if not line:
-            continue
-        session.add(_dict_to_npc(json.loads(line)))
-
-
 # ---------------------------------------------------------------------------
 # World Lore Facts
 # ---------------------------------------------------------------------------
@@ -244,21 +189,6 @@ def _dict_to_lore_fact(d: dict) -> WorldLoreFact:
     )
 
 
-async def export_world_lore_facts(session: AsyncSession) -> bytes:
-    result = await session.execute(select(WorldLoreFact))
-    items = result.scalars().all()
-    lines = "\n".join(json.dumps(_lore_fact_to_dict(i)) for i in items)
-    return gzip.compress(lines.encode("utf-8"))
-
-
-async def import_world_lore_facts(session: AsyncSession, data: bytes) -> None:
-    raw = gzip.decompress(data).decode("utf-8")
-    for line in raw.strip().split("\n"):
-        if not line:
-            continue
-        session.add(_dict_to_lore_fact(json.loads(line)))
-
-
 # ---------------------------------------------------------------------------
 # NPC Location Links
 # ---------------------------------------------------------------------------
@@ -280,21 +210,6 @@ def _dict_to_npc_link(d: dict) -> NPCLocationLink:
         location_id=d["location_id"],
         link_type=NPCLinkType(d["link_type"]),
     )
-
-
-async def export_npc_location_links(session: AsyncSession) -> bytes:
-    result = await session.execute(select(NPCLocationLink))
-    items = result.scalars().all()
-    lines = "\n".join(json.dumps(_npc_link_to_dict(i)) for i in items)
-    return gzip.compress(lines.encode("utf-8"))
-
-
-async def import_npc_location_links(session: AsyncSession, data: bytes) -> None:
-    raw = gzip.decompress(data).decode("utf-8")
-    for line in raw.strip().split("\n"):
-        if not line:
-            continue
-        session.add(_dict_to_npc_link(json.loads(line)))
 
 
 # ---------------------------------------------------------------------------
@@ -332,21 +247,6 @@ def _dict_to_stat_def(d: dict) -> WorldStatDefinition:
     )
 
 
-async def export_world_stat_definitions(session: AsyncSession) -> bytes:
-    result = await session.execute(select(WorldStatDefinition))
-    items = result.scalars().all()
-    lines = "\n".join(json.dumps(_stat_def_to_dict(i)) for i in items)
-    return gzip.compress(lines.encode("utf-8"))
-
-
-async def import_world_stat_definitions(session: AsyncSession, data: bytes) -> None:
-    raw = gzip.decompress(data).decode("utf-8")
-    for line in raw.strip().split("\n"):
-        if not line:
-            continue
-        session.add(_dict_to_stat_def(json.loads(line)))
-
-
 # ---------------------------------------------------------------------------
 # World Rules
 # ---------------------------------------------------------------------------
@@ -370,64 +270,83 @@ def _dict_to_rule(d: dict) -> WorldRule:
     )
 
 
-async def export_world_rules(session: AsyncSession) -> bytes:
-    result = await session.execute(select(WorldRule))
-    items = result.scalars().all()
-    lines = "\n".join(json.dumps(_rule_to_dict(i)) for i in items)
-    return gzip.compress(lines.encode("utf-8"))
-
-
-async def import_world_rules(session: AsyncSession, data: bytes) -> None:
-    raw = gzip.decompress(data).decode("utf-8")
-    for line in raw.strip().split("\n"):
-        if not line:
-            continue
-        session.add(_dict_to_rule(json.loads(line)))
-
-
 # ---------------------------------------------------------------------------
-# Aggregate export / import
+# Table registry: (zip_filename, model_class, to_dict, from_dict)
+# Import order respects FK dependencies.
 # ---------------------------------------------------------------------------
 
-_EXPORT_TABLE_MAP = [
-    ("users.jsonl.gz", export_users),
-    ("worlds.jsonl.gz", export_worlds),
-    ("world_locations.jsonl.gz", export_world_locations),
-    ("world_npcs.jsonl.gz", export_world_npcs),
-    ("world_lore_facts.jsonl.gz", export_world_lore_facts),
-    ("npc_location_links.jsonl.gz", export_npc_location_links),
-    ("world_stat_definitions.jsonl.gz", export_world_stat_definitions),
-    ("world_rules.jsonl.gz", export_world_rules),
-]
-
-# Import order respects FK dependencies
-_IMPORT_TABLE_MAP = [
-    ("users.jsonl.gz", import_users),
-    ("worlds.jsonl.gz", import_worlds),
-    ("world_locations.jsonl.gz", import_world_locations),
-    ("world_npcs.jsonl.gz", import_world_npcs),
-    ("world_lore_facts.jsonl.gz", import_world_lore_facts),
-    ("npc_location_links.jsonl.gz", import_npc_location_links),
-    ("world_stat_definitions.jsonl.gz", import_world_stat_definitions),
-    ("world_rules.jsonl.gz", import_world_rules),
+_TABLE_REGISTRY = [
+    ("users", User, _user_to_dict, _dict_to_user),
+    ("worlds", World, _world_to_dict, _dict_to_world),
+    ("world_locations", WorldLocation, _location_to_dict, _dict_to_location),
+    ("world_npcs", WorldNPC, _npc_to_dict, _dict_to_npc),
+    ("world_lore_facts", WorldLoreFact, _lore_fact_to_dict, _dict_to_lore_fact),
+    ("npc_location_links", NPCLocationLink, _npc_link_to_dict, _dict_to_npc_link),
+    ("world_stat_definitions", WorldStatDefinition, _stat_def_to_dict, _dict_to_stat_def),
+    ("world_rules", WorldRule, _rule_to_dict, _dict_to_rule),
 ]
 
 
-async def export_all(session: AsyncSession) -> bytes:
-    """Export all tables to a zip containing .jsonl.gz files."""
+# ---------------------------------------------------------------------------
+# Streaming export
+# ---------------------------------------------------------------------------
+
+
+async def export_all() -> bytes:
+    """Export all tables to a zip containing .jsonl.gz files.
+
+    Uses streaming callback — rows are serialized one at a time into the
+    gzip stream, never collected into a large in-memory list.
+    """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
-        for filename, export_fn in _EXPORT_TABLE_MAP:
-            data = await export_fn(session)
-            zf.writestr(filename, data)
+        for table_name, model_class, to_dict_fn, _ in _TABLE_REGISTRY:
+            gz_buf = io.BytesIO()
+            gz = gzip.open(gz_buf, "wt", encoding="utf-8")
+
+            def make_writer(gz_file: io.TextIOWrapper, serializer):  # noqa: E301
+                def write_row(row):
+                    gz_file.write(json.dumps(serializer(row)) + "\n")
+                return write_row
+
+            await export_table(model_class, make_writer(gz, to_dict_fn))
+            gz.close()
+            zf.writestr(f"{table_name}.jsonl.gz", gz_buf.getvalue())
+
     return buf.getvalue()
 
 
-async def import_all(session: AsyncSession, zip_data: bytes) -> None:
-    """Import all tables from a zip of .jsonl.gz files."""
-    buf = io.BytesIO(zip_data)
-    with zipfile.ZipFile(buf, "r") as zf:
+# ---------------------------------------------------------------------------
+# Streaming import
+# ---------------------------------------------------------------------------
+
+
+async def import_all(zip_data: bytes) -> None:
+    """Import all tables from a zip of .jsonl.gz files.
+
+    Streams JSONL line-by-line, sends batched upserts to the db layer.
+    Tables are created/reshaped via init_db() before upserting.
+    """
+    from app.db.engine import init_db
+
+    await init_db()
+
+    with zipfile.ZipFile(io.BytesIO(zip_data), "r") as zf:
         names = zf.namelist()
-        for filename, import_fn in _IMPORT_TABLE_MAP:
-            if filename in names:
-                await import_fn(session, zf.read(filename))
+        for table_name, _, _, from_dict_fn in _TABLE_REGISTRY:
+            filename = f"{table_name}.jsonl.gz"
+            if filename not in names:
+                continue
+
+            batch = []
+            with gzip.open(io.BytesIO(zf.read(filename)), "rt", encoding="utf-8") as gz:
+                for line in gz:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    batch.append(from_dict_fn(json.loads(line)))
+                    if len(batch) >= BATCH_SIZE:
+                        await upsert_batch(batch)
+                        batch.clear()
+            if batch:
+                await upsert_batch(batch)
