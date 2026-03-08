@@ -23,7 +23,7 @@ After models (step 2) and LLM management (step 3), this step builds the world ed
 - Route: `/admin/worlds/:id/edit`
 - Sections (documents are a separate page):
 
-**Main fields**: name, description, lore (text area), system prompt (text area), initial message (text area — template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}` placeholders), character template (text area with placeholder hints), status (draft/public/archived)
+**Main fields**: name, description, lore (text area), system prompt (text area), initial message (text area — template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}` placeholders), character template (text area with placeholder hints), status (draft/public/private/archived)
 
 **World stats**: CRUD for world-scoped stat definitions (name, description, type: int/enum/set, default value, constraints)
 

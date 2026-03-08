@@ -2,7 +2,7 @@
 
 import json
 
-from fastapi import APIRouter, Depends, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 
 from app.models.schemas.worlds import (
@@ -37,12 +37,27 @@ from app.models.world import (
     WorldNPC,
     WorldRule,
     WorldStatDefinition,
+    WorldStatus,
 )
 from app.services import world_editor as svc
 from app.services.auth import require_role
 
 _require_editor = require_role(UserRole.editor)
 _require_admin = require_role(UserRole.admin)
+
+
+def _is_admin(user: User) -> bool:
+    return user.role == UserRole.admin
+
+
+async def _check_world_access(world_id: int, caller: User) -> None:
+    """Raise 403 if the world is private and the caller is not the owner or admin."""
+    from app.db import worlds as worlds_db
+    world = await worlds_db.get_by_id(world_id)
+    if world is None:
+        return  # let the service layer handle 404
+    if world.status == WorldStatus.private and world.owner_id != caller.id and not _is_admin(caller):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
 router = APIRouter(prefix="/api/admin/worlds", tags=["admin-worlds"])
 
@@ -54,7 +69,8 @@ def _world_to_response(w: World) -> WorldResponse:
         id=str(w.id), name=w.name, description=w.description, lore=w.lore,
         system_prompt=w.system_prompt, character_template=w.character_template,
         initial_message=w.initial_message, pipeline=w.pipeline,
-        status=w.status.value, created_at=w.created_at, modified_at=w.modified_at,
+        status=w.status.value, owner_id=str(w.owner_id) if w.owner_id else None,
+        created_at=w.created_at, modified_at=w.modified_at,
     )
 
 
@@ -155,26 +171,28 @@ async def _enrich_doc_response(detail: svc.DocumentDetail) -> DocumentResponse:
 # ── Worlds ────────────────────────────────────────────────────────
 
 @router.get("", response_model=WorldsListResponse)
-async def list_worlds(_caller: User = Depends(_require_editor)):
-    worlds = await svc.list_worlds()
+async def list_worlds(caller: User = Depends(_require_editor)):
+    worlds = await svc.list_worlds(user_id=caller.id, is_admin=_is_admin(caller))
     return WorldsListResponse(items=[_world_to_response(w) for w in worlds])
 
 
 @router.post("", response_model=WorldResponse, status_code=status.HTTP_201_CREATED)
-async def create_world(req: CreateWorldRequest, _caller: User = Depends(_require_editor)):
-    world = await svc.create_world(req)
+async def create_world(req: CreateWorldRequest, caller: User = Depends(_require_editor)):
+    world = await svc.create_world(req, owner_id=caller.id)
     return _world_to_response(world)
 
 
 @router.get("/{world_id}", response_model=WorldDetailResponse)
-async def get_world(world_id: int, _caller: User = Depends(_require_editor)):
+async def get_world(world_id: int, caller: User = Depends(_require_editor)):
+    await _check_world_access(world_id, caller)
     detail = await svc.get_world_detail(world_id)
     w = detail["world"]
     resp = WorldDetailResponse(
         id=str(w.id), name=w.name, description=w.description, lore=w.lore,
         system_prompt=w.system_prompt, character_template=w.character_template,
         initial_message=w.initial_message, pipeline=w.pipeline,
-        status=w.status.value, created_at=w.created_at, modified_at=w.modified_at,
+        status=w.status.value, owner_id=str(w.owner_id) if w.owner_id else None,
+        created_at=w.created_at, modified_at=w.modified_at,
         stats=[_stat_to_response(s) for s in detail["stats"]],
         rules=[_rule_to_response(r) for r in detail["rules"]],
         location_count=detail["location_count"],
@@ -185,19 +203,21 @@ async def get_world(world_id: int, _caller: User = Depends(_require_editor)):
 
 
 @router.put("/{world_id}", response_model=WorldResponse)
-async def update_world(world_id: int, req: UpdateWorldRequest, _caller: User = Depends(_require_editor)):
+async def update_world(world_id: int, req: UpdateWorldRequest, caller: User = Depends(_require_editor)):
+    await _check_world_access(world_id, caller)
     world = await svc.update_world(world_id, req)
     return _world_to_response(world)
 
 
 @router.post("/{world_id}/clone", response_model=WorldResponse, status_code=status.HTTP_201_CREATED)
-async def clone_world(world_id: int, _caller: User = Depends(_require_editor)):
-    world = await svc.clone_world(world_id)
+async def clone_world(world_id: int, caller: User = Depends(_require_editor)):
+    await _check_world_access(world_id, caller)
+    world = await svc.clone_world(world_id, owner_id=caller.id)
     return _world_to_response(world)
 
 
 @router.delete("/{world_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_world(world_id: int, _caller: User = Depends(_require_admin)):
+async def delete_world(world_id: int, caller: User = Depends(_require_admin)):
     await svc.delete_world(world_id)
 
 

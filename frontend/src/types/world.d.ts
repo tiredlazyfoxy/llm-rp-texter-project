@@ -10,6 +10,7 @@ export interface WorldItem {
   initial_message: string;
   pipeline: string;
   status: string;
+  owner_id: string | null;
   created_at: string | null;
   modified_at: string | null;
 }

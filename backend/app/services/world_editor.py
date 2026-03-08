@@ -115,8 +115,11 @@ async def _index_document(world_id: int, doc_type: str, doc_id: int, text: str) 
 
 # ── Worlds CRUD ───────────────────────────────────────────────────
 
-async def list_worlds() -> list[World]:
-    return await worlds.list_all()
+async def list_worlds(user_id: int | None = None, is_admin: bool = False) -> list[World]:
+    """List worlds. Non-admin users get filtered view (no others' private worlds)."""
+    if is_admin or user_id is None:
+        return await worlds.list_all()
+    return await worlds.list_for_user(user_id)
 
 
 class WorldDetailData(TypedDict):
@@ -145,7 +148,7 @@ async def get_world_detail(world_id: int) -> WorldDetailData:
     )
 
 
-async def create_world(req: CreateWorldRequest) -> World:
+async def create_world(req: CreateWorldRequest, owner_id: int | None = None) -> World:
     if req.status:
         _validate_status(req.status)
     now = _now()
@@ -159,6 +162,7 @@ async def create_world(req: CreateWorldRequest) -> World:
         initial_message=req.initial_message,
         pipeline=req.pipeline,
         status=WorldStatus(req.status),
+        owner_id=owner_id,
         created_at=now,
         modified_at=now,
     )
@@ -189,13 +193,14 @@ async def update_world(world_id: int, req: UpdateWorldRequest) -> World:
     return world
 
 
-async def clone_world(world_id: int) -> World:
+async def clone_world(world_id: int, owner_id: int | None = None) -> World:
     """Deep-copy a world with all child records, remapping IDs."""
     detail = await get_world_detail(world_id)
     src = detail["world"]
 
-    # Clone world
+    # Clone world — preserve privacy: if source is private, clone is private too
     now = _now()
+    clone_status = WorldStatus.private if src.status == WorldStatus.private else WorldStatus.draft
     new_world = World(
         id=generate_id(),
         name=f"{src.name} (copy)",
@@ -205,7 +210,8 @@ async def clone_world(world_id: int) -> World:
         character_template=src.character_template,
         initial_message=src.initial_message,
         pipeline=src.pipeline,
-        status=WorldStatus.draft,
+        status=clone_status,
+        owner_id=owner_id,
         created_at=now,
         modified_at=now,
     )

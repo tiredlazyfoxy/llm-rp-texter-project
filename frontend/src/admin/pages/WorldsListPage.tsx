@@ -83,6 +83,7 @@ function CreateWorldModal({ opened, onClose, onSaved }: CreateWorldModalProps) {
           data={[
             { value: "draft", label: "Draft" },
             { value: "public", label: "Public" },
+            { value: "private", label: "Private" },
             { value: "archived", label: "Archived" },
           ]}
           value={worldStatus}
@@ -103,6 +104,7 @@ function CreateWorldModal({ opened, onClose, onSaved }: CreateWorldModalProps) {
 
 function statusColor(s: string): string {
   if (s === "public") return "green";
+  if (s === "private") return "yellow";
   if (s === "archived") return "gray";
   return "blue";
 }

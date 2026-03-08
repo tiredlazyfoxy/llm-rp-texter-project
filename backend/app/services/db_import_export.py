@@ -88,6 +88,7 @@ def _world_to_dict(w: World) -> dict:
         "initial_message": w.initial_message,
         "pipeline": w.pipeline,
         "status": w.status.value,
+        "owner_id": w.owner_id,
         "created_at": _serialize_datetime(w.created_at),
         "modified_at": _serialize_datetime(w.modified_at),
     }
@@ -104,6 +105,7 @@ def _dict_to_world(d: dict) -> World:
         initial_message=d.get("initial_message", ""),
         pipeline=d.get("pipeline", "{}"),
         status=WorldStatus(d["status"]),
+        owner_id=d.get("owner_id"),
         created_at=_parse_datetime(d.get("created_at")),
         modified_at=_parse_datetime(d.get("modified_at")),
     )

@@ -383,6 +383,7 @@ export function WorldEditPage() {
               data={[
                 { value: "draft", label: "Draft" },
                 { value: "public", label: "Public" },
+                { value: "private", label: "Private" },
                 { value: "archived", label: "Archived" },
               ]}
               value={worldStatus}

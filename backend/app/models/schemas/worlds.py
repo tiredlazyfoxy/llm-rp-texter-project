@@ -15,6 +15,7 @@ class WorldResponse(BaseModel):
     initial_message: str
     pipeline: str
     status: str
+    owner_id: str | None
     created_at: datetime | None
     modified_at: datetime | None
 

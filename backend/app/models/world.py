@@ -7,6 +7,7 @@ from sqlmodel import Field, SQLModel
 class WorldStatus(str, enum.Enum):
     draft = "draft"
     public = "public"
+    private = "private"
     archived = "archived"
 
 
@@ -38,6 +39,7 @@ class World(SQLModel, table=True):
     initial_message: str = Field(default="")
     pipeline: str = Field(default="{}")
     status: WorldStatus = Field(default=WorldStatus.draft)
+    owner_id: int | None = Field(default=None, index=True)
     created_at: datetime | None = Field(default=None)
     modified_at: datetime | None = Field(default=None)
 
