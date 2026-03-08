@@ -5,8 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.auth import router as auth_router
-from app.db.engine import init_engine
-from app.services.vector_storage import init_vector_store
+from app.db import engine as db_engine
+from app.services import vector_storage
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_engine()
-    await init_vector_store()
+    await db_engine.init_engine()
+    await vector_storage.init_vector_store()
     yield
 
 

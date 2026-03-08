@@ -1,25 +1,25 @@
 import logging
 from datetime import datetime, timezone
 
-from app.db.engine import init_db, set_db_ready
+from app.db import engine as db_engine
 from app.models.user import User, UserRole
-from app.services.snowflake import generate_id
+from app.services import snowflake
 
 logger = logging.getLogger(__name__)
 
 
 async def create_database(admin_username: str, password: str) -> User:
     """Create DB tables and initial admin user. Returns the admin User."""
-    await init_db()
+    await db_engine.init_db()
 
-    from app.db.user_queries import create_user
-    from app.services.auth import create_user_credentials
+    from app.db import users
+    from app.services import auth as auth_service
 
-    salt, pwdhash, signing_key = create_user_credentials(password)
+    salt, pwdhash, signing_key = auth_service.create_user_credentials(password)
     now = datetime.now(timezone.utc)
 
     admin = User(
-        id=generate_id(),
+        id=snowflake.generate_id(),
         username=admin_username,
         pwdhash=pwdhash,
         salt=salt,
@@ -28,20 +28,20 @@ async def create_database(admin_username: str, password: str) -> User:
         last_login=now,
         last_key_update=now,
     )
-    admin = await create_user(admin)
+    admin = await users.create(admin)
 
-    set_db_ready(True)
+    db_engine.set_db_ready(True)
     logger.info("Database created with admin user '%s'", admin_username)
     return admin
 
 
 async def import_database(zip_data: bytes) -> None:
     """Import data from zip. Tables are created by import_all via init_db()."""
-    from app.db.import_export_queries import run_vector_rebuild
-    from app.services.db_import_export import import_all
+    from app.db import import_export_queries
+    from app.services import db_import_export
 
-    await import_all(zip_data)
-    await run_vector_rebuild()
+    await db_import_export.import_all(zip_data)
+    await import_export_queries.run_vector_rebuild()
 
-    set_db_ready(True)
+    db_engine.set_db_ready(True)
     logger.info("Database imported from zip")

@@ -147,12 +147,15 @@ Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel`
 - **Prompts**: All in `backend/app/services/prompts/` — one documented file per prompt, re-exported via `__init__.py`
 - **LLM client**: PythonLLMClient, `pydantic_to_openai_tool()` for tool schemas
 - **Auth**: Per-user HS256 JWT signing key (no global secret), key rotation on login (30-day interval)
-- **Password**: App-level salt + bcrypt via passlib
+- **Password**: App-level salt + bcrypt (direct `bcrypt` library, not passlib)
 - **API key security**: `$ENV_VAR` syntax in `llm_servers.api_key`, never expose raw key in responses
-- **Import/export**: ZIP of `.jsonl.gz` files, one per table. Must be updated with every model change.
+- **Import/export**: ZIP of `.jsonl.gz` files, one per table. Streaming callback export, batched upsert import. Must be updated with every model change.
+- **DB layer**: Session-free, namespace modules — `from app.db import users, worlds` then `await users.get_by_id(id)`
+- **Services layer**: Namespace imports — `from app.services import auth as auth_service`
 
 ## Implementation Progress
 
-- Boilerplate set up (FastAPI app, Vite multi-page, Docker configs)
-- No features implemented yet
-- Next: Stage 1 Step 1 (Login, User Model, DB Bootstrap)
+- Stage 1 Step 1: Login, User Model, DB Bootstrap — done
+- Stage 1 Step 2: World models, vector storage, import/export — done
+- DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export)
+- Next: Stage 1 Step 3 (LLM Servers CRUD)

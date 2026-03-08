@@ -57,7 +57,8 @@ The `db/` layer is a **fully abstracted data access interface**. No sessions, co
 - **Session-free public API**: All `db/` functions manage sessions internally. Callers never see `AsyncSession`, `select()`, or `session.exec()`.
 - **Injectable config**: `init_engine(config=DbConfig(...))` accepts DB path, connection params. Tests inject a temporary DB path; production uses defaults.
 - **Swappable backend**: The entire `db/` layer could be replaced with Mongo, Redis, or file-based storage without changing services or routes.
-- **Business-level signatures**: Functions accept/return model objects or plain types — e.g., `get_user_by_id(user_id: int) -> User | None`.
+- **Namespace modules**: One file per entity (`users.py`, `worlds.py`, `locations.py`, etc.) with short function names (`get_by_id`, `create`, `update`, `delete`, `list_by_world`). Import as `from app.db import users, worlds`. Services follow the same pattern: `from app.services import auth as auth_service`.
+- **Business-level signatures**: Functions accept/return model objects or plain types — e.g., `users.get_by_id(user_id: int) -> User | None`.
 
 ### Import/Export Pattern
 

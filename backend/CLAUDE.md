@@ -15,8 +15,14 @@ backend/
       auth.py, chat.py, llm_servers.py, admin/...
     db/                  — Data access layer (DB-agnostic interface)
       engine.py          — Async engine, injectable config, DDL, state flags
-      user_queries.py    — User CRUD (session-free public API)
-      world_queries.py   — World + sub-entity CRUD (session-free public API)
+      users.py           — User CRUD (session-free, import as `from app.db import users`)
+      worlds.py          — World CRUD
+      locations.py       — WorldLocation CRUD
+      npcs.py            — WorldNPC CRUD
+      lore_facts.py      — WorldLoreFact CRUD
+      npc_links.py       — NPCLocationLink CRUD
+      stat_defs.py       — WorldStatDefinition CRUD
+      rules.py           — WorldRule CRUD
       import_export_queries.py — export_table(), upsert_batch(), vector rebuild
     services/            — Business logic (no direct DB queries, no session creation)
       snowflake.py       — Snowflake ID generator (int64)

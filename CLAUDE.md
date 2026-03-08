@@ -75,10 +75,11 @@ See `architecture/` for full documentation.
 ## Backend Layer Separation
 
 - **`routes/`** — HTTP only (parse request, call service, return response)
-- **`services/`** — Business logic (no direct DB queries)
-- **`db/`** — All DB queries (every function takes `session` as first param)
-- Services and routes never call `session.exec()` directly — always go through `db/` layer
-- Use `session.exec()` (not deprecated `session.execute()`)
+- **`services/`** — Business logic (no direct DB queries, no session creation)
+- **`db/`** — DB-agnostic data access (session-free public API — all sessions managed internally)
+- **No `session`, `AsyncSession`, or connection objects outside `db/`**
+- **Import style**: namespace modules — `from app.db import users, worlds` then `await users.get_by_id(id)`
+- Services import as: `from app.services import auth as auth_service` then `auth_service.create_token(user)`
 
 ## Workflow: COLLECT Mode
 

@@ -6,7 +6,7 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.db.user_queries import get_user_by_id
+from app.db import users
 from app.models.user import User, UserRole
 
 _bearer_scheme = HTTPBearer()
@@ -79,7 +79,7 @@ async def get_current_user(
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    user = await get_user_by_id(user_id)
+    user = await users.get_by_id(user_id)
 
     if user is None or user.jwt_signing_key is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")

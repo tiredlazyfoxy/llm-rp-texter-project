@@ -6,19 +6,19 @@ from app.db.engine import get_standalone_session
 from app.models.user import User
 
 
-async def get_user_by_id(user_id: int) -> User | None:
+async def get_by_id(user_id: int) -> User | None:
     session = await get_standalone_session()
     async with session:
         return (await session.exec(select(User).where(User.id == user_id))).one_or_none()
 
 
-async def get_user_by_username(username: str) -> User | None:
+async def get_by_username(username: str) -> User | None:
     session = await get_standalone_session()
     async with session:
         return (await session.exec(select(User).where(User.username == username))).one_or_none()
 
 
-async def create_user(user: User) -> User:
+async def create(user: User) -> User:
     session = await get_standalone_session()
     async with session:
         session.add(user)
@@ -27,7 +27,7 @@ async def create_user(user: User) -> User:
         return user
 
 
-async def update_user(user: User) -> None:
+async def update(user: User) -> None:
     session = await get_standalone_session()
     async with session:
         session.add(user)
