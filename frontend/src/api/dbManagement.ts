@@ -1,6 +1,6 @@
 import { getToken } from "../auth";
 import { authRequest } from "./request";
-import type { DbStatusResponse, TableStatus } from "../types/dbManagement";
+import type { DbStatusResponse, SyncResult, TableStatus } from "../types/dbManagement";
 
 const BASE = "/api/admin/db";
 
@@ -11,6 +11,12 @@ export async function getDbStatus(): Promise<TableStatus[]> {
 
 export async function createTable(tableName: string): Promise<void> {
   await authRequest<void>(`${BASE}/tables/${tableName}/create`, {
+    method: "POST",
+  });
+}
+
+export async function syncTable(tableName: string): Promise<SyncResult> {
+  return authRequest<SyncResult>(`${BASE}/tables/${tableName}/sync`, {
     method: "POST",
   });
 }

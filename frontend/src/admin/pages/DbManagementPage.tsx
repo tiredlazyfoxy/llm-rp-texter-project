@@ -15,10 +15,11 @@ import {
 import {
   IconDownload,
   IconPlus,
+  IconRefresh,
   IconUpload,
 } from "@tabler/icons-react";
 import type { TableStatus } from "../../types/dbManagement";
-import { createTable, exportDb, getDbStatus, importDb } from "../../api/dbManagement";
+import { createTable, exportDb, getDbStatus, importDb, syncTable } from "../../api/dbManagement";
 
 // ---------------------------------------------------------------------------
 // Schema detail modal
@@ -28,13 +29,16 @@ interface SchemaDetailModalProps {
   opened: boolean;
   table: TableStatus | null;
   onClose: () => void;
+  onSync: (tableName: string) => void;
+  syncLoading: boolean;
 }
 
-function SchemaDetailModal({ opened, table, onClose }: SchemaDetailModalProps) {
+function SchemaDetailModal({ opened, table, onClose, onSync, syncLoading }: SchemaDetailModalProps) {
   if (!table) return null;
 
   const missingSet = new Set(table.missing_columns);
   const extraSet = new Set(table.extra_columns);
+  const hasDrift = table.missing_columns.length > 0 || table.extra_columns.length > 0;
 
   return (
     <Modal opened={opened} onClose={onClose} title={`Schema: ${table.class_name}`} size="lg">
@@ -108,6 +112,17 @@ function SchemaDetailModal({ opened, table, onClose }: SchemaDetailModalProps) {
           <Text size="xs" c="dimmed">
             Extra in table: {table.extra_columns.join(", ")}
           </Text>
+        )}
+
+        {hasDrift && (
+          <Button
+            variant="light"
+            leftSection={<IconRefresh size={14} />}
+            loading={syncLoading}
+            onClick={() => onSync(table.table_name)}
+          >
+            Sync Schema
+          </Button>
         )}
       </Stack>
     </Modal>
@@ -197,6 +212,20 @@ export function DbManagementPage() {
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create table");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSync = async (tableName: string) => {
+    setActionLoading(`sync:${tableName}`);
+    setError(null);
+    try {
+      await syncTable(tableName);
+      setDetailTarget(null);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sync failed");
     } finally {
       setActionLoading(null);
     }
@@ -311,6 +340,8 @@ export function DbManagementPage() {
         opened={detailTarget !== null}
         table={detailTarget}
         onClose={() => setDetailTarget(null)}
+        onSync={handleSync}
+        syncLoading={detailTarget !== null && actionLoading === `sync:${detailTarget.table_name}`}
       />
     </Container>
   );

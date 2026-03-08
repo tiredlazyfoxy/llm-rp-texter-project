@@ -6,6 +6,7 @@ from fastapi.responses import Response
 from app.models.schemas.db_management import (
     ColumnInfoSchema,
     DbStatusResponse,
+    SyncResultSchema,
     TableStatusSchema,
 )
 from app.models.user import User, UserRole
@@ -56,6 +57,24 @@ async def create_table(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown table: {table_name}",
         )
+
+
+@router.post("/tables/{table_name}/sync", response_model=SyncResultSchema)
+async def sync_table(
+    table_name: str,
+    _caller: User = Depends(_require_admin),
+) -> SyncResultSchema:
+    try:
+        result = await db_mgmt_service.sync_table_schema(table_name)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown table: {table_name}",
+        )
+    return SyncResultSchema(
+        added_columns=result["added_columns"],
+        dropped_columns=result["dropped_columns"],
+    )
 
 
 @router.get("/export")

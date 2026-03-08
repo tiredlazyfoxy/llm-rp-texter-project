@@ -61,3 +61,31 @@ async def create_single_table(table_obj: Table) -> None:
 
     async with _engine.begin() as conn:
         await conn.run_sync(table_obj.create, checkfirst=True)
+
+
+async def add_column(table_name: str, col_name: str, col_ddl: str) -> None:
+    """Add a column to an existing table via ALTER TABLE ADD COLUMN."""
+    from app.db.engine import _engine
+
+    if _engine is None:
+        raise RuntimeError("Database engine not initialized")
+
+    async with _engine.begin() as conn:
+        await conn.execute(
+            text(f"ALTER TABLE [{table_name}] ADD COLUMN [{col_name}] {col_ddl}")
+        )
+    logger.info("Added column %s to table %s", col_name, table_name)
+
+
+async def drop_column(table_name: str, col_name: str) -> None:
+    """Drop a column from an existing table via ALTER TABLE DROP COLUMN."""
+    from app.db.engine import _engine
+
+    if _engine is None:
+        raise RuntimeError("Database engine not initialized")
+
+    async with _engine.begin() as conn:
+        await conn.execute(
+            text(f"ALTER TABLE [{table_name}] DROP COLUMN [{col_name}]")
+        )
+    logger.info("Dropped column %s from table %s", col_name, table_name)

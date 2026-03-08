@@ -18,3 +18,8 @@ export interface TableStatus {
 export interface DbStatusResponse {
   tables: TableStatus[];
 }
+
+export interface SyncResult {
+  added_columns: string[];
+  dropped_columns: string[];
+}

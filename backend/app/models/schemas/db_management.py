@@ -22,3 +22,8 @@ class TableStatusSchema(BaseModel):
 
 class DbStatusResponse(BaseModel):
     tables: list[TableStatusSchema]
+
+
+class SyncResultSchema(BaseModel):
+    added_columns: list[str]
+    dropped_columns: list[str]
