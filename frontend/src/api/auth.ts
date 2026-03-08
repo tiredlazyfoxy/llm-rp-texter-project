@@ -1,4 +1,4 @@
-import { getToken } from "../auth";
+import { authRequest } from "./request";
 import type {
   AuthStatusResponse,
   ChangePasswordRequest,
@@ -11,7 +11,7 @@ const BASE = "/api/auth";
 
 async function request<T>(
   path: string,
-  options?: RequestInit
+  options?: RequestInit,
 ): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
@@ -22,14 +22,6 @@ async function request<T>(
     throw new Error(body.detail || res.statusText);
   }
   return res.json() as Promise<T>;
-}
-
-function authHeaders(): HeadersInit {
-  const token = getToken();
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
 }
 
 export async function getAuthStatus(): Promise<AuthStatusResponse> {
@@ -44,7 +36,7 @@ export async function login(data: LoginRequest): Promise<LoginResponse> {
 }
 
 export async function setupCreate(
-  data: CreateDBRequest
+  data: CreateDBRequest,
 ): Promise<LoginResponse> {
   return request<LoginResponse>("/setup/create", {
     method: "POST",
@@ -68,11 +60,10 @@ export async function setupImport(file: File): Promise<AuthStatusResponse> {
 }
 
 export async function changePassword(
-  data: ChangePasswordRequest
+  data: ChangePasswordRequest,
 ): Promise<LoginResponse> {
-  return request<LoginResponse>("/change-password", {
+  return authRequest<LoginResponse>(`${BASE}/change-password`, {
     method: "POST",
-    headers: authHeaders(),
     body: JSON.stringify(data),
   });
 }

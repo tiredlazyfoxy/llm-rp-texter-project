@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { AppHeader } from "./AppHeader";
-import { AppSidebar } from "./AppSidebar";
+import { AppSidebar, type NavItem } from "./AppSidebar";
 
 interface AppLayoutProps {
   children: React.ReactNode;
+  navItems: NavItem[];
 }
 
-export function AppLayout({ children }: AppLayoutProps) {
+export function AppLayout({ children, navItems }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
@@ -14,6 +15,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <AppSidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((c) => !c)}
+        navItems={navItems}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <AppHeader />

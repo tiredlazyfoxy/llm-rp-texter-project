@@ -1,28 +1,22 @@
 import { Group, Image, Stack, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import {
   IconLayoutSidebarLeftCollapse,
-  IconMessages,
-  IconWorld,
   type Icon,
 } from "@tabler/icons-react";
 
-interface NavItem {
+export interface NavItem {
   icon: Icon;
   label: string;
   href: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { icon: IconMessages, label: "Chats", href: "/" },
-  { icon: IconWorld, label: "Worlds", href: "/worlds" },
-];
-
 interface AppSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  navItems: NavItem[];
 }
 
-export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
+export function AppSidebar({ collapsed, onToggle, navItems }: AppSidebarProps) {
   const width = collapsed ? 48 : 220;
 
   return (
@@ -62,7 +56,7 @@ export function AppSidebar({ collapsed, onToggle }: AppSidebarProps) {
 
       {/* Nav items */}
       <Stack gap={2} px={4} py="xs" style={{ flex: 1 }}>
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <SidebarLink key={item.href} item={item} collapsed={collapsed} />
         ))}
       </Stack>

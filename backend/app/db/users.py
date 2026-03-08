@@ -27,6 +27,12 @@ async def create(user: User) -> User:
         return user
 
 
+async def get_all() -> list[User]:
+    session = await get_standalone_session()
+    async with session:
+        return list((await session.exec(select(User).order_by(User.username))).all())
+
+
 async def update(user: User) -> None:
     session = await get_standalone_session()
     async with session:

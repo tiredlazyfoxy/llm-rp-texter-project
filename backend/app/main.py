@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routes.admin.users import router as admin_users_router
 from app.routes.auth import router as auth_router
 from app.db import engine as db_engine
 from app.db.engine import DbConfig
@@ -53,6 +54,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(admin_users_router)
 
 
 @app.get("/api/health")
