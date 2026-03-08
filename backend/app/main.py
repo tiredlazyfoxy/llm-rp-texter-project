@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routes.admin.db_management import router as db_management_router
 from app.routes.admin.users import router as admin_users_router
 from app.routes.auth import router as auth_router
 from app.routes.llm_models import router as llm_models_router
@@ -57,6 +58,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(admin_users_router)
+app.include_router(db_management_router)
 app.include_router(llm_servers_router)
 app.include_router(llm_models_router)
 

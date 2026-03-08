@@ -309,7 +309,7 @@ def _dict_to_llm_server(d: dict) -> LlmServer:
 # Import order respects FK dependencies.
 # ---------------------------------------------------------------------------
 
-_TABLE_REGISTRY = [
+TABLE_REGISTRY = [
     ("users", User, _user_to_dict, _dict_to_user),
     ("llm_servers", LlmServer, _llm_server_to_dict, _dict_to_llm_server),
     ("worlds", World, _world_to_dict, _dict_to_world),
@@ -335,7 +335,7 @@ async def export_all() -> bytes:
     """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
-        for table_name, model_class, to_dict_fn, _ in _TABLE_REGISTRY:
+        for table_name, model_class, to_dict_fn, _ in TABLE_REGISTRY:
             gz_buf = io.BytesIO()
             gz = gzip.open(gz_buf, "wt", encoding="utf-8")
 
@@ -368,7 +368,7 @@ async def import_all(zip_data: bytes) -> None:
 
     with zipfile.ZipFile(io.BytesIO(zip_data), "r") as zf:
         names = zf.namelist()
-        for table_name, _, _, from_dict_fn in _TABLE_REGISTRY:
+        for table_name, _, _, from_dict_fn in TABLE_REGISTRY:
             filename = f"{table_name}.jsonl.gz"
             if filename not in names:
                 continue
