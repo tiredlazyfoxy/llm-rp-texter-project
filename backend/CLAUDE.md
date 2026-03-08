@@ -86,7 +86,7 @@ backend/
 | `npc_location_links` | stage1_step2 | npc_id, location_id, link_type (present/excluded) |
 | `world_stat_definitions` | stage1_step2 | world_id, name, scope, stat_type, constraints |
 | `world_rules` | stage1_step2 | world_id, rule_text, order |
-| `llm_servers` | stage1_step3 | name, backend_type, base_url, enabled_models |
+| `llm_servers` | stage1_step3 | name, backend_type, base_url, enabled_models, is_embedding, embedding_model |
 | `chat_sessions` | stage2_step1 | user_id, world_id, character_stats, world_stats, current_turn |
 | `chat_messages` | stage2_step1 | session_id, role, content, turn_number, tool_calls, is_active_variant |
 | `chat_state_snapshots` | stage2_step1 | session_id, turn_number, character_stats, world_stats |

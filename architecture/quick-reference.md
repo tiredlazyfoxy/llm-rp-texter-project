@@ -32,7 +32,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **world_rules**: id, world_id, rule_text (natural language), order
 
-**llm_servers**: id, name, backend_type (llama-swap/openai), base_url, api_key (supports `$ENV_VAR`), enabled_models (JSON array), is_active, created_at, modified_at
+**llm_servers**: id, name, backend_type (llama-swap/openai), base_url, api_key (supports `$ENV_VAR`), enabled_models (JSON array), is_active, is_embedding (bool, at most one server), embedding_model (model ID or null), created_at, modified_at
 
 ### Stage 2 — Chat System
 
@@ -69,6 +69,9 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 | DELETE | `/api/admin/llm-servers/:id` | Delete server | admin |
 | GET | `/api/admin/llm-servers/:id/available-models` | Probe server | admin |
 | PUT | `/api/admin/llm-servers/:id/enabled-models` | Set enabled models | admin |
+| GET | `/api/admin/llm-servers/embedding` | Get embedding config | admin |
+| PUT | `/api/admin/llm-servers/:id/embedding` | Set as embedding server | admin |
+| DELETE | `/api/admin/llm-servers/embedding` | Clear embedding designation | admin |
 | GET | `/api/llm/models` | List all enabled models | editor |
 
 ### Admin — DB Management (`/api/admin/db`) — stage1_step6
@@ -166,6 +169,6 @@ Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel`
 
 - Stage 1 Step 1: Login, User Model, DB Bootstrap — done
 - Stage 1 Step 2: World models, vector storage, import/export — done
-- Stage 1 Step 3: LLM Servers CRUD — done
+- Stage 1 Step 3: LLM Servers CRUD + embedding server designation — done
+- Stage 1 Step 6: DB Management admin page — done
 - DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export)
-- Next: Stage 1 Step 6 (DB Management admin page)
