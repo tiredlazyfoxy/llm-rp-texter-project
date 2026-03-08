@@ -6,7 +6,6 @@ import {
   Container,
   Group,
   Loader,
-  Menu,
   Modal,
   Select,
   Stack,
@@ -16,16 +15,9 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
-import {
-  IconCopy,
-  IconDots,
-  IconEye,
-  IconPlus,
-  IconTrash,
-} from "@tabler/icons-react";
-import { getCurrentUser } from "../../auth";
+import { IconPlus } from "@tabler/icons-react";
 import type { WorldItem } from "../../types/world";
-import { cloneWorld, createWorld, deleteWorld, listWorlds } from "../../api/worlds";
+import { createWorld, listWorlds } from "../../api/worlds";
 
 // ---------------------------------------------------------------------------
 // Create world modal
@@ -123,9 +115,6 @@ export function WorldsListPage() {
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
-  const currentUser = getCurrentUser();
-  const isAdmin = currentUser?.role === "admin";
-
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -141,25 +130,6 @@ export function WorldsListPage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
-
-  const handleClone = async (world: WorldItem) => {
-    try {
-      await cloneWorld(world.id);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to clone world");
-    }
-  };
-
-  const handleDelete = async (world: WorldItem) => {
-    if (!window.confirm(`Delete world "${world.name}"? This will remove all documents, stats, rules, and vector data.`)) return;
-    try {
-      await deleteWorld(world.id);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete world");
-    }
-  };
 
   return (
     <Container size="lg" py="md">
@@ -183,12 +153,15 @@ export function WorldsListPage() {
               <Table.Th>Name</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th>Modified</Table.Th>
-              <Table.Th w={60} />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {worlds.map(world => (
-              <Table.Tr key={world.id}>
+              <Table.Tr
+                key={world.id}
+                style={{ cursor: "pointer" }}
+                onClick={() => { window.location.href = `/admin/worlds/${world.id}`; }}
+              >
                 <Table.Td>
                   <Text fw={500}>{world.name}</Text>
                   {world.description && (
@@ -197,36 +170,6 @@ export function WorldsListPage() {
                 </Table.Td>
                 <Table.Td><Badge color={statusColor(world.status)}>{world.status}</Badge></Table.Td>
                 <Table.Td><Text size="sm" c="dimmed">{formatDate(world.modified_at)}</Text></Table.Td>
-                <Table.Td>
-                  <Menu position="bottom-end" withArrow>
-                    <Menu.Target>
-                      <Button variant="subtle" size="compact-sm" px={4}><IconDots size={16} /></Button>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <Menu.Item
-                        leftSection={<IconEye size={14} />}
-                        onClick={() => { window.location.href = `/admin/worlds/${world.id}`; }}
-                      >
-                        View
-                      </Menu.Item>
-                      <Menu.Item
-                        leftSection={<IconCopy size={14} />}
-                        onClick={() => handleClone(world)}
-                      >
-                        Clone
-                      </Menu.Item>
-                      {isAdmin && (
-                        <Menu.Item
-                          color="red"
-                          leftSection={<IconTrash size={14} />}
-                          onClick={() => handleDelete(world)}
-                        >
-                          Delete
-                        </Menu.Item>
-                      )}
-                    </Menu.Dropdown>
-                  </Menu>
-                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>

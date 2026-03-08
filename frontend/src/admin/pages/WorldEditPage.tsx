@@ -4,6 +4,7 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
   Container,
   Group,
   Loader,
@@ -23,16 +24,20 @@ import {
   IconArrowLeft,
   IconArrowDown,
   IconArrowUp,
+  IconCopy,
   IconEdit,
   IconPlus,
   IconTrash,
 } from "@tabler/icons-react";
+import { getCurrentUser } from "../../auth";
 import type { RuleItem, StatDefinitionItem, WorldDetail } from "../../types/world";
 import {
+  cloneWorld,
   createRule,
   createStat,
   deleteRule,
   deleteStat,
+  deleteWorld,
   getWorld,
   reorderRules,
   updateRule,
@@ -348,6 +353,37 @@ export function WorldEditPage() {
     }
   };
 
+  const currentUser = getCurrentUser();
+  const isAdmin = currentUser?.role === "admin";
+
+  const handleClone = async () => {
+    if (!worldId) return;
+    try {
+      const cloned = await cloneWorld(worldId);
+      window.location.href = `/admin/worlds/${cloned.id}`;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to clone world");
+    }
+  };
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteWorld = async () => {
+    if (!worldId) return;
+    setDeleting(true);
+    try {
+      await deleteWorld(worldId);
+      window.location.href = "/admin/worlds";
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete world");
+      setDeleteModalOpen(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (!worldId) return <Container py="md"><Alert color="red">Invalid world ID</Alert></Container>;
 
   if (loading) return <Container py="md"><Group justify="center" py="xl"><Loader /></Group></Container>;
@@ -362,6 +398,10 @@ export function WorldEditPage() {
           <Title order={3}>{world?.name || "Edit World"}</Title>
         </Group>
         <Group>
+          <Button variant="default" leftSection={<IconCopy size={16} />} onClick={handleClone}>Clone</Button>
+          {isAdmin && (
+            <Button variant="light" color="red" leftSection={<IconTrash size={16} />} onClick={() => { setDeleteConfirmed(false); setDeleteModalOpen(true); }}>Delete</Button>
+          )}
           <Button onClick={handleSave} loading={saving}>Save</Button>
         </Group>
       </Group>
@@ -500,6 +540,20 @@ export function WorldEditPage() {
             onClose={() => setRuleModalOpen(false)}
             onSaved={refreshStatsRules}
           />
+          <Modal opened={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Delete World">
+            <Stack>
+              <Text>This will permanently remove <Text span fw={700}>{world?.name}</Text> and all its documents, stats, rules, and vector data.</Text>
+              <Checkbox
+                label="I understand this action cannot be undone"
+                checked={deleteConfirmed}
+                onChange={e => setDeleteConfirmed(e.currentTarget.checked)}
+              />
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
+                <Button color="red" disabled={!deleteConfirmed} loading={deleting} onClick={handleDeleteWorld}>Delete World</Button>
+              </Group>
+            </Stack>
+          </Modal>
         </>
       )}
     </Container>
