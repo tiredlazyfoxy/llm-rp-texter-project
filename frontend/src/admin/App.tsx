@@ -7,8 +7,12 @@ import { theme } from "../theme";
 import { AppLayout } from "../components/AppLayout";
 import type { NavItem } from "../components/AppSidebar";
 import { DbManagementPage } from "./pages/DbManagementPage";
+import { DocumentEditPage } from "./pages/DocumentEditPage";
+import { DocumentsListPage } from "./pages/DocumentsListPage";
 import { LlmServersPage } from "./pages/LlmServersPage";
 import { UsersPage } from "./pages/UsersPage";
+import { WorldEditPage } from "./pages/WorldEditPage";
+import { WorldsListPage } from "./pages/WorldsListPage";
 
 const NAV_ITEMS: NavItem[] = [
   { icon: IconUsers, label: "Users", href: "/admin/" },
@@ -26,7 +30,10 @@ function AdminContent() {
     return <DbManagementPage />;
   }
   if (path.startsWith("/admin/worlds")) {
-    return <div style={{ padding: 16, color: "var(--mantine-color-dimmed)" }}>Worlds — coming soon</div>;
+    if (/\/admin\/worlds\/\d+\/documents\/\d+\/edit/.test(path)) return <DocumentEditPage />;
+    if (/\/admin\/worlds\/\d+\/documents/.test(path)) return <DocumentsListPage />;
+    if (/\/admin\/worlds\/\d+\/edit/.test(path)) return <WorldEditPage />;
+    return <WorldsListPage />;
   }
   return <UsersPage />;
 }

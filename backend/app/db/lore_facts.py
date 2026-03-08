@@ -34,6 +34,16 @@ async def update(fact: WorldLoreFact) -> None:
         await session.commit()
 
 
+async def delete_by_world(world_id: int) -> int:
+    session = await get_standalone_session()
+    async with session:
+        rows = (await session.exec(select(WorldLoreFact).where(WorldLoreFact.world_id == world_id))).all()
+        for row in rows:
+            await session.delete(row)
+        await session.commit()
+        return len(rows)
+
+
 async def delete(fact_id: int) -> bool:
     session = await get_standalone_session()
     async with session:

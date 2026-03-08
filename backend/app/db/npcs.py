@@ -34,6 +34,16 @@ async def update(npc: WorldNPC) -> None:
         await session.commit()
 
 
+async def delete_by_world(world_id: int) -> int:
+    session = await get_standalone_session()
+    async with session:
+        rows = (await session.exec(select(WorldNPC).where(WorldNPC.world_id == world_id))).all()
+        for row in rows:
+            await session.delete(row)
+        await session.commit()
+        return len(rows)
+
+
 async def delete(npc_id: int) -> bool:
     session = await get_standalone_session()
     async with session:
