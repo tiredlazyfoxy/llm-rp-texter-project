@@ -45,9 +45,36 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
+const TAB_SLUG_TO_VALUE: Record<string, string> = {
+  "all-docs": "all",
+  locations: "location",
+  npcs: "npc",
+  lore: "lore_fact",
+  chats: "chats",
+};
+
+const TAB_VALUE_TO_SLUG: Record<string, string> = {
+  all: "all-docs",
+  location: "locations",
+  npc: "npcs",
+  lore_fact: "lore",
+  chats: "chats",
+};
+
 function extractWorldId(): string | null {
   const m = window.location.pathname.match(/\/admin\/worlds\/(\d+)(?:\/|$)/);
   return m ? m[1] : null;
+}
+
+function extractTab(): string {
+  const m = window.location.pathname.match(/\/admin\/worlds\/\d+\/([a-z-]+)$/);
+  if (!m) return "info";
+  return TAB_SLUG_TO_VALUE[m[1]] || "info";
+}
+
+function tabUrl(worldId: string, tab: string): string {
+  const slug = TAB_VALUE_TO_SLUG[tab];
+  return slug ? `/admin/worlds/${worldId}/${slug}` : `/admin/worlds/${worldId}`;
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -385,42 +412,49 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {docs.map(doc => (
-              <Table.Tr key={doc.id}>
-                <Table.Td>
-                  <Text size="sm" fw={500} lineClamp={1}>{docDisplayName(doc)}</Text>
-                </Table.Td>
-                {!docTypeFilter && (
+            {docs.map(doc => {
+              const editHref = `/admin/worlds/${worldId}/documents/${doc.id}/edit`;
+              return (
+                <Table.Tr
+                  key={doc.id}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => { window.location.href = editHref; }}
+                >
                   <Table.Td>
-                    <Badge size="sm" color={docTypeBadgeColor(doc.doc_type)}>
-                      {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
-                    </Badge>
+                    <Text size="sm" fw={500} lineClamp={1}>{docDisplayName(doc)}</Text>
                   </Table.Td>
-                )}
-                <Table.Td><Text size="sm" c="dimmed">{formatDate(doc.modified_at)}</Text></Table.Td>
-                <Table.Td>
-                  <Menu position="bottom-end" withArrow>
-                    <Menu.Target>
-                      <Button variant="subtle" size="compact-sm" px={4}><IconDots size={16} /></Button>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <Menu.Item
-                        leftSection={<IconEdit size={14} />}
-                        onClick={() => { window.location.href = `/admin/worlds/${worldId}/documents/${doc.id}/edit`; }}
-                      >
-                        Edit
-                      </Menu.Item>
-                      <Menu.Item leftSection={<IconDownload size={14} />} onClick={() => handleDownload(doc)}>
-                        Download
-                      </Menu.Item>
-                      <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={() => handleDelete(doc)}>
-                        Delete
-                      </Menu.Item>
-                    </Menu.Dropdown>
-                  </Menu>
-                </Table.Td>
-              </Table.Tr>
-            ))}
+                  {!docTypeFilter && (
+                    <Table.Td>
+                      <Badge size="sm" color={docTypeBadgeColor(doc.doc_type)}>
+                        {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
+                      </Badge>
+                    </Table.Td>
+                  )}
+                  <Table.Td><Text size="sm" c="dimmed">{formatDate(doc.modified_at)}</Text></Table.Td>
+                  <Table.Td>
+                    <Menu position="bottom-end" withArrow>
+                      <Menu.Target>
+                        <Button variant="subtle" size="compact-sm" px={4} onClick={e => e.stopPropagation()}><IconDots size={16} /></Button>
+                      </Menu.Target>
+                      <Menu.Dropdown>
+                        <Menu.Item
+                          leftSection={<IconEdit size={14} />}
+                          onClick={() => { window.location.href = editHref; }}
+                        >
+                          Edit
+                        </Menu.Item>
+                        <Menu.Item leftSection={<IconDownload size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDownload(doc); }}>
+                          Download
+                        </Menu.Item>
+                        <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDelete(doc); }}>
+                          Delete
+                        </Menu.Item>
+                      </Menu.Dropdown>
+                    </Menu>
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
           </Table.Tbody>
         </Table>
       )}
@@ -459,7 +493,7 @@ export function WorldViewPage() {
   const [world, setWorld] = useState<WorldDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string | null>("info");
+  const [activeTab, setActiveTab] = useState<string | null>(extractTab);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const refreshWorld = useCallback(async (showLoader: boolean) => {
@@ -487,12 +521,15 @@ export function WorldViewPage() {
     return () => clearInterval(id);
   }, [refreshWorld]);
 
-  // Re-fetch on tab change
+  // Re-fetch on tab change + update URL
   const handleTabChange = useCallback((tab: string | null) => {
     setActiveTab(tab);
+    if (worldId && tab) {
+      window.history.replaceState(null, "", tabUrl(worldId, tab));
+    }
     refreshWorld(false);
     setRefreshKey(k => k + 1);
-  }, [refreshWorld]);
+  }, [refreshWorld, worldId]);
 
   if (!worldId) return <Container py="md"><Alert color="red">Invalid world ID</Alert></Container>;
   if (loading) return <Container py="md"><Group justify="center" py="xl"><Loader /></Group></Container>;
