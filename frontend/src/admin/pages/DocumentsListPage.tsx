@@ -77,11 +77,12 @@ function docDisplayName(doc: DocumentItem): string {
 interface CreateDocModalProps {
   opened: boolean;
   worldId: string;
+  initialDocType?: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function CreateDocModal({ opened, worldId, onClose, onSaved }: CreateDocModalProps) {
+function CreateDocModal({ opened, worldId, initialDocType, onClose, onSaved }: CreateDocModalProps) {
   const [docType, setDocType] = useState("location");
   const [name, setName] = useState("");
   const [content, setContent] = useState("");
@@ -90,7 +91,7 @@ function CreateDocModal({ opened, worldId, onClose, onSaved }: CreateDocModalPro
 
   useEffect(() => {
     if (opened) {
-      setDocType("location");
+      setDocType(initialDocType || "location");
       setName("");
       setContent("");
       setError(null);
@@ -324,7 +325,7 @@ export function DocumentsListPage() {
         </Table>
       )}
 
-      <CreateDocModal opened={createOpen} worldId={worldId} onClose={() => setCreateOpen(false)} onSaved={refresh} />
+      <CreateDocModal opened={createOpen} worldId={worldId} initialDocType={filter !== "all" ? filter : undefined} onClose={() => setCreateOpen(false)} onSaved={refresh} />
     </Container>
   );
 }
