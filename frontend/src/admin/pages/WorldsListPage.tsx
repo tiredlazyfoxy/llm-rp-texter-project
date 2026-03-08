@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { formatDate } from "../../utils/formatDate";
 import {
   Alert,
   Badge,
@@ -100,10 +101,7 @@ function statusColor(s: string): string {
   return "blue";
 }
 
-function formatDate(d: string | null): string {
-  if (!d) return "-";
-  return new Date(d).toLocaleDateString();
-}
+// formatDate imported from utils
 
 // ---------------------------------------------------------------------------
 // Main page

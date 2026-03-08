@@ -13,6 +13,7 @@ import {
   Title,
 } from "@mantine/core";
 import { IconDots, IconLock, IconShield, IconUserOff, IconUserPlus } from "@tabler/icons-react";
+import { formatDate } from "../../utils/formatDate";
 import type { AdminUserResponse } from "../../types/admin";
 import { disableUser, listUsers } from "../../api/admin";
 import { CreateUserModal } from "../components/CreateUserModal";
@@ -54,13 +55,7 @@ export function UsersPage() {
 
   const isDisabled = (user: AdminUserResponse) => user.last_login === null && user.role !== "admin";
 
-  const formatDate = (iso: string | null) => {
-    if (!iso) return "Never";
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: "numeric", month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
-  };
+  const fmtDate = (iso: string | null) => formatDate(iso, "Never");
 
   const roleBadgeColor = (role: string) => {
     if (role === "admin") return "red";
@@ -107,7 +102,7 @@ export function UsersPage() {
                   </Badge>
                 </Table.Td>
                 <Table.Td>
-                  <Text size="sm" c="dimmed">{formatDate(user.last_login)}</Text>
+                  <Text size="sm" c="dimmed">{fmtDate(user.last_login)}</Text>
                 </Table.Td>
                 <Table.Td>
                   <Menu shadow="md" width={180} position="bottom-end">

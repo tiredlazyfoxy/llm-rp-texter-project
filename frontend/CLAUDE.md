@@ -18,6 +18,7 @@ frontend/
     admin/               — Admin SPA (served at /admin)
       App.tsx, main.tsx
       pages/             — WorldsList, WorldView, WorldEdit, DocumentEdit, LlmServersPage, DbManagementPage
+    utils/               — Shared utilities (formatDate.ts, ...)
     api/                 — API client functions (chat.ts, llmServers.ts, dbManagement.ts, ...)
     types/               — TypeScript .d.ts interfaces matching backend schemas
       user.d.ts, chat.d.ts, llmServer.d.ts, dbManagement.d.ts
@@ -64,6 +65,12 @@ frontend/
 - **Strict TypeScript — no `any` anywhere**
 - All API types in `src/types/` as `.d.ts` matching backend Pydantic schemas
 - All API calls strongly typed end-to-end
+
+## Date Formatting
+
+- **All dates use `formatDate()` from `src/utils/formatDate.ts`** — no inline date formatting
+- Format: ISO date (`YYYY-MM-DD`), or time only (`HH:MM`) if the date is today
+- Never use locale-dependent formats (no `toLocaleDateString()`)
 
 ## Key Constraints
 
