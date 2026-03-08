@@ -113,6 +113,46 @@ async def _index_document(world_id: int, doc_type: str, doc_id: int, text: str) 
     return IndexResultInfo(embedding_warning=result.warning if not result.indexed else None)
 
 
+class ReindexWorldResult(TypedDict):
+    indexed_count: int
+    warning: str | None
+
+
+async def reindex_world(world_id: int) -> ReindexWorldResult:
+    """Reindex all documents (locations, NPCs, lore facts) for a single world."""
+    await _require_world(world_id)
+
+    locs = await locations.list_by_world(world_id)
+    world_npcs = await npcs.list_by_world(world_id)
+    facts = await lore_facts.list_by_world(world_id)
+
+    count = 0
+    last_warning: str | None = None
+
+    for loc in locs:
+        info = await _index_document(world_id, "location", loc.id, loc.content)
+        if info["embedding_warning"]:
+            last_warning = info["embedding_warning"]
+        else:
+            count += 1
+
+    for npc in world_npcs:
+        info = await _index_document(world_id, "npc", npc.id, npc.content)
+        if info["embedding_warning"]:
+            last_warning = info["embedding_warning"]
+        else:
+            count += 1
+
+    for fact in facts:
+        info = await _index_document(world_id, "lore_fact", fact.id, fact.content)
+        if info["embedding_warning"]:
+            last_warning = info["embedding_warning"]
+        else:
+            count += 1
+
+    return ReindexWorldResult(indexed_count=count, warning=last_warning)
+
+
 # ── Worlds CRUD ───────────────────────────────────────────────────
 
 async def list_worlds(user_id: int | None = None, is_admin: bool = False) -> list[World]:

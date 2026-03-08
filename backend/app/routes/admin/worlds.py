@@ -18,6 +18,7 @@ from app.models.schemas.worlds import (
     NpcLinkInfo,
     NpcLocationLinkResponse,
     NpcLocationLinksListResponse,
+    ReindexWorldResponse,
     ReorderRulesRequest,
     RuleResponse,
     StatDefinitionResponse,
@@ -219,6 +220,13 @@ async def clone_world(world_id: int, caller: User = Depends(_require_editor)):
 @router.delete("/{world_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_world(world_id: int, caller: User = Depends(_require_admin)):
     await svc.delete_world(world_id)
+
+
+@router.post("/{world_id}/reindex", response_model=ReindexWorldResponse)
+async def reindex_world(world_id: int, caller: User = Depends(_require_editor)):
+    await _check_world_access(world_id, caller)
+    result = await svc.reindex_world(world_id)
+    return ReindexWorldResponse(indexed_count=result["indexed_count"], warning=result["warning"])
 
 
 # ── Documents — static paths first ───────────────────────────────

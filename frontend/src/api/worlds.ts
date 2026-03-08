@@ -61,6 +61,17 @@ export async function deleteWorld(id: string): Promise<void> {
   });
 }
 
+export interface ReindexWorldResult {
+  indexed_count: number;
+  warning: string | null;
+}
+
+export async function reindexWorld(worldId: string): Promise<ReindexWorldResult> {
+  return authRequest<ReindexWorldResult>(`${BASE}/${worldId}/reindex`, {
+    method: "POST",
+  });
+}
+
 // ── Documents ───────────────────────────────────────────────────
 
 export async function listDocuments(worldId: string, docType?: string): Promise<DocumentItem[]> {

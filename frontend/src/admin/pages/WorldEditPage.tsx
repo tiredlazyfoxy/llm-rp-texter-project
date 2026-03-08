@@ -24,7 +24,6 @@ import {
   IconArrowDown,
   IconArrowUp,
   IconEdit,
-  IconFileText,
   IconPlus,
   IconTrash,
 } from "@tabler/icons-react";
@@ -357,15 +356,12 @@ export function WorldEditPage() {
     <Container size="lg" py="md">
       <Group justify="space-between" mb="md">
         <Group>
-          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => { window.location.href = "/admin/worlds"; }}>
+          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => { window.location.href = `/admin/worlds/${worldId}`; }}>
             Back
           </Button>
           <Title order={3}>{world?.name || "Edit World"}</Title>
         </Group>
         <Group>
-          <Button variant="light" leftSection={<IconFileText size={16} />} onClick={() => { window.location.href = `/admin/worlds/${worldId}/documents`; }}>
-            Documents
-          </Button>
           <Button onClick={handleSave} loading={saving}>Save</Button>
         </Group>
       </Group>

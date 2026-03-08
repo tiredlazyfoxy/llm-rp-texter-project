@@ -19,8 +19,7 @@ import {
 import {
   IconCopy,
   IconDots,
-  IconEdit,
-  IconFileText,
+  IconEye,
   IconPlus,
   IconTrash,
 } from "@tabler/icons-react";
@@ -205,16 +204,10 @@ export function WorldsListPage() {
                     </Menu.Target>
                     <Menu.Dropdown>
                       <Menu.Item
-                        leftSection={<IconEdit size={14} />}
-                        onClick={() => { window.location.href = `/admin/worlds/${world.id}/edit`; }}
+                        leftSection={<IconEye size={14} />}
+                        onClick={() => { window.location.href = `/admin/worlds/${world.id}`; }}
                       >
-                        Edit
-                      </Menu.Item>
-                      <Menu.Item
-                        leftSection={<IconFileText size={14} />}
-                        onClick={() => { window.location.href = `/admin/worlds/${world.id}/documents`; }}
-                      >
-                        Documents
+                        View
                       </Menu.Item>
                       <Menu.Item
                         leftSection={<IconCopy size={14} />}

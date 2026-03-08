@@ -86,7 +86,7 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 
 ### Admin — Worlds (`/api/admin/worlds`) — stage1_step4
 
-CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. (See stage1_step4 plan for full endpoint list.)
+CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. Includes `POST /api/admin/worlds/:id/reindex` for per-world vector reindex. (See stage1_step4 plan for full endpoint list.)
 
 ### Chats (`/api/chats`) — stage2_step3
 

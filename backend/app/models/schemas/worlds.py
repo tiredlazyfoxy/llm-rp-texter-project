@@ -183,3 +183,10 @@ class CreateNpcLocationLinkRequest(BaseModel):
     npc_id: str
     location_id: str
     link_type: str  # "present" | "excluded"
+
+
+# ── Reindex ──────────────────────────────────────────────────────
+
+class ReindexWorldResponse(BaseModel):
+    indexed_count: int
+    warning: str | None = None

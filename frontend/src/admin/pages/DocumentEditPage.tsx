@@ -295,7 +295,7 @@ export function DocumentEditPage() {
     <Container size="lg" py="md">
       <Group justify="space-between" mb="md">
         <Group>
-          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => { window.location.href = `/admin/worlds/${worldId}/documents`; }}>
+          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => { window.location.href = `/admin/worlds/${worldId}`; }}>
             Back
           </Button>
           <Title order={3}>{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}: {name || "(untitled)"}</Title>
