@@ -16,6 +16,7 @@ backend/
     db/                  — Data access layer (DB-agnostic interface)
       engine.py          — Async engine, injectable config, DDL, state flags
       user_queries.py    — User CRUD (session-free public API)
+      world_queries.py   — World + sub-entity CRUD (session-free public API)
       import_export_queries.py — export_table(), upsert_batch(), vector rebuild
     services/            — Business logic (no direct DB queries, no session creation)
       snowflake.py       — Snowflake ID generator (int64)
