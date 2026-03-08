@@ -3,7 +3,7 @@ import { MantineProvider, Container, Text } from "@mantine/core";
 import "@mantine/core/styles.css";
 import "../global.css";
 import { theme } from "../theme";
-import { AppHeader } from "../components/AppHeader";
+import { AppLayout } from "../components/AppLayout";
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -20,10 +20,11 @@ export function App() {
 
   return (
     <MantineProvider theme={theme} defaultColorScheme="dark">
-      <AppHeader />
-      <Container size="lg" py="md">
-        <Text c="dimmed">User SPA placeholder</Text>
-      </Container>
+      <AppLayout>
+        <Container size="lg" py="md">
+          <Text c="dimmed">User SPA placeholder</Text>
+        </Container>
+      </AppLayout>
     </MantineProvider>
   );
 }
