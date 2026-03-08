@@ -82,6 +82,7 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 | POST | `/api/admin/db/tables/:table_name/create` | Create missing table | admin |
 | GET | `/api/admin/db/export` | Export all data (zip) | admin |
 | POST | `/api/admin/db/import` | Import data from zip | admin |
+| POST | `/api/admin/db/reindex-vectors` | Rebuild vector index from all docs | admin |
 
 ### Admin — Worlds (`/api/admin/worlds`) — stage1_step4
 

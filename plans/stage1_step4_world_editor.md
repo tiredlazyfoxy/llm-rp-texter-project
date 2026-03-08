@@ -142,3 +142,28 @@ After models (step 2) and LLM management (step 3), this step builds the world ed
 | Delete world | admin (+ no active chats) |
 | Manage documents | editor |
 | Manage stats/rules | editor |
+
+---
+
+## Embedding Integration
+
+Document saves trigger vector indexing via the configured embedding server.
+
+### Flow
+
+1. Document created/updated -> saved to DB -> `vector_storage.index_document()` called
+2. `index_document()` chunks text, calls `embedding.embed_texts()` using the designated LLM server
+3. Embedded chunks stored in LanceDB
+
+### When No Embedding Server Configured
+
+- Document saves **succeed** -- data is persisted to DB
+- Vector indexing is **skipped** -- `index_document()` returns `IndexResult(indexed=False, warning="...")`
+- API response includes `embedding_warning` so frontend can show a notice
+
+### Reindexing
+
+- Admin triggers full reindex via "Reindex Vectors" button on DB Management page
+- Calls `POST /api/admin/db/reindex-vectors`
+- Required after changing embedding model -- old vectors are incompatible
+- Reindex is **not** automatic on model change -- admin must trigger manually
