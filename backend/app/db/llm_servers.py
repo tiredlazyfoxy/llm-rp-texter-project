@@ -54,6 +54,15 @@ async def clear_all_embedding() -> None:
         await session.commit()
 
 
+async def get_embedding_server() -> LlmServer | None:
+    """Return the server designated as embedding server, or None."""
+    session = await get_standalone_session()
+    async with session:
+        return (await session.exec(
+            select(LlmServer).where(LlmServer.is_embedding == True)  # noqa: E712
+        )).one_or_none()
+
+
 async def delete(server_id: int) -> bool:
     session = await get_standalone_session()
     async with session:

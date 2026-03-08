@@ -27,3 +27,9 @@ class DbStatusResponse(BaseModel):
 class SyncResultSchema(BaseModel):
     added_columns: list[str]
     dropped_columns: list[str]
+
+
+class ReindexResultSchema(BaseModel):
+    success: bool
+    documents_indexed: int
+    error: str | None = None

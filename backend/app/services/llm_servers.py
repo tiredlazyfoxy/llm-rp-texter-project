@@ -144,6 +144,8 @@ async def set_enabled_models(server_id: int, models: list[str]) -> LlmServer:
 
 async def set_embedding_server(server_id: int, model: str) -> LlmServer:
     """Designate a server as the embedding server with a specific model."""
+    from app.services import embedding
+
     server = await db.get_by_id(server_id)
     if server is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
@@ -159,12 +161,19 @@ async def set_embedding_server(server_id: int, model: str) -> LlmServer:
     server.embedding_model = model
     server.modified_at = datetime.now(timezone.utc)
     await db.update(server)
+
+    # Invalidate cached dimension — new model may have different output size
+    embedding.invalidate_cache()
+
     return server
 
 
 async def clear_embedding_server() -> None:
     """Remove embedding designation from all servers."""
+    from app.services import embedding
+
     await db.clear_all_embedding()
+    embedding.invalidate_cache()
 
 
 async def get_embedding_config() -> EmbeddingConfigResponse:

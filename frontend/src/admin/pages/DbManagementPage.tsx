@@ -13,13 +13,14 @@ import {
   Title,
 } from "@mantine/core";
 import {
+  IconDatabaseSearch,
   IconDownload,
   IconPlus,
   IconRefresh,
   IconUpload,
 } from "@tabler/icons-react";
 import type { TableStatus } from "../../types/dbManagement";
-import { createTable, exportDb, getDbStatus, importDb, syncTable } from "../../api/dbManagement";
+import { createTable, exportDb, getDbStatus, importDb, reindexVectors, syncTable } from "../../api/dbManagement";
 
 // ---------------------------------------------------------------------------
 // Schema detail modal
@@ -231,6 +232,23 @@ export function DbManagementPage() {
     }
   };
 
+  const handleReindex = async () => {
+    if (!window.confirm("Rebuild vector index for all world documents? This may take a while.")) return;
+
+    setActionLoading("reindex");
+    setError(null);
+    try {
+      const result = await reindexVectors();
+      if (!result.success) {
+        setError(result.error ?? "Reindex failed");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Reindex failed");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <Container size="lg" py="md">
       <Group justify="space-between" mb="md">
@@ -253,6 +271,15 @@ export function DbManagementPage() {
             loading={actionLoading === "import"}
           >
             Import
+          </Button>
+          <Button
+            variant="light"
+            size="sm"
+            leftSection={<IconDatabaseSearch size={16} />}
+            onClick={handleReindex}
+            loading={actionLoading === "reindex"}
+          >
+            Reindex Vectors
           </Button>
           <input
             ref={fileInputRef}

@@ -1,7 +1,7 @@
 """LanceDB vector storage for world knowledge documents.
 
-Chunks documents, embeds them, and provides semantic search scoped per world.
-Embedding model is a placeholder — to be replaced with a configurable model.
+Chunks documents, embeds them via the configured embedding server,
+and provides semantic search scoped per world.
 """
 
 import asyncio
@@ -12,14 +12,17 @@ from typing import Any
 import lancedb
 from pydantic import BaseModel
 
+from app.services.embedding import EmbeddingNotConfiguredError
+
 logger = logging.getLogger(__name__)
 
-VECTOR_DIM = 384
 _DEFAULT_VECTOR_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "vector"
 _TABLE_NAME = "chunks"
 
 _vector_dir: Path = _DEFAULT_VECTOR_DIR
 _db: Any = None
+# Dynamic vector dimension — set on first embedding call
+_vector_dim: int | None = None
 
 
 class VectorChunk(BaseModel):
@@ -32,8 +35,14 @@ class VectorChunk(BaseModel):
     vector: list[float]
 
 
+class IndexResult(BaseModel):
+    """Result of an indexing operation."""
+    indexed: bool
+    warning: str | None = None
+
+
 # ---------------------------------------------------------------------------
-# Text chunking (placeholder — paragraph-based)
+# Text chunking (paragraph-based)
 # ---------------------------------------------------------------------------
 
 def _chunk_text(text: str, max_chunk_size: int = 500) -> list[str]:
@@ -56,29 +65,6 @@ def _chunk_text(text: str, max_chunk_size: int = 500) -> list[str]:
         chunks.append(current)
 
     return chunks
-
-
-# ---------------------------------------------------------------------------
-# Embedding (placeholder — hash-based deterministic vectors)
-# TODO: replace with configurable embedding model
-# ---------------------------------------------------------------------------
-
-def _embed(texts: list[str]) -> list[list[float]]:
-    """Generate placeholder embeddings. Deterministic hash-based vectors."""
-    import hashlib
-
-    vectors = []
-    for text in texts:
-        h = hashlib.sha256(text.encode("utf-8")).digest()
-        # Repeat hash bytes to fill VECTOR_DIM floats, normalize to [-1, 1]
-        raw = []
-        for i in range(VECTOR_DIM):
-            byte_val = h[i % len(h)]
-            raw.append((byte_val / 127.5) - 1.0)
-        # Simple normalization
-        norm = max(sum(v * v for v in raw) ** 0.5, 1e-9)
-        vectors.append([v / norm for v in raw])
-    return vectors
 
 
 # ---------------------------------------------------------------------------
@@ -105,8 +91,8 @@ def _get_table() -> Any | None:
         return None
 
 
-def _ensure_table() -> Any:
-    """Get or create the chunks table."""
+def _ensure_table(dim: int) -> Any:
+    """Get or create the chunks table with the given vector dimension."""
     if _db is None:
         raise RuntimeError("Vector store not initialized")
 
@@ -123,30 +109,56 @@ def _ensure_table() -> Any:
         pa.field("source_id", pa.int64()),
         pa.field("chunk_index", pa.int32()),
         pa.field("text", pa.string()),
-        pa.field("vector", pa.list_(pa.float32(), VECTOR_DIM)),
+        pa.field("vector", pa.list_(pa.float32(), dim)),
     ])
     return _db.create_table(_TABLE_NAME, schema=schema)
 
 
 async def index_document(
     world_id: int, source_type: str, source_id: int, text: str
-) -> None:
-    """Chunk text, embed, delete old chunks for this source, insert new."""
+) -> IndexResult:
+    """Chunk text, embed via configured server, update LanceDB.
 
-    def _do() -> None:
-        table = _ensure_table()
+    Returns IndexResult with indexed=False and a warning if embedding is not configured.
+    """
+    from app.services import embedding
 
-        # Delete old chunks for this source
+    global _vector_dim
+
+    chunks = _chunk_text(text)
+
+    # Delete old chunks regardless of whether we can embed new ones
+    def _delete_old() -> None:
+        table = _get_table()
+        if table is None:
+            return
         try:
             table.delete(f"source_type = '{source_type}' AND source_id = {source_id}")
         except Exception:
-            pass  # Table may be empty
+            pass
 
-        chunks = _chunk_text(text)
-        if not chunks:
-            return
+    await asyncio.to_thread(_delete_old)
 
-        vectors = _embed(chunks)
+    if not chunks:
+        return IndexResult(indexed=True)
+
+    # Embed chunks
+    try:
+        vectors = await embedding.embed_texts(chunks)
+    except EmbeddingNotConfiguredError as e:
+        logger.debug("Skipping indexing for %s/%d: %s", source_type, source_id, e)
+        return IndexResult(indexed=False, warning=str(e))
+
+    # Detect / cache dimension
+    if _vector_dim is None and vectors:
+        _vector_dim = len(vectors[0])
+
+    dim = _vector_dim
+    assert dim is not None
+
+    # Insert into LanceDB (blocking I/O)
+    def _insert() -> None:
+        table = _ensure_table(dim)
         rows = [
             {
                 "id": f"{source_type}_{source_id}_{i}",
@@ -161,10 +173,11 @@ async def index_document(
         ]
         table.add(rows)
 
-    await asyncio.to_thread(_do)
+    await asyncio.to_thread(_insert)
     logger.debug(
         "Indexed document %s/%d for world %d", source_type, source_id, world_id
     )
+    return IndexResult(indexed=True)
 
 
 async def delete_document(source_type: str, source_id: int) -> None:
@@ -203,14 +216,23 @@ async def search(
     source_type: str | None = None,
     limit: int = 5,
 ) -> list[VectorChunk]:
-    """Vector search filtered by world_id and optionally source_type."""
+    """Vector search filtered by world_id and optionally source_type.
+
+    Returns empty list if embedding is not configured.
+    """
+    from app.services import embedding
+
+    try:
+        query_vec = (await embedding.embed_texts([query]))[0]
+    except EmbeddingNotConfiguredError:
+        logger.debug("Search skipped — no embedding server configured")
+        return []
 
     def _do() -> list[VectorChunk]:
         table = _get_table()
         if table is None:
             return []
 
-        query_vec = _embed([query])[0]
         where = f"world_id = {world_id}"
         if source_type:
             where += f" AND source_type = '{source_type}'"
@@ -241,13 +263,23 @@ async def search(
     return await asyncio.to_thread(_do)
 
 
-async def rebuild_all_worlds_index() -> None:
+async def rebuild_all_worlds_index() -> int:
     """Rebuild vector indices for all worlds from DB documents.
 
-    Called after database import to reconstruct the vector store.
-    Uses the db layer — no raw session access.
+    Called after database import or when admin triggers manual reindex.
+    Returns the number of documents indexed.
+
+    Raises EmbeddingNotConfiguredError if no embedding server is set.
     """
     from app.db import locations, lore_facts, npcs, worlds
+    from app.services import embedding
+
+    # Verify embedding is available before starting
+    if not await embedding.is_embedding_configured():
+        raise EmbeddingNotConfiguredError("Cannot reindex: no embedding server configured")
+
+    global _vector_dim
+    _vector_dim = None  # Reset so dimension is re-detected
 
     # Drop and recreate table
     def _reset_table() -> None:
@@ -260,18 +292,20 @@ async def rebuild_all_worlds_index() -> None:
 
     await asyncio.to_thread(_reset_table)
 
+    doc_count = 0
     all_worlds = await worlds.list_all()
     for world in all_worlds:
-        # Index all locations
         for loc in await locations.list_by_world(world.id):  # type: ignore[arg-type]
             await index_document(world.id, "location", loc.id, loc.content)  # type: ignore[arg-type]
+            doc_count += 1
 
-        # Index all NPCs
         for npc in await npcs.list_by_world(world.id):  # type: ignore[arg-type]
             await index_document(world.id, "npc", npc.id, npc.content)  # type: ignore[arg-type]
+            doc_count += 1
 
-        # Index all lore facts
         for fact in await lore_facts.list_by_world(world.id):  # type: ignore[arg-type]
             await index_document(world.id, "lore_fact", fact.id, fact.content)  # type: ignore[arg-type]
+            doc_count += 1
 
-    logger.info("Vector index rebuilt for all worlds")
+    logger.info("Vector index rebuilt for all worlds (%d documents)", doc_count)
+    return doc_count

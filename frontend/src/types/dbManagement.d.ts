@@ -23,3 +23,9 @@ export interface SyncResult {
   added_columns: string[];
   dropped_columns: string[];
 }
+
+export interface ReindexResult {
+  success: boolean;
+  documents_indexed: number;
+  error: string | null;
+}

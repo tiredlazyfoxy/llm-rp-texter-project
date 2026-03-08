@@ -6,13 +6,16 @@ from fastapi.responses import Response
 from app.models.schemas.db_management import (
     ColumnInfoSchema,
     DbStatusResponse,
+    ReindexResultSchema,
     SyncResultSchema,
     TableStatusSchema,
 )
 from app.models.user import User, UserRole
 from app.services import db_import_export
 from app.services import db_management as db_mgmt_service
+from app.services import vector_storage
 from app.services.auth import require_role
+from app.services.embedding import EmbeddingNotConfiguredError
 
 _require_admin = require_role(UserRole.admin)
 
@@ -96,3 +99,15 @@ async def import_db(
 ) -> None:
     zip_data = await file.read()
     await db_import_export.import_all(zip_data)
+
+
+@router.post("/reindex-vectors", response_model=ReindexResultSchema)
+async def reindex_vectors(
+    _caller: User = Depends(_require_admin),
+) -> ReindexResultSchema:
+    """Rebuild vector index for all world documents using the configured embedding server."""
+    try:
+        doc_count = await vector_storage.rebuild_all_worlds_index()
+        return ReindexResultSchema(success=True, documents_indexed=doc_count)
+    except EmbeddingNotConfiguredError as e:
+        return ReindexResultSchema(success=False, documents_indexed=0, error=str(e))

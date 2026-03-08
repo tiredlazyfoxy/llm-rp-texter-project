@@ -1,6 +1,6 @@
 import { getToken } from "../auth";
 import { authRequest } from "./request";
-import type { DbStatusResponse, SyncResult, TableStatus } from "../types/dbManagement";
+import type { DbStatusResponse, ReindexResult, SyncResult, TableStatus } from "../types/dbManagement";
 
 const BASE = "/api/admin/db";
 
@@ -37,6 +37,12 @@ export async function exportDb(): Promise<void> {
   a.download = "llmrp_export.zip";
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export async function reindexVectors(): Promise<ReindexResult> {
+  return authRequest<ReindexResult>(`${BASE}/reindex-vectors`, {
+    method: "POST",
+  });
 }
 
 export async function importDb(file: File): Promise<void> {
