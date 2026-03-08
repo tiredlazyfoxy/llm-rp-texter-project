@@ -9,10 +9,10 @@ backend/
   app/
     main.py              — FastAPI app, CORS, router mounting
     models/              — SQLModel DB models + Pydantic API schemas
-      schemas/           — Pydantic request/response schemas (auth.py, chat.py)
+      schemas/           — Pydantic request/response schemas (auth.py, chat.py, db_management.py)
       user.py, world.py, llm_server.py, chat_session.py, chat_message.py, ...
     routes/              — API route handlers (HTTP layer only)
-      auth.py, chat.py, llm_servers.py, admin/...
+      auth.py, chat.py, llm_servers.py, admin/db_management.py, ...
     db/                  — Data access layer (DB-agnostic interface)
       engine.py          — Async engine, injectable config, DDL, state flags
       users.py           — User CRUD (session-free, import as `from app.db import users`)
@@ -24,11 +24,13 @@ backend/
       stat_defs.py       — WorldStatDefinition CRUD
       rules.py           — WorldRule CRUD
       import_export_queries.py — export_table(), upsert_batch(), vector rebuild
+      db_management.py         — DB introspection (table list, columns, counts, create)
     services/            — Business logic (no direct DB queries, no session creation)
       snowflake.py       — Snowflake ID generator (int64)
       database.py        — DB setup orchestration (create/import)
       auth.py            — JWT create/verify, password hashing
       db_import_export.py — gzipped JSONL per table
+      db_management.py    — DB introspection service (status, schema drift, create tables)
       prompts/           — LLM prompt package (one documented file per prompt)
       chat_tools.py      — Agent tools, NPC logic, stat parsing
       chat_service.py    — Chat generation, regeneration, rewind
@@ -41,7 +43,7 @@ backend/
 - **Auth** (`/api/auth`) — Login, setup, JWT
 - **Chats** (`/api/chats`) — User chat sessions, SSE streaming
 - **LLM** (`/api/llm`) — Enabled models list (for editor/player)
-- **Admin** (`/api/admin`) — LLM servers CRUD, world management
+- **Admin** (`/api/admin`) — LLM servers CRUD, world management, DB management
 
 ## Setup
 

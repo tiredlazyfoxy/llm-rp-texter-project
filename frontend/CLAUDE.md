@@ -17,10 +17,10 @@ frontend/
       stores/            — ChatStore.ts (MobX)
     admin/               — Admin SPA (served at /admin)
       App.tsx, main.tsx
-      pages/             — WorldsList, WorldEdit, DocumentsList, DocumentEdit, LlmServersPage
-    api/                 — API client functions (chat.ts, llmServers.ts, ...)
+      pages/             — WorldsList, WorldEdit, DocumentsList, DocumentEdit, LlmServersPage, DbManagementPage
+    api/                 — API client functions (chat.ts, llmServers.ts, dbManagement.ts, ...)
     types/               — TypeScript .d.ts interfaces matching backend schemas
-      user.d.ts, chat.d.ts, llmServer.d.ts
+      user.d.ts, chat.d.ts, llmServer.d.ts, dbManagement.d.ts
   index.html             — User SPA entry
   admin/index.html       — Admin SPA entry
   login/index.html       — Login entry
@@ -48,6 +48,7 @@ frontend/
 - `/admin/worlds/:id/edit` — WorldEdit
 - `/admin/worlds/:id/documents` — DocumentsList (locations, NPCs, lore)
 - `/admin/llm-servers` — LlmServersPage
+- `/admin/database` — DbManagementPage
 
 ## Tech
 

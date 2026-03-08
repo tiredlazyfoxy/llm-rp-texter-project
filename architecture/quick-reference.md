@@ -71,6 +71,15 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 | PUT | `/api/admin/llm-servers/:id/enabled-models` | Set enabled models | admin |
 | GET | `/api/llm/models` | List all enabled models | editor |
 
+### Admin — DB Management (`/api/admin/db`) — stage1_step6
+
+| Method | Path | Purpose | Role |
+| ------ | ---- | ------- | ---- |
+| GET | `/api/admin/db` | Get status of all tables | admin |
+| POST | `/api/admin/db/tables/:table_name/create` | Create missing table | admin |
+| GET | `/api/admin/db/export` | Export all data (zip) | admin |
+| POST | `/api/admin/db/import` | Import data from zip | admin |
+
 ### Admin — Worlds (`/api/admin/worlds`) — stage1_step4
 
 CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. (See stage1_step4 plan for full endpoint list.)
@@ -157,5 +166,6 @@ Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel`
 
 - Stage 1 Step 1: Login, User Model, DB Bootstrap — done
 - Stage 1 Step 2: World models, vector storage, import/export — done
+- Stage 1 Step 3: LLM Servers CRUD — done
 - DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export)
-- Next: Stage 1 Step 3 (LLM Servers CRUD)
+- Next: Stage 1 Step 6 (DB Management admin page)
