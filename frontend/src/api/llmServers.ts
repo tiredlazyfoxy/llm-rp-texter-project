@@ -55,3 +55,19 @@ export async function setEnabledModels(
     body: JSON.stringify({ enabled_models: models }),
   });
 }
+
+export async function setEmbedding(
+  id: string,
+  model: string,
+): Promise<LlmServerItem> {
+  return authRequest<LlmServerItem>(`${BASE}/${id}/embedding`, {
+    method: "PUT",
+    body: JSON.stringify({ model }),
+  });
+}
+
+export async function clearEmbedding(): Promise<void> {
+  return authRequest<void>(`${BASE}/embedding`, {
+    method: "DELETE",
+  });
+}

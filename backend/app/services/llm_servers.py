@@ -11,6 +11,7 @@ from app.db import llm_servers as db
 from app.models.llm_server import LlmServer
 from app.models.schemas.llm_servers import (
     CreateLlmServerRequest,
+    EmbeddingConfigResponse,
     EnabledModelInfo,
     UpdateLlmServerRequest,
 )
@@ -139,6 +140,54 @@ async def set_enabled_models(server_id: int, models: list[str]) -> LlmServer:
     server.modified_at = datetime.now(timezone.utc)
     await db.update(server)
     return server
+
+
+async def set_embedding_server(server_id: int, model: str) -> LlmServer:
+    """Designate a server as the embedding server with a specific model."""
+    server = await db.get_by_id(server_id)
+    if server is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Server not found")
+
+    # Clear any existing embedding designation
+    await db.clear_all_embedding()
+
+    # Re-fetch after bulk update (the object may be stale)
+    server = await db.get_by_id(server_id)
+    assert server is not None
+
+    server.is_embedding = True
+    server.embedding_model = model
+    server.modified_at = datetime.now(timezone.utc)
+    await db.update(server)
+    return server
+
+
+async def clear_embedding_server() -> None:
+    """Remove embedding designation from all servers."""
+    await db.clear_all_embedding()
+
+
+async def get_embedding_config() -> EmbeddingConfigResponse:
+    """Get the current embedding server configuration."""
+    servers = await db.get_all()
+    for s in servers:
+        if s.is_embedding:
+            return EmbeddingConfigResponse(
+                server_id=str(s.id),
+                server_name=s.name,
+                base_url=s.base_url,
+                backend_type=s.backend_type,
+                model=s.embedding_model,
+                has_api_key=s.api_key is not None and s.api_key != "",
+            )
+    return EmbeddingConfigResponse(
+        server_id=None,
+        server_name=None,
+        base_url=None,
+        backend_type=None,
+        model=None,
+        has_api_key=False,
+    )
 
 
 async def get_all_enabled_models() -> list[EnabledModelInfo]:

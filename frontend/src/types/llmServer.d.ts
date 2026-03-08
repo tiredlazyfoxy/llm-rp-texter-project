@@ -6,6 +6,8 @@ export interface LlmServerItem {
   has_api_key: boolean;
   enabled_models: string[];
   is_active: boolean;
+  is_embedding: boolean;
+  embedding_model: string | null;
   created_at: string | null;
   modified_at: string | null;
 }

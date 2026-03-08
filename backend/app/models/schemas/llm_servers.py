@@ -11,6 +11,8 @@ class LlmServerResponse(BaseModel):
     has_api_key: bool
     enabled_models: list[str]
     is_active: bool
+    is_embedding: bool
+    embedding_model: str | None
     created_at: datetime | None
     modified_at: datetime | None
 
@@ -51,3 +53,16 @@ class EnabledModelInfo(BaseModel):
 
 class EnabledModelsListResponse(BaseModel):
     models: list[EnabledModelInfo]
+
+
+class SetEmbeddingRequest(BaseModel):
+    model: str  # the model ID to use for embeddings
+
+
+class EmbeddingConfigResponse(BaseModel):
+    server_id: str | None  # null if no embedding configured
+    server_name: str | None
+    base_url: str | None
+    backend_type: str | None
+    model: str | None
+    has_api_key: bool

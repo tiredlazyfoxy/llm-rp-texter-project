@@ -13,5 +13,7 @@ class LlmServer(SQLModel, table=True):
     api_key: str | None = None
     enabled_models: str = "[]"  # JSON array of model ID strings
     is_active: bool = True
+    is_embedding: bool = False
+    embedding_model: str | None = None  # model ID on this server used for embeddings
     created_at: datetime | None = Field(default=None)
     modified_at: datetime | None = Field(default=None)

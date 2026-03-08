@@ -11,6 +11,7 @@ import {
   Menu,
   Modal,
   PasswordInput,
+  Radio,
   Select,
   Stack,
   Switch,
@@ -20,6 +21,7 @@ import {
   Title,
 } from "@mantine/core";
 import {
+  IconBrain,
   IconDots,
   IconEdit,
   IconList,
@@ -28,10 +30,12 @@ import {
 } from "@tabler/icons-react";
 import type { LlmServerItem } from "../../types/llmServer";
 import {
+  clearEmbedding,
   createServer,
   deleteServer,
   listServers,
   probeModels,
+  setEmbedding,
   setEnabledModels,
   updateServer,
 } from "../../api/llmServers";
@@ -298,6 +302,102 @@ function ModelsModal({ opened, server, onClose, onSaved }: ModelsModalProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Embedding modal (single model selection)
+// ---------------------------------------------------------------------------
+
+interface EmbeddingModalProps {
+  opened: boolean;
+  server: LlmServerItem | null;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function EmbeddingModal({ opened, server, onClose, onSaved }: EmbeddingModalProps) {
+  const [available, setAvailable] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [filter, setFilter] = useState("");
+  const [probing, setProbing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!opened || !server) return;
+    setFilter("");
+    setError(null);
+    setSaving(false);
+    setSelected(server.embedding_model);
+
+    setProbing(true);
+    probeModels(server.id)
+      .then((models) => setAvailable(models))
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed to probe server");
+        setAvailable([]);
+      })
+      .finally(() => setProbing(false));
+  }, [opened, server]);
+
+  if (!server) return null;
+
+  const filtered = filter
+    ? available.filter((m) => m.toLowerCase().includes(filter.toLowerCase()))
+    : available;
+
+  const handleSave = async () => {
+    if (!selected) { setError("Select an embedding model"); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      await setEmbedding(server.id, selected);
+      onClose();
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to set embedding");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title={`Set Embedding — ${server.name}`} size="md">
+      <Stack>
+        {error && (
+          <Alert color="red" withCloseButton onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+
+        <TextInput
+          placeholder="Filter models..."
+          value={filter}
+          onChange={(e) => setFilter(e.currentTarget.value)}
+        />
+
+        {probing ? (
+          <Group justify="center" py="md"><Loader size="sm" /><Text size="sm" c="dimmed">Probing server...</Text></Group>
+        ) : filtered.length === 0 ? (
+          <Text size="sm" c="dimmed" ta="center" py="md">No models found</Text>
+        ) : (
+          <Radio.Group value={selected ?? ""} onChange={setSelected}>
+            <Stack gap={4} style={{ maxHeight: 400, overflowY: "auto" }}>
+              {filtered.map((modelId) => (
+                <Radio key={modelId} value={modelId} label={modelId} />
+              ))}
+            </Stack>
+          </Radio.Group>
+        )}
+
+        <Group justify="flex-end">
+          <Button onClick={handleSave} loading={saving} disabled={!selected}>
+            Set Embedding
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -312,6 +412,9 @@ export function LlmServersPage() {
 
   // Models modal state
   const [modelsTarget, setModelsTarget] = useState<LlmServerItem | null>(null);
+
+  // Embedding modal state
+  const [embeddingTarget, setEmbeddingTarget] = useState<LlmServerItem | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -351,6 +454,16 @@ export function LlmServersPage() {
     setModelsTarget(server);
   };
 
+  const handleClearEmbedding = async (server: LlmServerItem) => {
+    if (!window.confirm(`Remove embedding designation from "${server.name}"?`)) return;
+    try {
+      await clearEmbedding();
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to clear embedding");
+    }
+  };
+
   return (
     <Container size="lg" py="md">
       <Group justify="space-between" mb="md">
@@ -386,7 +499,16 @@ export function LlmServersPage() {
           <Table.Tbody>
             {servers.map((server) => (
               <Table.Tr key={server.id} style={!server.is_active ? { opacity: 0.5 } : undefined}>
-                <Table.Td><Text size="sm">{server.name}</Text></Table.Td>
+                <Table.Td>
+                  <Group gap="xs">
+                    <Text size="sm">{server.name}</Text>
+                    {server.is_embedding && (
+                      <Badge variant="light" size="xs" color="teal">
+                        Embedding: {server.embedding_model}
+                      </Badge>
+                    )}
+                  </Group>
+                </Table.Td>
                 <Table.Td>
                   <Badge variant="light" size="sm" color={server.backend_type === "openai" ? "blue" : "grape"}>
                     {server.backend_type}
@@ -405,7 +527,7 @@ export function LlmServersPage() {
                   </Badge>
                 </Table.Td>
                 <Table.Td>
-                  <Menu shadow="md" width={180} position="bottom-end">
+                  <Menu shadow="md" width={200} position="bottom-end">
                     <Menu.Target>
                       <ActionIcon variant="subtle" color="gray" size="sm">
                         <IconDots size={16} />
@@ -418,6 +540,22 @@ export function LlmServersPage() {
                       >
                         Models
                       </Menu.Item>
+                      {server.is_embedding ? (
+                        <Menu.Item
+                            color="orange"
+                          leftSection={<IconBrain size={14} />}
+                          onClick={() => handleClearEmbedding(server)}
+                        >
+                          Clear Embedding
+                        </Menu.Item>
+                      ) : (
+                        <Menu.Item
+                          leftSection={<IconBrain size={14} />}
+                          onClick={() => setEmbeddingTarget(server)}
+                        >
+                          Set as Embedding
+                        </Menu.Item>
+                      )}
                       <Menu.Item
                         leftSection={<IconEdit size={14} />}
                         onClick={() => handleEdit(server)}
@@ -453,6 +591,13 @@ export function LlmServersPage() {
         opened={modelsTarget !== null}
         server={modelsTarget}
         onClose={() => setModelsTarget(null)}
+        onSaved={refresh}
+      />
+
+      <EmbeddingModal
+        opened={embeddingTarget !== null}
+        server={embeddingTarget}
+        onClose={() => setEmbeddingTarget(null)}
         onSaved={refresh}
       />
     </Container>

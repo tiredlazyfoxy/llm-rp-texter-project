@@ -1,5 +1,6 @@
 """LLM server data access. Session-free public API — all sessions managed internally."""
 
+from sqlalchemy import update as sa_update
 from sqlmodel import select
 
 from app.db.engine import get_standalone_session
@@ -41,6 +42,16 @@ async def update(server: LlmServer) -> None:
         session.add(server)
         await session.commit()
         await session.refresh(server)
+
+
+async def clear_all_embedding() -> None:
+    """Set is_embedding=False and embedding_model=None on ALL servers."""
+    session = await get_standalone_session()
+    async with session:
+        await session.execute(
+            sa_update(LlmServer).values(is_embedding=False, embedding_model=None)
+        )
+        await session.commit()
 
 
 async def delete(server_id: int) -> bool:

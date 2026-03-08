@@ -285,6 +285,8 @@ def _llm_server_to_dict(s: LlmServer) -> dict:
         "api_key": s.api_key,
         "enabled_models": s.enabled_models,
         "is_active": s.is_active,
+        "is_embedding": s.is_embedding,
+        "embedding_model": s.embedding_model,
         "created_at": _serialize_datetime(s.created_at),
         "modified_at": _serialize_datetime(s.modified_at),
     }
@@ -299,6 +301,8 @@ def _dict_to_llm_server(d: dict) -> LlmServer:
         api_key=d.get("api_key"),
         enabled_models=d.get("enabled_models", "[]"),
         is_active=d.get("is_active", True),
+        is_embedding=d.get("is_embedding", False),
+        embedding_model=d.get("embedding_model"),
         created_at=_parse_datetime(d.get("created_at")),
         modified_at=_parse_datetime(d.get("modified_at")),
     )
