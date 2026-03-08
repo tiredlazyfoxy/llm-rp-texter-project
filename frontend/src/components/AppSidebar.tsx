@@ -65,8 +65,14 @@ export function AppSidebar({ collapsed, onToggle, navItems }: AppSidebarProps) {
 }
 
 function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
-  const active = window.location.pathname === item.href ||
-    (item.href !== "/" && window.location.pathname.startsWith(item.href));
+  const path = window.location.pathname;
+  // Trailing-slash hrefs (like "/admin/") match exactly; others match as prefix
+  const exactOnly = item.href.endsWith("/");
+  const pathNorm = path.replace(/\/+$/, "");
+  const hrefNorm = item.href.replace(/\/+$/, "");
+  const active = exactOnly
+    ? pathNorm === hrefNorm
+    : pathNorm === hrefNorm || pathNorm.startsWith(hrefNorm + "/");
 
   const content = (
     <UnstyledButton

@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.admin.users import router as admin_users_router
 from app.routes.auth import router as auth_router
+from app.routes.llm_models import router as llm_models_router
+from app.routes.llm_servers import router as llm_servers_router
 from app.db import engine as db_engine
 from app.db.engine import DbConfig
 from app.services import vector_storage
@@ -55,6 +57,8 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(admin_users_router)
+app.include_router(llm_servers_router)
+app.include_router(llm_models_router)
 
 
 @app.get("/api/health")

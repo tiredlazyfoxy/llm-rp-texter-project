@@ -12,6 +12,7 @@ import zipfile
 from datetime import datetime
 
 from app.db.import_export_queries import export_table, upsert_batch
+from app.models.llm_server import LlmServer
 from app.models.user import User, UserRole
 from app.models.world import (
     NPCLinkType,
@@ -271,12 +272,46 @@ def _dict_to_rule(d: dict) -> WorldRule:
 
 
 # ---------------------------------------------------------------------------
+# LLM Servers
+# ---------------------------------------------------------------------------
+
+
+def _llm_server_to_dict(s: LlmServer) -> dict:
+    return {
+        "id": s.id,
+        "name": s.name,
+        "backend_type": s.backend_type,
+        "base_url": s.base_url,
+        "api_key": s.api_key,
+        "enabled_models": s.enabled_models,
+        "is_active": s.is_active,
+        "created_at": _serialize_datetime(s.created_at),
+        "modified_at": _serialize_datetime(s.modified_at),
+    }
+
+
+def _dict_to_llm_server(d: dict) -> LlmServer:
+    return LlmServer(
+        id=d["id"],
+        name=d["name"],
+        backend_type=d["backend_type"],
+        base_url=d["base_url"],
+        api_key=d.get("api_key"),
+        enabled_models=d.get("enabled_models", "[]"),
+        is_active=d.get("is_active", True),
+        created_at=_parse_datetime(d.get("created_at")),
+        modified_at=_parse_datetime(d.get("modified_at")),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Table registry: (zip_filename, model_class, to_dict, from_dict)
 # Import order respects FK dependencies.
 # ---------------------------------------------------------------------------
 
 _TABLE_REGISTRY = [
     ("users", User, _user_to_dict, _dict_to_user),
+    ("llm_servers", LlmServer, _llm_server_to_dict, _dict_to_llm_server),
     ("worlds", World, _world_to_dict, _dict_to_world),
     ("world_locations", WorldLocation, _location_to_dict, _dict_to_location),
     ("world_npcs", WorldNPC, _npc_to_dict, _dict_to_npc),
