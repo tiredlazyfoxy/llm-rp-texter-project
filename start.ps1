@@ -3,19 +3,26 @@ param(
     [switch]$Backend,
 
     [Alias("ui", "web")]
-    [switch]$Frontend
+    [switch]$Frontend,
+
+    [switch]$Test
 )
 
 if (-not $Backend -and -not $Frontend) {
-    Write-Host "Usage: .\start.ps1 -app | -ui"
+    Write-Host "Usage: .\start.ps1 -app | -ui [-test]"
     Write-Host "  -app, --app, -api, --api   Start backend (uvicorn, port 8085)"
     Write-Host "  -ui,  --ui,  -web, --web   Start frontend (vite, port 8094)"
+    Write-Host "  -test                      Use separate test database"
     exit 1
 }
 
 if ($Backend) {
     Write-Host "Starting backend on :8085 ..."
     Push-Location "$PSScriptRoot\backend"
+    if ($Test) {
+        $env:LLMRP_DB_PATH = "$PSScriptRoot\backend\data\test\llmrp_test.db"
+        Write-Host "  Using test DB: $env:LLMRP_DB_PATH"
+    }
     & .venv\Scripts\uvicorn app.main:app --port 8085 --reload
     Pop-Location
 }

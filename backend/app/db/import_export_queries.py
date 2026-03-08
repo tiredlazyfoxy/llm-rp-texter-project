@@ -54,10 +54,7 @@ async def upsert_batch(items: list[SQLModel]) -> None:
 
 
 async def run_vector_rebuild() -> None:
-    """Rebuild vector indices from DB documents, with own session."""
-    from app.db.engine import get_standalone_session
+    """Rebuild vector indices from DB documents."""
     from app.services.vector_storage import rebuild_all_worlds_index
 
-    session = await get_standalone_session()
-    async with session:
-        await rebuild_all_worlds_index(session)
+    await rebuild_all_worlds_index()

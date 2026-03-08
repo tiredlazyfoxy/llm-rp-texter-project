@@ -4,15 +4,17 @@ import random
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 
 from app.db import engine as db_engine, users
 from app.models.schemas.auth import (
     AuthStatusResponse,
+    ChangePasswordRequest,
     CreateDBRequest,
     LoginRequest,
     LoginResponse,
 )
+from app.models.user import User
 from app.services import auth as auth_service
 from app.services import database as database_service
 
@@ -103,6 +105,37 @@ async def setup_import(file: UploadFile) -> AuthStatusResponse:
     zip_data = await file.read()
     await database_service.import_database(zip_data)
     return AuthStatusResponse(needs_setup=False)
+
+
+@router.post("/change-password", response_model=LoginResponse)
+async def change_password(
+    body: ChangePasswordRequest,
+    user: User = Depends(auth_service.get_current_user),
+) -> LoginResponse:
+    await _random_delay()
+
+    if body.new_password != body.new_password_confirm:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Passwords do not match")
+
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password too short (min 6)")
+
+    if user.salt is None or user.pwdhash is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User has no password")
+
+    if not auth_service.verify_password(body.old_password, user.salt, user.pwdhash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong current password")
+
+    salt, pwdhash, signing_key = auth_service.create_user_credentials(body.new_password)
+    user.salt = salt
+    user.pwdhash = pwdhash
+    user.jwt_signing_key = signing_key
+    user.last_key_update = datetime.now(timezone.utc)
+
+    await users.update(user)
+
+    token = auth_service.create_token(user)
+    return LoginResponse(token=token)
 
 
 def _record_failure(username: str) -> None:

@@ -19,6 +19,12 @@ export interface CreateDBRequest {
   password_confirm: string;
 }
 
+export interface ChangePasswordRequest {
+  old_password: string;
+  new_password: string;
+  new_password_confirm: string;
+}
+
 export interface AuthStatusResponse {
   needs_setup: boolean;
 }

@@ -1,11 +1,14 @@
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.auth import router as auth_router
 from app.db import engine as db_engine
+from app.db.engine import DbConfig
 from app.services import vector_storage
 
 logging.basicConfig(
@@ -17,10 +20,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _build_config() -> DbConfig | None:
+    """Build DB config from environment variables, or None for defaults."""
+    db_path_env = os.environ.get("LLMRP_DB_PATH")
+    if db_path_env:
+        return DbConfig(db_path=Path(db_path_env))
+    return None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await db_engine.init_engine()
-    await vector_storage.init_vector_store()
+    config = _build_config()
+    await db_engine.init_engine(config)
+
+    # Vector store — co-locate with DB if custom path
+    vector_dir = None
+    if config is not None:
+        vector_dir = config.db_path.parent / "vector"
+    await vector_storage.init_vector_store(vector_dir)
     yield
 
 

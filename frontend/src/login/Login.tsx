@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import {
   MantineProvider,
   Container,
+  Group,
+  Image,
   Title,
   Tabs,
   TextInput,
@@ -12,6 +14,8 @@ import {
   Stack,
 } from "@mantine/core";
 import "@mantine/core/styles.css";
+import "../global.css";
+import { theme } from "../theme";
 import { getAuthStatus, login, setupCreate, setupImport } from "../api/auth";
 
 export function Login() {
@@ -30,6 +34,12 @@ export function Login() {
   const [importFile, setImportFile] = useState<File | null>(null);
 
   useEffect(() => {
+    // If JWT exists, skip login and go straight to the app
+    if (localStorage.getItem("token")) {
+      window.location.href = "/";
+      return;
+    }
+
     getAuthStatus()
       .then((r) => setNeedsSetup(r.needs_setup))
       .catch((e) => setError(e.message));
@@ -87,8 +97,8 @@ export function Login() {
 
   if (needsSetup === null) {
     return (
-      <MantineProvider>
-        <Container size="xs" mt="xl">
+      <MantineProvider theme={theme} defaultColorScheme="dark">
+        <Container size="xs" style={{ display: "flex", alignItems: "center", minHeight: "100vh" }}>
           <Title order={2}>Loading...</Title>
         </Container>
       </MantineProvider>
@@ -96,11 +106,14 @@ export function Login() {
   }
 
   return (
-    <MantineProvider>
-      <Container size="xs" mt="xl">
-        <Title order={1} mb="lg">
-          LLMRP
-        </Title>
+    <MantineProvider theme={theme} defaultColorScheme="dark">
+      <Container size="xs" style={{ display: "flex", flexDirection: "column", justifyContent: "center", minHeight: "100vh" }}>
+        <Group mb="lg" gap="sm">
+          <Image src="/logo.svg" w={48} h={48} />
+          <Title order={1}>
+            LLMRP
+          </Title>
+        </Group>
 
         {error && (
           <Alert color="red" mb="md" onClose={() => setError(null)} withCloseButton>

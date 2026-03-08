@@ -1,5 +1,7 @@
+import { getToken } from "../auth";
 import type {
   AuthStatusResponse,
+  ChangePasswordRequest,
   CreateDBRequest,
   LoginRequest,
   LoginResponse,
@@ -20,6 +22,14 @@ async function request<T>(
     throw new Error(body.detail || res.statusText);
   }
   return res.json() as Promise<T>;
+}
+
+function authHeaders(): HeadersInit {
+  const token = getToken();
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }
 
 export async function getAuthStatus(): Promise<AuthStatusResponse> {
@@ -55,4 +65,14 @@ export async function setupImport(file: File): Promise<AuthStatusResponse> {
     throw new Error(body.detail || res.statusText);
   }
   return res.json() as Promise<AuthStatusResponse>;
+}
+
+export async function changePassword(
+  data: ChangePasswordRequest
+): Promise<LoginResponse> {
+  return request<LoginResponse>("/change-password", {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(data),
+  });
 }

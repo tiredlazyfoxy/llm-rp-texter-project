@@ -11,17 +11,14 @@ from typing import Any
 
 import lancedb
 from pydantic import BaseModel
-from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
-
-from app.models.world import WorldLocation, WorldLoreFact, WorldNPC
 
 logger = logging.getLogger(__name__)
 
 VECTOR_DIM = 384
-_VECTOR_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "vector"
+_DEFAULT_VECTOR_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "vector"
 _TABLE_NAME = "chunks"
 
+_vector_dir: Path = _DEFAULT_VECTOR_DIR
 _db: Any = None
 
 
@@ -88,12 +85,14 @@ def _embed(texts: list[str]) -> list[list[float]]:
 # Public interface
 # ---------------------------------------------------------------------------
 
-async def init_vector_store() -> None:
-    """Initialize LanceDB connection."""
-    global _db
-    _VECTOR_DIR.mkdir(parents=True, exist_ok=True)
-    _db = await asyncio.to_thread(lancedb.connect, str(_VECTOR_DIR))
-    logger.info("Vector store initialized at %s", _VECTOR_DIR)
+async def init_vector_store(vector_dir: Path | None = None) -> None:
+    """Initialize LanceDB connection. Accepts optional path override for tests."""
+    global _db, _vector_dir
+    if vector_dir is not None:
+        _vector_dir = vector_dir
+    _vector_dir.mkdir(parents=True, exist_ok=True)
+    _db = await asyncio.to_thread(lancedb.connect, str(_vector_dir))
+    logger.info("Vector store initialized at %s", _vector_dir)
 
 
 def _get_table() -> Any | None:
@@ -242,11 +241,14 @@ async def search(
     return await asyncio.to_thread(_do)
 
 
-async def rebuild_all_worlds_index(session: AsyncSession) -> None:
+async def rebuild_all_worlds_index() -> None:
     """Rebuild vector indices for all worlds from DB documents.
 
     Called after database import to reconstruct the vector store.
+    Uses the db layer — no raw session access.
     """
+    from app.db import locations, lore_facts, npcs, worlds
+
     # Drop and recreate table
     def _reset_table() -> None:
         if _db is None:
@@ -258,16 +260,18 @@ async def rebuild_all_worlds_index(session: AsyncSession) -> None:
 
     await asyncio.to_thread(_reset_table)
 
-    # Index all locations
-    for loc in (await session.exec(select(WorldLocation))).all():
-        await index_document(loc.world_id, "location", loc.id, loc.content)
+    all_worlds = await worlds.list_all()
+    for world in all_worlds:
+        # Index all locations
+        for loc in await locations.list_by_world(world.id):  # type: ignore[arg-type]
+            await index_document(world.id, "location", loc.id, loc.content)  # type: ignore[arg-type]
 
-    # Index all NPCs
-    for npc in (await session.exec(select(WorldNPC))).all():
-        await index_document(npc.world_id, "npc", npc.id, npc.content)
+        # Index all NPCs
+        for npc in await npcs.list_by_world(world.id):  # type: ignore[arg-type]
+            await index_document(world.id, "npc", npc.id, npc.content)  # type: ignore[arg-type]
 
-    # Index all lore facts
-    for fact in (await session.exec(select(WorldLoreFact))).all():
-        await index_document(fact.world_id, "lore_fact", fact.id, fact.content)
+        # Index all lore facts
+        for fact in await lore_facts.list_by_world(world.id):  # type: ignore[arg-type]
+            await index_document(world.id, "lore_fact", fact.id, fact.content)  # type: ignore[arg-type]
 
     logger.info("Vector index rebuilt for all worlds")

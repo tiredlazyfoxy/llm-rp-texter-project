@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Chat bubble -->
+  <path d="M4 5h24a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-9l-4 4V23H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z" fill="#345278"/>
+  <!-- D20 hexagon -->
+  <g transform="translate(16, 13)">
+    <polygon points="0,-7 6,-3.5 6,3.5 0,7 -6,3.5 -6,-3.5" fill="none" stroke="#c9d3e0" stroke-width="1.2" stroke-linejoin="round"/>
+    <line x1="0" y1="0" x2="0" y2="-7" stroke="#c9d3e0" stroke-width="0.8"/>
+    <line x1="0" y1="0" x2="6" y2="-3.5" stroke="#c9d3e0" stroke-width="0.8"/>
+    <line x1="0" y1="0" x2="6" y2="3.5" stroke="#c9d3e0" stroke-width="0.8"/>
+    <line x1="0" y1="0" x2="0" y2="7" stroke="#c9d3e0" stroke-width="0.8"/>
+    <line x1="0" y1="0" x2="-6" y2="3.5" stroke="#c9d3e0" stroke-width="0.8"/>
+    <line x1="0" y1="0" x2="-6" y2="-3.5" stroke="#c9d3e0" stroke-width="0.8"/>
+  </g>
+</svg>

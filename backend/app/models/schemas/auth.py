@@ -24,5 +24,11 @@ class CreateDBRequest(BaseModel):
     password_confirm: str
 
 
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+    new_password_confirm: str
+
+
 class AuthStatusResponse(BaseModel):
     needs_setup: bool

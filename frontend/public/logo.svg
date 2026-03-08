@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <!-- Chat bubble -->
+  <path d="M16 20h88a8 8 0 0 1 8 8v52a8 8 0 0 1-8 8H72l-16 16V88H16a8 8 0 0 1-8-8V28a8 8 0 0 1 8-8z" fill="#345278" opacity="0.9"/>
+  <!-- D20 icosahedron — simplified flat top-down view -->
+  <g transform="translate(60, 48)">
+    <!-- Outer hexagon -->
+    <polygon points="0,-26 22.5,-13 22.5,13 0,26 -22.5,13 -22.5,-13" fill="none" stroke="#c9d3e0" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- Inner triangles radiating from center -->
+    <line x1="0" y1="0" x2="0" y2="-26" stroke="#c9d3e0" stroke-width="1.8"/>
+    <line x1="0" y1="0" x2="22.5" y2="-13" stroke="#c9d3e0" stroke-width="1.8"/>
+    <line x1="0" y1="0" x2="22.5" y2="13" stroke="#c9d3e0" stroke-width="1.8"/>
+    <line x1="0" y1="0" x2="0" y2="26" stroke="#c9d3e0" stroke-width="1.8"/>
+    <line x1="0" y1="0" x2="-22.5" y2="13" stroke="#c9d3e0" stroke-width="1.8"/>
+    <line x1="0" y1="0" x2="-22.5" y2="-13" stroke="#c9d3e0" stroke-width="1.8"/>
+    <!-- "20" text in center -->
+    <text x="0" y="5" text-anchor="middle" font-family="Arial, sans-serif" font-weight="700" font-size="16" fill="#c9d3e0">20</text>
+  </g>
+</svg>
