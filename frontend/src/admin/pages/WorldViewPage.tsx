@@ -253,9 +253,10 @@ function InfoTab({ world, worldId }: { world: WorldDetail; worldId: string }) {
 interface DocsTabProps {
   worldId: string;
   docTypeFilter?: string;
+  refreshKey?: number;
 }
 
-function DocsTab({ worldId, docTypeFilter }: DocsTabProps) {
+function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
   const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -264,21 +265,24 @@ function DocsTab({ worldId, docTypeFilter }: DocsTabProps) {
   const [uploadType, setUploadType] = useState("location");
   const [reindexing, setReindexing] = useState(false);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (showLoader = true) => {
+    if (showLoader) setLoading(true);
     setError(null);
     try {
       setDocs(await listDocuments(worldId, docTypeFilter));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load documents");
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, [worldId, docTypeFilter]);
 
+  // Initial load with loader, background refreshes without
+  const initialLoad = useRef(true);
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refresh(initialLoad.current);
+    initialLoad.current = false;
+  }, [refresh, refreshKey]);
 
   const handleDelete = async (doc: DocumentItem) => {
     if (!window.confirm(`Delete "${docDisplayName(doc)}"?`)) return;
@@ -450,22 +454,47 @@ function ChatsTab() {
 // Main page
 // ---------------------------------------------------------------------------
 
+const POLL_INTERVAL = 30_000; // refresh data every 30s
+
 export function WorldViewPage() {
   const worldId = extractWorldId();
   const [world, setWorld] = useState<WorldDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string | null>("info");
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
+  const refreshWorld = useCallback(async (showLoader: boolean) => {
     if (!worldId) return;
-    setLoading(true);
+    if (showLoader) setLoading(true);
     setError(null);
-    getWorld(worldId)
-      .then(setWorld)
-      .catch(e => setError(e instanceof Error ? e.message : "Failed to load world"))
-      .finally(() => setLoading(false));
+    try {
+      setWorld(await getWorld(worldId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load world");
+    } finally {
+      if (showLoader) setLoading(false);
+    }
   }, [worldId]);
+
+  // Initial load
+  useEffect(() => { refreshWorld(true); }, [refreshWorld]);
+
+  // Periodic background refresh
+  useEffect(() => {
+    const id = setInterval(() => {
+      refreshWorld(false);
+      setRefreshKey(k => k + 1);
+    }, POLL_INTERVAL);
+    return () => clearInterval(id);
+  }, [refreshWorld]);
+
+  // Re-fetch on tab change
+  const handleTabChange = useCallback((tab: string | null) => {
+    setActiveTab(tab);
+    refreshWorld(false);
+    setRefreshKey(k => k + 1);
+  }, [refreshWorld]);
 
   if (!worldId) return <Container py="md"><Alert color="red">Invalid world ID</Alert></Container>;
   if (loading) return <Container py="md"><Group justify="center" py="xl"><Loader /></Group></Container>;
@@ -484,7 +513,7 @@ export function WorldViewPage() {
         </Group>
       </Group>
 
-      <Tabs value={activeTab} onChange={setActiveTab}>
+      <Tabs value={activeTab} onChange={handleTabChange}>
         <Tabs.List mb="md">
           <Tabs.Tab value="info">Info</Tabs.Tab>
           <Tabs.Tab value="all">All Docs</Tabs.Tab>
@@ -499,19 +528,19 @@ export function WorldViewPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="all">
-          <DocsTab worldId={worldId} />
+          <DocsTab worldId={worldId} refreshKey={refreshKey} />
         </Tabs.Panel>
 
         <Tabs.Panel value="location">
-          <DocsTab worldId={worldId} docTypeFilter="location" />
+          <DocsTab worldId={worldId} docTypeFilter="location" refreshKey={refreshKey} />
         </Tabs.Panel>
 
         <Tabs.Panel value="npc">
-          <DocsTab worldId={worldId} docTypeFilter="npc" />
+          <DocsTab worldId={worldId} docTypeFilter="npc" refreshKey={refreshKey} />
         </Tabs.Panel>
 
         <Tabs.Panel value="lore_fact">
-          <DocsTab worldId={worldId} docTypeFilter="lore_fact" />
+          <DocsTab worldId={worldId} docTypeFilter="lore_fact" refreshKey={refreshKey} />
         </Tabs.Panel>
 
         <Tabs.Panel value="chats">
