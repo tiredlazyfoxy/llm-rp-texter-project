@@ -8,15 +8,11 @@ import {
   Group,
   Loader,
   Menu,
-  Modal,
   Paper,
-  Select,
   Stack,
   Table,
   Tabs,
   Text,
-  TextInput,
-  Textarea,
   Title,
 } from "@mantine/core";
 import {
@@ -104,83 +100,6 @@ function docDisplayName(doc: DocumentItem): string {
     return doc.content.slice(0, 60) + (doc.content.length > 60 ? "..." : "");
   }
   return "(untitled)";
-}
-
-// ---------------------------------------------------------------------------
-// Create document modal
-// ---------------------------------------------------------------------------
-
-interface CreateDocModalProps {
-  opened: boolean;
-  worldId: string;
-  initialDocType?: string;
-  onClose: () => void;
-  onSaved: () => void;
-}
-
-function CreateDocModal({ opened, worldId, initialDocType, onClose, onSaved }: CreateDocModalProps) {
-  const [docType, setDocType] = useState("location");
-  const [name, setName] = useState("");
-  const [content, setContent] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (opened) {
-      setDocType(initialDocType || "location");
-      setName("");
-      setContent("");
-      setError(null);
-    }
-  }, [opened]);
-
-  const handleSubmit = async () => {
-    if (docType !== "lore_fact" && !name.trim()) {
-      setError("Name is required");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      await createDocument(worldId, {
-        doc_type: docType,
-        name: docType !== "lore_fact" ? name.trim() : undefined,
-        content,
-      });
-      onSaved();
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create document");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Modal opened={opened} onClose={onClose} title="Create Document" size="lg">
-      <Stack>
-        {error && <Alert color="red">{error}</Alert>}
-        <Select
-          label="Type"
-          data={[
-            { value: "location", label: "Location" },
-            { value: "npc", label: "NPC" },
-            { value: "lore_fact", label: "Lore Fact" },
-          ]}
-          value={docType}
-          onChange={v => setDocType(v || "location")}
-        />
-        {docType !== "lore_fact" && (
-          <TextInput label="Name" value={name} onChange={e => setName(e.currentTarget.value)} required />
-        )}
-        <Textarea label="Content" value={content} onChange={e => setContent(e.currentTarget.value)} minRows={6} autosize maxRows={16} />
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} loading={loading}>Create</Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -285,7 +204,7 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
   const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadType, setUploadType] = useState("location");
   const [reindexing, setReindexing] = useState(false);
@@ -370,6 +289,25 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
     }
   };
 
+  const handleCreate = async () => {
+    if (!docTypeFilter) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const doc = await createDocument(worldId, {
+        doc_type: docTypeFilter,
+        name: docTypeFilter !== "lore_fact" ? "New " + (DOC_TYPE_LABELS[docTypeFilter] || docTypeFilter) : undefined,
+        content: "",
+      });
+      window.location.href = `/admin/worlds/${worldId}/documents/${doc.id}/edit`;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create document");
+      setCreating(false);
+    }
+  };
+
+  const createLabel = docTypeFilter ? `New ${DOC_TYPE_LABELS[docTypeFilter] || docTypeFilter}` : null;
+
   return (
     <Stack>
       <Group justify="flex-end">
@@ -388,9 +326,11 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
         <Button variant="light" leftSection={<IconDownload size={16} />} onClick={handleDownloadAll}>
           Download All
         </Button>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setCreateOpen(true)}>
-          Create
-        </Button>
+        {createLabel && (
+          <Button leftSection={<IconPlus size={16} />} onClick={handleCreate} loading={creating}>
+            {createLabel}
+          </Button>
+        )}
       </Group>
 
       <input ref={fileInputRef} type="file" accept=".md,.txt" multiple style={{ display: "none" }} onChange={handleFileUpload} />
@@ -459,13 +399,6 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
         </Table>
       )}
 
-      <CreateDocModal
-        opened={createOpen}
-        worldId={worldId}
-        initialDocType={docTypeFilter}
-        onClose={() => setCreateOpen(false)}
-        onSaved={refresh}
-      />
     </Stack>
   );
 }
