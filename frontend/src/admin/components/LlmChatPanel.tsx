@@ -490,11 +490,11 @@ function MessageBubble({
     <Paper
       p="xs"
       withBorder
-      bg={isUser ? "blue.0" : "gray.0"}
+      bg={isUser ? "dark.5" : "dark.6"}
       style={{ alignSelf: isUser ? "flex-end" : "flex-start" }}
     >
       <Stack gap={4}>
-        <Text size="xs" fw={600} c={isUser ? "blue" : "gray"}>
+        <Text size="xs" fw={600} c={isUser ? "steel.3" : "dimmed"}>
           {isUser ? "You" : "Assistant"}
           {msg.isStreaming && " ●"}
         </Text>
