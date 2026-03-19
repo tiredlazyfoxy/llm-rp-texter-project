@@ -59,6 +59,7 @@ export function DocumentEditPage() {
   // Form state
   const [name, setName] = useState("");
   const [content, setContent] = useState("");
+  const [originalContent, setOriginalContent] = useState("");
   const [exits, setExits] = useState<string[]>([]);
 
   // Location options for exits
@@ -79,6 +80,7 @@ export function DocumentEditPage() {
       setDoc(document);
       setName(document.name || "");
       setContent(document.content);
+      setOriginalContent(document.content);
       setExits(document.exits || []);
 
       if (document.doc_type === "npc") {
@@ -209,19 +211,25 @@ export function DocumentEditPage() {
   const allowedOptions = linkOptions.filter(o => !prohibitedSet.has(o.value));
   const prohibitedOptions = linkOptions.filter(o => !allowedSet.has(o.value));
 
+  const isContentDirty = content !== originalContent;
   const linkLabel = doc.doc_type === "npc" ? "Locations" : "NPCs";
 
   return (
     <Container size="lg" py="md">
       <Group justify="space-between" mb="md">
         <Group>
-          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => { history.back(); }}>
+          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => {
+            if (isContentDirty && !window.confirm("You have unsaved changes. Leave anyway?")) return;
+            history.back();
+          }}>
             Back
           </Button>
-          <Title order={3}>{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}: {name || "(untitled)"}</Title>
+          {doc.doc_type !== "lore_fact" && (
+            <Title order={3}>{DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}: {name || "(untitled)"}</Title>
+          )}
           <Badge>{DOC_TYPE_LABELS[doc.doc_type]}</Badge>
         </Group>
-        <Button onClick={handleSave} loading={saving}>Save</Button>
+        {isContentDirty && <Button onClick={handleSave} loading={saving}>Save</Button>}
       </Group>
 
       {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>{error}</Alert>}

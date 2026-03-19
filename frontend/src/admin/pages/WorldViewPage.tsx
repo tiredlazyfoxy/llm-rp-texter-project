@@ -97,7 +97,10 @@ function statusColor(s: string): string {
 function docDisplayName(doc: DocumentItem): string {
   if (doc.name) return doc.name;
   if (doc.doc_type === "lore_fact") {
-    return doc.content.slice(0, 60) + (doc.content.length > 60 ? "..." : "");
+    const firstLine = doc.content.split("\n", 1)[0];
+    const headerMatch = firstLine.match(/^#+\s+(.+)/);
+    if (headerMatch) return headerMatch[1];
+    return firstLine.length > 80 ? firstLine.slice(0, 80) + "..." : firstLine;
   }
   return "(untitled)";
 }

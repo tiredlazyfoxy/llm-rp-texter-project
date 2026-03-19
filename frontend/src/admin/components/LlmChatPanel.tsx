@@ -100,6 +100,7 @@ export function LlmChatPanel({
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const streamMsgRef = useRef<ChatMessage | null>(null);
+  const isAtBottom = useRef(true);
 
   // ---- Load models on mount ------------------------------------------------
 
@@ -139,8 +140,20 @@ export function LlmChatPanel({
     });
   }, []);
 
+  // Track whether user is near the bottom
   useEffect(() => {
-    scrollToBottom();
+    const el = scrollRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      isAtBottom.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
+    };
+    el.addEventListener("scroll", handleScroll);
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Only auto-scroll when at bottom
+  useEffect(() => {
+    if (isAtBottom.current) scrollToBottom();
   }, [messages, scrollToBottom]);
 
   // ---- Streaming -----------------------------------------------------------
@@ -253,6 +266,7 @@ export function LlmChatPanel({
     const updated = [...messages, userMsg];
     setMessages(updated);
     setInput("");
+    isAtBottom.current = true;
     doStream(updated);
   }, [input, isStreaming, selectedModel, messages, doStream]);
 
