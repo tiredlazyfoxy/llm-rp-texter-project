@@ -16,6 +16,7 @@ import {
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import type { DocumentItem } from "../../types/world";
+import { LlmChatPanel } from "../components/LlmChatPanel";
 import {
   createLink,
   deleteLink,
@@ -227,59 +228,69 @@ export function DocumentEditPage() {
       {success && <Alert color="green" mb="md" withCloseButton onClose={() => setSuccess(null)}>{success}</Alert>}
       {embeddingWarning && <Alert color="yellow" mb="md" withCloseButton onClose={() => setEmbeddingWarning(null)}>{embeddingWarning}</Alert>}
 
-      <Paper p="md" mb="md" withBorder>
-        <Stack>
-          {doc.doc_type !== "lore_fact" && (
-            <TextInput label="Name" value={name} onChange={e => setName(e.currentTarget.value)} />
-          )}
-          <Textarea
-            label="Content"
-            value={content}
-            onChange={e => setContent(e.currentTarget.value)}
-            minRows={12}
-            autosize
-            maxRows={30}
-            styles={{ input: { fontFamily: "monospace" } }}
-          />
-          {doc.doc_type === "location" && (
-            <MultiSelect
-              label="Exits (connected locations)"
-              data={locationOptions}
-              value={exits}
-              onChange={setExits}
-              searchable
-              clearable
-            />
-          )}
-        </Stack>
-      </Paper>
-
-      {/* Link multiselects for NPC and Location documents */}
-      {(doc.doc_type === "npc" || doc.doc_type === "location") && (
+      {/* Metadata: name, exits, links */}
+      {doc.doc_type !== "lore_fact" && (
         <Paper p="md" mb="md" withBorder>
           <Stack>
-            <Text fw={600} size="sm">{linkLabel}</Text>
-            <MultiSelect
-              label={`Allowed ${linkLabel}`}
-              description={doc.doc_type === "npc" ? "Locations where this NPC can be found" : "NPCs that can appear at this location"}
-              data={allowedOptions}
-              value={allowedIds}
-              onChange={handleAllowedChange}
-              searchable
-              clearable
-            />
-            <MultiSelect
-              label={`Prohibited ${linkLabel}`}
-              description={doc.doc_type === "npc" ? "Locations where this NPC cannot go" : "NPCs that cannot appear at this location"}
-              data={prohibitedOptions}
-              value={prohibitedIds}
-              onChange={handleProhibitedChange}
-              searchable
-              clearable
-            />
+            <TextInput label="Name" value={name} onChange={e => setName(e.currentTarget.value)} />
+            {doc.doc_type === "location" && (
+              <MultiSelect
+                label="Exits (connected locations)"
+                data={locationOptions}
+                value={exits}
+                onChange={setExits}
+                searchable
+                clearable
+              />
+            )}
+            {(doc.doc_type === "npc" || doc.doc_type === "location") && (
+              <>
+                <Text fw={600} size="sm">{linkLabel}</Text>
+                <MultiSelect
+                  label={`Allowed ${linkLabel}`}
+                  description={doc.doc_type === "npc" ? "Locations where this NPC can be found" : "NPCs that can appear at this location"}
+                  data={allowedOptions}
+                  value={allowedIds}
+                  onChange={handleAllowedChange}
+                  searchable
+                  clearable
+                />
+                <MultiSelect
+                  label={`Prohibited ${linkLabel}`}
+                  description={doc.doc_type === "npc" ? "Locations where this NPC cannot go" : "NPCs that cannot appear at this location"}
+                  data={prohibitedOptions}
+                  value={prohibitedIds}
+                  onChange={handleProhibitedChange}
+                  searchable
+                  clearable
+                />
+              </>
+            )}
           </Stack>
         </Paper>
       )}
+
+      {/* Content editor */}
+      <Textarea
+        label="Content"
+        value={content}
+        onChange={e => setContent(e.currentTarget.value)}
+        minRows={12}
+        autosize
+        maxRows={30}
+        mb="md"
+        styles={{ input: { fontFamily: "monospace" } }}
+      />
+
+      {/* LLM Chat */}
+      <LlmChatPanel
+        currentContent={content}
+        worldId={worldId}
+        docId={docId}
+        docType={doc.doc_type as "location" | "npc" | "lore_fact"}
+        onApply={(text) => setContent(text)}
+        onAppend={(text) => setContent((prev) => prev + "\n\n" + text)}
+      />
     </Container>
   );
 }
