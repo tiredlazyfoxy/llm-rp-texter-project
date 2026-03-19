@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc --noEmit)",
+      "Bash(.venv/Scripts/python -c \"from app.routes.admin.users import router; print\\(''OK -'', len\\(router.routes\\), ''routes''\\)\")",
+      "Bash(.venv/Scripts/python -c \"from app.main import app; print\\(''OK -'', len\\(app.routes\\), ''total routes''\\)\")",
+      "Bash(npx vite build)"
+    ]
+  }
+}
