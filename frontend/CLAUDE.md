@@ -17,10 +17,11 @@ frontend/
       stores/            — ChatStore.ts (MobX)
     admin/               — Admin SPA (served at /admin)
       App.tsx, main.tsx
-      pages/             — WorldsList, WorldEdit, DocumentsList, DocumentEdit, LlmServersPage
-    api/                 — API client functions (chat.ts, llmServers.ts, ...)
+      pages/             — WorldsList, WorldView, WorldEdit, DocumentEdit, LlmServersPage, DbManagementPage
+    utils/               — Shared utilities (formatDate.ts, ...)
+    api/                 — API client functions (chat.ts, llmServers.ts, dbManagement.ts, ...)
     types/               — TypeScript .d.ts interfaces matching backend schemas
-      user.d.ts, chat.d.ts, llmServer.d.ts
+      user.d.ts, chat.d.ts, llmServer.d.ts, dbManagement.d.ts
   index.html             — User SPA entry
   admin/index.html       — Admin SPA entry
   login/index.html       — Login entry
@@ -44,10 +45,12 @@ frontend/
 
 ## Admin SPA Routes
 
-- `/admin/worlds` — WorldsList
-- `/admin/worlds/:id/edit` — WorldEdit
-- `/admin/worlds/:id/documents` — DocumentsList (locations, NPCs, lore)
+- `/admin/worlds` — WorldsListPage
+- `/admin/worlds/:id` — WorldViewPage (tabbed: Info, All Docs, Locations, NPCs, Lore Facts, Chats)
+- `/admin/worlds/:id/edit` — WorldEditPage
+- `/admin/worlds/:id/documents/:docId/edit` — DocumentEditPage
 - `/admin/llm-servers` — LlmServersPage
+- `/admin/database` — DbManagementPage
 
 ## Tech
 
@@ -62,6 +65,12 @@ frontend/
 - **Strict TypeScript — no `any` anywhere**
 - All API types in `src/types/` as `.d.ts` matching backend Pydantic schemas
 - All API calls strongly typed end-to-end
+
+## Date Formatting
+
+- **All dates use `formatDate()` from `src/utils/formatDate.ts`** — no inline date formatting
+- Format: ISO date (`YYYY-MM-DD`), or time only (`HH:MM`) if the date is today
+- Never use locale-dependent formats (no `toLocaleDateString()`)
 
 ## Key Constraints
 

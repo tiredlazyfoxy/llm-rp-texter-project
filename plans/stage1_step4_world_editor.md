@@ -11,19 +11,32 @@ After models (step 2) and LLM management (step 3), this step builds the world ed
 - Route: `/admin/worlds`
 - Table/list of all worlds with name, status, created/modified dates
 - Actions:
+  - **View** world → navigates to world view page
   - **Create** new world
-  - **Edit** existing world → navigates to world edit page
   - **Clone** existing world (deep copy: all documents, stats, rules, links)
   - **Delete** world — admin role only, blocked if world has active chats (show error)
 
 ---
 
-## Page 2: World Edit
+## Page 2: World View (tabbed)
+
+- Route: `/admin/worlds/:id`
+- Tabs: Info, All Docs, Locations, NPCs, Lore Facts, Chats
+
+**Info tab**: Read-only world overview (name, status badge, description, lore, counts, stats summary, rules summary). "Edit World" button links to `/admin/worlds/:id/edit`.
+
+**Document tabs** (All Docs / Locations / NPCs / Lore Facts): Document table filtered by type. Create, upload, download all, reindex world, per-doc edit/download/delete.
+
+**Chats tab**: Read-only list of chats for this world (author, date, message count). Placeholder until Stage 2.
+
+---
+
+## Page 3: World Edit
 
 - Route: `/admin/worlds/:id/edit`
-- Sections (documents are a separate page):
+- Back button → `/admin/worlds/:id` (view page)
 
-**Main fields**: name, description, lore (text area), system prompt (text area), initial message (text area — template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}` placeholders), character template (text area with placeholder hints), status (draft/public/archived)
+**Main fields**: name, description, lore (text area), system prompt (text area), initial message (text area — template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}` placeholders), character template (text area with placeholder hints), status (draft/public/private/archived)
 
 **World stats**: CRUD for world-scoped stat definitions (name, description, type: int/enum/set, default value, constraints)
 
@@ -32,22 +45,6 @@ After models (step 2) and LLM management (step 3), this step builds the world ed
 **Character stats**: CRUD for character-scoped stat definitions (name, description, same types as world stats)
 
 **Rules**: ordered list of rule strings, add/edit/delete/reorder
-
----
-
-## Page 3: Documents Management
-
-- Route: `/admin/worlds/:id/documents`
-- Display: single table with type column (location/npc/lore_fact), filterable by type. Single table for now, but design components so it can be split into separate tabs later if needed. Vector search always spans all types regardless of UI layout.
-- Columns: name (if applicable), type, excerpt, dates
-- Actions:
-  - **Create** new document (select type) → navigates to document edit page
-  - **Edit** document → navigates to document edit page
-  - **Delete** document(s)
-  - **Upload** file(s) — markdown, upsert logic (match by name + type, update existing or create new)
-  - **Download** single document as `.md` file
-  - **Multi-select + download** as zip
-  - **Download all** as zip
 
 ---
 
@@ -95,6 +92,7 @@ After models (step 2) and LLM management (step 3), this step builds the world ed
 | PUT | `/api/admin/worlds/:id` | Update world |
 | POST | `/api/admin/worlds/:id/clone` | Clone world (deep copy) |
 | DELETE | `/api/admin/worlds/:id` | Delete world (admin only, check active chats) |
+| POST | `/api/admin/worlds/:id/reindex` | Reindex all documents for this world |
 
 ### Documents (scoped to world)
 | Method | Path | Purpose |
@@ -126,10 +124,10 @@ After models (step 2) and LLM management (step 3), this step builds the world ed
 
 | Component | Route | Purpose |
 |---|---|---|
-| WorldsList | `/admin/worlds` | List, create, clone, delete worlds |
-| WorldEdit | `/admin/worlds/:id/edit` | Edit world fields, stats, rules |
-| DocumentsList | `/admin/worlds/:id/documents` | Manage documents, upload, download |
-| DocumentEdit | `/admin/worlds/:id/documents/:docId/edit` | Edit document text |
+| WorldsListPage | `/admin/worlds` | List, create, clone, delete worlds |
+| WorldViewPage | `/admin/worlds/:id` | Tabbed view: info, documents, chats |
+| WorldEditPage | `/admin/worlds/:id/edit` | Edit world fields, stats, rules |
+| DocumentEditPage | `/admin/worlds/:id/documents/:docId/edit` | Edit document text |
 
 ---
 
@@ -142,3 +140,31 @@ After models (step 2) and LLM management (step 3), this step builds the world ed
 | Delete world | admin (+ no active chats) |
 | Manage documents | editor |
 | Manage stats/rules | editor |
+| Reindex world | editor |
+
+---
+
+## Embedding Integration
+
+Document saves trigger vector indexing via the configured embedding server.
+
+### Flow
+
+1. Document created/updated -> saved to DB -> `vector_storage.index_document()` called
+2. `index_document()` chunks text, calls `embedding.embed_texts()` using the designated LLM server
+3. Embedded chunks stored in LanceDB
+
+### When No Embedding Server Configured
+
+- Document saves **succeed** -- data is persisted to DB
+- Vector indexing is **skipped** -- `index_document()` returns `IndexResult(indexed=False, warning="...")`
+- API response includes `embedding_warning` so frontend can show a notice
+
+### Reindexing
+
+- Admin triggers full reindex via "Reindex Vectors" button on DB Management page
+- Calls `POST /api/admin/db/reindex-vectors`
+- Required after changing embedding model -- old vectors are incompatible
+- Reindex is **not** automatic on model change -- admin must trigger manually
+- Per-world reindex available via "Reindex" button on world view page
+- Calls `POST /api/admin/worlds/:id/reindex`

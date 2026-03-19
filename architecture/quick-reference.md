@@ -18,7 +18,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **users**: id, username, pwdhash, salt, role (admin/editor/player), jwt_signing_key, last_login, last_key_update
 
-**worlds**: id, name, description, lore, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline (JSON), status (draft/public/archived), created_at, modified_at
+**worlds**: id, name, description, lore, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline (JSON), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at
 
 **world_locations**: id, world_id, name, content (markdown), exits (JSON array of location IDs or None), created_at, modified_at
 
@@ -32,7 +32,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **world_rules**: id, world_id, rule_text (natural language), order
 
-**llm_servers**: id, name, backend_type (llama-swap/openai), base_url, api_key (supports `$ENV_VAR`), enabled_models (JSON array), is_active, created_at, modified_at
+**llm_servers**: id, name, backend_type (llama-swap/openai), base_url, api_key (supports `$ENV_VAR`), enabled_models (JSON array), is_active, is_embedding (bool, at most one server), embedding_model (model ID or null), created_at, modified_at
 
 ### Stage 2 — Chat System
 
@@ -69,11 +69,24 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 | DELETE | `/api/admin/llm-servers/:id` | Delete server | admin |
 | GET | `/api/admin/llm-servers/:id/available-models` | Probe server | admin |
 | PUT | `/api/admin/llm-servers/:id/enabled-models` | Set enabled models | admin |
+| GET | `/api/admin/llm-servers/embedding` | Get embedding config | admin |
+| PUT | `/api/admin/llm-servers/:id/embedding` | Set as embedding server | admin |
+| DELETE | `/api/admin/llm-servers/embedding` | Clear embedding designation | admin |
 | GET | `/api/llm/models` | List all enabled models | editor |
+
+### Admin — DB Management (`/api/admin/db`) — stage1_step6
+
+| Method | Path | Purpose | Role |
+| ------ | ---- | ------- | ---- |
+| GET | `/api/admin/db` | Get status of all tables | admin |
+| POST | `/api/admin/db/tables/:table_name/create` | Create missing table | admin |
+| GET | `/api/admin/db/export` | Export all data (zip) | admin |
+| POST | `/api/admin/db/import` | Import data from zip | admin |
+| POST | `/api/admin/db/reindex-vectors` | Rebuild vector index from all docs | admin |
 
 ### Admin — Worlds (`/api/admin/worlds`) — stage1_step4
 
-CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. (See stage1_step4 plan for full endpoint list.)
+CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. Includes `POST /api/admin/worlds/:id/reindex` for per-world vector reindex. (See stage1_step4 plan for full endpoint list.)
 
 ### Chats (`/api/chats`) — stage2_step3
 
@@ -147,12 +160,16 @@ Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel`
 - **Prompts**: All in `backend/app/services/prompts/` — one documented file per prompt, re-exported via `__init__.py`
 - **LLM client**: PythonLLMClient, `pydantic_to_openai_tool()` for tool schemas
 - **Auth**: Per-user HS256 JWT signing key (no global secret), key rotation on login (30-day interval)
-- **Password**: App-level salt + bcrypt via passlib
+- **Password**: App-level salt + bcrypt (direct `bcrypt` library, not passlib)
 - **API key security**: `$ENV_VAR` syntax in `llm_servers.api_key`, never expose raw key in responses
-- **Import/export**: ZIP of `.jsonl.gz` files, one per table. Must be updated with every model change.
+- **Import/export**: ZIP of `.jsonl.gz` files, one per table. Streaming callback export, batched upsert import. Must be updated with every model change.
+- **DB layer**: Session-free, namespace modules — `from app.db import users, worlds` then `await users.get_by_id(id)`
+- **Services layer**: Namespace imports — `from app.services import auth as auth_service`
 
 ## Implementation Progress
 
-- Boilerplate set up (FastAPI app, Vite multi-page, Docker configs)
-- No features implemented yet
-- Next: Stage 1 Step 1 (Login, User Model, DB Bootstrap)
+- Stage 1 Step 1: Login, User Model, DB Bootstrap — done
+- Stage 1 Step 2: World models, vector storage, import/export — done
+- Stage 1 Step 3: LLM Servers CRUD + embedding server designation — done
+- Stage 1 Step 6: DB Management admin page — done
+- DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export)

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <!-- Paper page (behind, tilted slightly) -->
+  <g transform="translate(68, 58) rotate(8)">
+    <rect x="-22" y="-30" width="44" height="60" rx="3" fill="none" stroke="#8a9db6" stroke-width="2.2"/>
+    <!-- Text lines on page -->
+    <line x1="-14" y1="-18" x2="14" y2="-18" stroke="#8a9db6" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="-14" y1="-10" x2="10" y2="-10" stroke="#8a9db6" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="-14" y1="-2" x2="12" y2="-2" stroke="#8a9db6" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="-14" y1="6" x2="8" y2="6" stroke="#8a9db6" stroke-width="1.8" stroke-linecap="round"/>
+    <!-- Folded corner -->
+    <path d="M22,-30 L22,-18 L10,-30 Z" fill="#6680a0" opacity="0.5"/>
+  </g>
+  <!-- Robot head -->
+  <g transform="translate(48, 54)">
+    <!-- Antenna -->
+    <line x1="0" y1="-32" x2="0" y2="-24" stroke="#b4c0d0" stroke-width="2.2" stroke-linecap="round"/>
+    <circle cx="0" cy="-34" r="3" fill="#6680a0"/>
+    <!-- Head shape (rounded rect) -->
+    <rect x="-24" y="-24" width="48" height="42" rx="8" fill="none" stroke="#b4c0d0" stroke-width="2.5"/>
+    <!-- Eyes (glowing) -->
+    <rect x="-15" y="-12" width="10" height="7" rx="2" fill="#6680a0"/>
+    <rect x="5" y="-12" width="10" height="7" rx="2" fill="#6680a0"/>
+    <!-- Mouth (grid/vent) -->
+    <line x1="-12" y1="4" x2="12" y2="4" stroke="#8a9db6" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="-10" y1="9" x2="10" y2="9" stroke="#8a9db6" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="-8" y1="14" x2="8" y2="14" stroke="#8a9db6" stroke-width="1.8" stroke-linecap="round"/>
+    <!-- Ear bolts -->
+    <circle cx="-27" cy="-4" r="3.5" fill="none" stroke="#8a9db6" stroke-width="1.8"/>
+    <circle cx="27" cy="-4" r="3.5" fill="none" stroke="#8a9db6" stroke-width="1.8"/>
+  </g>
+</svg>

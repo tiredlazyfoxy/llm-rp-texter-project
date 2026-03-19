@@ -9,15 +9,28 @@ backend/
   app/
     main.py              — FastAPI app, CORS, router mounting
     models/              — SQLModel DB models + Pydantic API schemas
-      schemas/           — Pydantic request/response schemas (auth.py, chat.py)
+      schemas/           — Pydantic request/response schemas (auth.py, chat.py, db_management.py)
       user.py, world.py, llm_server.py, chat_session.py, chat_message.py, ...
-    routes/              — API route handlers
-      auth.py, chat.py, llm_servers.py, admin/...
-    services/            — Business logic
+    routes/              — API route handlers (HTTP layer only)
+      auth.py, chat.py, llm_servers.py, admin/db_management.py, ...
+    db/                  — Data access layer (DB-agnostic interface)
+      engine.py          — Async engine, injectable config, DDL, state flags
+      users.py           — User CRUD (session-free, import as `from app.db import users`)
+      worlds.py          — World CRUD
+      locations.py       — WorldLocation CRUD
+      npcs.py            — WorldNPC CRUD
+      lore_facts.py      — WorldLoreFact CRUD
+      npc_links.py       — NPCLocationLink CRUD
+      stat_defs.py       — WorldStatDefinition CRUD
+      rules.py           — WorldRule CRUD
+      import_export_queries.py — export_table(), upsert_batch(), vector rebuild
+      db_management.py         — DB introspection (table list, columns, counts, create)
+    services/            — Business logic (no direct DB queries, no session creation)
       snowflake.py       — Snowflake ID generator (int64)
-      database.py        — SQLModel async engine, DB init
+      database.py        — DB setup orchestration (create/import)
       auth.py            — JWT create/verify, password hashing
       db_import_export.py — gzipped JSONL per table
+      db_management.py    — DB introspection service (status, schema drift, create tables)
       prompts/           — LLM prompt package (one documented file per prompt)
       chat_tools.py      — Agent tools, NPC logic, stat parsing
       chat_service.py    — Chat generation, regeneration, rewind
@@ -30,7 +43,7 @@ backend/
 - **Auth** (`/api/auth`) — Login, setup, JWT
 - **Chats** (`/api/chats`) — User chat sessions, SSE streaming
 - **LLM** (`/api/llm`) — Enabled models list (for editor/player)
-- **Admin** (`/api/admin`) — LLM servers CRUD, world management
+- **Admin** (`/api/admin`) — LLM servers CRUD, world management, DB management
 
 ## Setup
 
@@ -38,6 +51,21 @@ backend/
 - Dependencies managed via `pyproject.toml`
 - Dev server: `uvicorn app.main:app --port 8085 --reload`
 - SQLite DB in `backend/data/` (dev), Docker volume `./data/` (prod)
+
+## Layer Separation
+
+- **`routes/`** — HTTP layer only: parse requests, call services, format responses. No business logic, no direct DB queries.
+- **`services/`** — Business logic: authentication, validation, orchestration. No `session`, `AsyncSession`, `select()`, `session.exec()`, or `session.add()`.
+- **`db/`** — DB-agnostic data access interface. Exposes **business-level functions only** — no sessions, connections, or ORM types leak out. All SQL/ORM internals are hidden. The entire `db/` layer could be replaced with Mongo/Redis/file without changing services or routes. Config is injectable via `DbConfig` for tests and environments.
+- **`models/`** — SQLModel table definitions + Pydantic schemas. No logic.
+
+**Rules:**
+- Routes depend on services and db
+- Services depend on db (never import from routes)
+- DB layer depends only on models (never import from services or routes)
+- **No `session`, `AsyncSession`, or connection objects outside `db/`**
+- **No `select()`, `session.exec()`, `session.add()` outside `db/`**
+- Import/export serialization (`db_import_export.py`) stays in `services/` — it's format logic, not DB logic
 
 ## Data Modeling — Strict Typing
 
@@ -58,7 +86,7 @@ backend/
 | `npc_location_links` | stage1_step2 | npc_id, location_id, link_type (present/excluded) |
 | `world_stat_definitions` | stage1_step2 | world_id, name, scope, stat_type, constraints |
 | `world_rules` | stage1_step2 | world_id, rule_text, order |
-| `llm_servers` | stage1_step3 | name, backend_type, base_url, enabled_models |
+| `llm_servers` | stage1_step3 | name, backend_type, base_url, enabled_models, is_embedding, embedding_model |
 | `chat_sessions` | stage2_step1 | user_id, world_id, character_stats, world_stats, current_turn |
 | `chat_messages` | stage2_step1 | session_id, role, content, turn_number, tool_calls, is_active_variant |
 | `chat_state_snapshots` | stage2_step1 | session_id, turn_number, character_stats, world_stats |
@@ -69,6 +97,10 @@ backend/
 - **Every model must have JSONL import/export** — gzipped `.jsonl.gz` in a zip
 - Extend `db_import_export.py` whenever a model is added/changed
 - Vector index (LanceDB) is rebuilt from source documents on import, not exported
+- **Streaming**: export uses callback per row; import reads JSONL line-by-line, sends batched upserts
+- **No in-memory bulk load** — never decode entire file to array
+- **UPSERT semantics** — import is idempotent (can re-import without clearing)
+- `init_db()` creates/reshapes tables before import
 
 ## LLM Client
 

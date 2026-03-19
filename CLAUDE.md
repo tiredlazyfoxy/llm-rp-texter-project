@@ -72,6 +72,15 @@ See `architecture/` for full documentation.
 - **LLM client**: PythonLLMClient — tool schemas via `pydantic_to_openai_tool()`
 - **Logging**: Python `logging`, INFO for requests, DEBUG for full flow
 
+## Backend Layer Separation
+
+- **`routes/`** — HTTP only (parse request, call service, return response)
+- **`services/`** — Business logic (no direct DB queries, no session creation)
+- **`db/`** — DB-agnostic data access (session-free public API — all sessions managed internally)
+- **No `session`, `AsyncSession`, or connection objects outside `db/`**
+- **Import style**: namespace modules — `from app.db import users, worlds` then `await users.get_by_id(id)`
+- Services import as: `from app.services import auth as auth_service` then `auth_service.create_token(user)`
+
 ## Workflow: COLLECT Mode
 
 - When the user starts a chat with **COLLECT** or writes **COLLECT** mid-conversation, enter collect mode
