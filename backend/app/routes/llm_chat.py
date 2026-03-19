@@ -57,19 +57,24 @@ async def _run_with_tools(
     # chat_with_tools doesn't support enable_thinking — strip it
     tools_options = {k: v for k, v in options.items() if k != "enable_thinking"}
 
+    async def on_delta(delta: str) -> None:
+        content_parts.append(delta)
+        await queue.put(_sse_event("token", {"content": delta}))
+
     async with client:
-        final = await client.chat_with_tools(
+        await client.chat_with_tools(
             messages,
             tools_definitions=ADMIN_TOOL_DEFINITIONS,
             tools=tools,
             system=system_prompt,
             options=tools_options,
             max_loops=15,
+            stream=True,
+            on_delta=on_delta,
         )
 
-    content_parts.append(final)
-    await queue.put(_sse_event("token", {"content": final}))
-    await queue.put(_sse_event("done", {"content": final}))
+    full_content = "".join(content_parts)
+    await queue.put(_sse_event("done", {"content": full_content}))
 
 
 @router.post("/chat")
