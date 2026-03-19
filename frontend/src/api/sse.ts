@@ -68,6 +68,12 @@ export function streamPost(
             case "thinking_done":
               handlers.onThinkingDone?.();
               break;
+            case "tool_call_start":
+              handlers.onToolCallStart?.(parsed.tool_name, parsed.arguments);
+              break;
+            case "tool_call_result":
+              handlers.onToolCallResult?.(parsed.tool_name, parsed.result);
+              break;
             case "done":
               handlers.onDone?.(parsed.content);
               break;

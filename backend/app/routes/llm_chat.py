@@ -1,6 +1,7 @@
 """LLM chat route — SSE streaming endpoint for the document editor."""
 
 import asyncio
+import functools
 import json
 import logging
 
@@ -11,6 +12,8 @@ from app.db import lore_facts as lore_facts_db
 from app.db import worlds as worlds_db
 from app.models.schemas.llm_chat import LlmChatRequest
 from app.models.user import User, UserRole
+from llm.message import LLMMessage
+
 from app.services.auth import require_role
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts import build_document_editor_system
@@ -26,6 +29,49 @@ def _sse_event(event_type: str, data: dict) -> str:
     return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
 
 
+async def _run_with_tools(
+    client,
+    messages: list[LLMMessage],
+    system_prompt: str,
+    options: dict,
+    queue: asyncio.Queue,
+    content_parts: list[str],
+    world_id: int,
+) -> None:
+    """Tool-enabled agentic loop: wraps each tool to emit SSE events, then calls chat_with_tools."""
+    from app.services.admin_tools import ADMIN_TOOL_DEFINITIONS, get_admin_tools
+
+    base_tools = get_admin_tools(world_id)
+
+    def _make_wrapper(name: str, impl):
+        @functools.wraps(impl)
+        async def wrapper(**kwargs):
+            await queue.put(_sse_event("tool_call_start", {"tool_name": name, "arguments": kwargs}))
+            result = await impl(**kwargs)
+            await queue.put(_sse_event("tool_call_result", {"tool_name": name, "result": result}))
+            return result
+        return wrapper
+
+    tools = {name: _make_wrapper(name, fn) for name, fn in base_tools.items()}
+
+    # chat_with_tools doesn't support enable_thinking — strip it
+    tools_options = {k: v for k, v in options.items() if k != "enable_thinking"}
+
+    async with client:
+        final = await client.chat_with_tools(
+            messages,
+            tools_definitions=ADMIN_TOOL_DEFINITIONS,
+            tools=tools,
+            system=system_prompt,
+            options=tools_options,
+            max_loops=15,
+        )
+
+    content_parts.append(final)
+    await queue.put(_sse_event("token", {"content": final}))
+    await queue.put(_sse_event("done", {"content": final}))
+
+
 @router.post("/chat")
 async def chat_stream(
     req: LlmChatRequest,
@@ -36,15 +82,19 @@ async def chat_stream(
     if world is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found")
 
-    # Build lore: world.lore + all lore_fact documents
-    lore_parts: list[str] = []
-    if world.lore:
-        lore_parts.append(world.lore)
-    facts = await lore_facts_db.list_by_world(int(req.world_id))
-    for fact in facts:
-        if fact.content:
-            lore_parts.append(fact.content)
-    world_lore = "\n\n".join(lore_parts)
+    # When tools are enabled the LLM fetches lore actively via search/get_lore.
+    # Only inject full lore context in the no-tools (plain streaming) path.
+    if req.enable_tools:
+        world_lore = ""
+    else:
+        lore_parts: list[str] = []
+        if world.lore:
+            lore_parts.append(world.lore)
+        facts = await lore_facts_db.list_by_world(int(req.world_id))
+        for fact in facts:
+            if fact.content:
+                lore_parts.append(fact.content)
+        world_lore = "\n\n".join(lore_parts)
 
     system_prompt = build_document_editor_system(
         doc_type=req.doc_type,
@@ -52,11 +102,12 @@ async def chat_stream(
         world_description=world.description,
         world_lore=world_lore,
         current_content=req.current_content,
+        enable_tools=req.enable_tools,
     )
 
     client = await get_llm_client_for_model(req.model_id)
 
-    messages: list[dict[str, str]] = [
+    messages: list[LLMMessage] = [
         {"role": m.role, "content": m.content} for m in req.messages
     ]
 
@@ -111,16 +162,19 @@ async def chat_stream(
 
         async def run_llm() -> None:
             try:
-                async with client:
-                    await client.chat(
-                        messages,
-                        system=system_prompt,
-                        options=options,
-                        stream=True,
-                        on_delta=on_delta,
-                    )
-                full_content = "".join(content_parts)
-                await queue.put(_sse_event("done", {"content": full_content}))
+                if req.enable_tools:
+                    await _run_with_tools(client, messages, system_prompt, options, queue, content_parts, int(req.world_id))
+                else:
+                    async with client:
+                        await client.chat(
+                            messages,
+                            system=system_prompt,
+                            options=options,
+                            stream=True,
+                            on_delta=on_delta,
+                        )
+                    full_content = "".join(content_parts)
+                    await queue.put(_sse_event("done", {"content": full_content}))
             except Exception as exc:
                 logger.exception("LLM chat stream error")
                 await queue.put(_sse_event("error", {"message": str(exc)}))

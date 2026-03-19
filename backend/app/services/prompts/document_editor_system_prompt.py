@@ -49,6 +49,7 @@ def build_document_editor_system(
     world_description: str,
     world_lore: str,
     current_content: str,
+    enable_tools: bool = False,
 ) -> str:
     """Build the system prompt for the document editor LLM chat."""
     label = _DOC_TYPE_LABELS.get(doc_type, doc_type)
@@ -77,6 +78,27 @@ def build_document_editor_system(
         sections.append(
             "The document is currently empty. The editor will ask you to help "
             "draft initial content."
+        )
+
+    if enable_tools:
+        sections.append(
+            "## How to Use Your Tools\n\n"
+            "World lore is NOT included in this prompt — you must look it up actively.\n"
+            "You have up to 15 tool call rounds. Use them aggressively.\n\n"
+            "**Strategy — research first, write last:**\n"
+            "1. Run multiple searches before writing anything. "
+            "Cast a wide net: try different queries, different source types.\n"
+            "2. When a result mentions something relevant (a name, place, faction, event), "
+            "immediately search for that too. Follow the threads.\n"
+            "3. Cross-reference: if search() returns a location, also get_lore() on related topics.\n"
+            "4. Only write the document after you feel you have a complete picture.\n\n"
+            "**Tools:**\n"
+            "- **search(query, source_type?)** — Semantic search across all world documents. "
+            "source_type: 'location', 'npc', 'lore_fact', or omit for all.\n"
+            "- **get_lore(query)** — Targeted lore fact lookup. "
+            "Use for specific background details, history, factions, rules.\n"
+            "- **web_search(query)** — Real-world reference (history, architecture, mythology, etc.).\n\n"
+            "Do not invent lore. If something is not in the world documents, say so or search the web."
         )
 
     return "\n\n".join(sections)

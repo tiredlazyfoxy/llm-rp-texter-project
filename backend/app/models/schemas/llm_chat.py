@@ -15,6 +15,7 @@ class LlmChatRequest(BaseModel):
     top_p: float = 1.0
     repetition_penalty: float = 1.0
     enable_thinking: bool = False
+    enable_tools: bool = False
     current_content: str
     world_id: str
     doc_id: str

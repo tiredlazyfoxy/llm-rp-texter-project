@@ -30,6 +30,7 @@ import type {
   EditorLlmParams,
   LlmChatRequest,
   SSEHandlers,
+  ToolCallEntry,
 } from "../../types/llmChat";
 import type { EnabledModelInfo } from "../../types/llmServer";
 import { fetchEnabledModels, streamChat } from "../../api/llmChat";
@@ -46,6 +47,7 @@ const DEFAULT_PARAMS: EditorLlmParams = {
   top_p: 1.0,
   repetition_penalty: 1.0,
   enable_thinking: false,
+  enable_tools: false,
 };
 
 function loadParams(): EditorLlmParams {
@@ -185,6 +187,7 @@ export function LlmChatPanel({
         top_p: params.top_p,
         repetition_penalty: params.repetition_penalty,
         enable_thinking: params.enable_thinking,
+        enable_tools: params.enable_tools,
         current_content: currentContent,
         world_id: worldId,
         doc_id: docId,
@@ -215,6 +218,34 @@ export function LlmChatPanel({
         },
         onThinkingDone: () => {
           // No-op — thinking content is already accumulated
+        },
+        onToolCallStart: (tool_name, args) => {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (!last || last.role !== "assistant") return prev;
+            const entry: ToolCallEntry = { tool_name, arguments: args };
+            const updated = {
+              ...last,
+              toolCalls: [...(last.toolCalls ?? []), entry],
+            };
+            streamMsgRef.current = updated;
+            return [...prev.slice(0, -1), updated];
+          });
+        },
+        onToolCallResult: (tool_name, result) => {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (!last || last.role !== "assistant") return prev;
+            const calls = [...(last.toolCalls ?? [])];
+            // Attach result to the last call with this tool_name that has no result yet
+            const idx = calls.findLastIndex(
+              (c) => c.tool_name === tool_name && c.result === undefined,
+            );
+            if (idx !== -1) calls[idx] = { ...calls[idx], result };
+            const updated = { ...last, toolCalls: calls };
+            streamMsgRef.current = updated;
+            return [...prev.slice(0, -1), updated];
+          });
         },
         onDone: (content) => {
           setMessages((prev) => {
@@ -299,6 +330,20 @@ export function LlmChatPanel({
       return withoutLast;
     });
   }, [isStreaming, doStream]);
+
+  const handleRegenerateMsg = useCallback(
+    (id: string) => {
+      if (isStreaming) return;
+      setMessages((prev) => {
+        const idx = prev.findIndex((m) => m.id === id);
+        if (idx === -1) return prev;
+        const truncated = prev.slice(0, idx);
+        setTimeout(() => doStream(truncated), 0);
+        return truncated;
+      });
+    },
+    [isStreaming, doStream],
+  );
 
   const handleClear = useCallback(() => {
     if (isStreaming) handleStop();
@@ -389,12 +434,18 @@ export function LlmChatPanel({
               <Switch
                 label="Thinking mode"
                 checked={params.enable_thinking}
-                onChange={(e) =>
-                  setParams((p) => ({
-                    ...p,
-                    enable_thinking: e.currentTarget.checked,
-                  }))
-                }
+                onChange={(e) => {
+                  const checked = e.currentTarget.checked;
+                  setParams((p) => ({ ...p, enable_thinking: checked }));
+                }}
+              />
+              <Switch
+                label="Use tools (search, lore, web)"
+                checked={params.enable_tools}
+                onChange={(e) => {
+                  const checked = e.currentTarget.checked;
+                  setParams((p) => ({ ...p, enable_tools: checked }));
+                }}
               />
             </Stack>
           </Paper>
@@ -420,6 +471,7 @@ export function LlmChatPanel({
                 onApply={onApply}
                 onAppend={onAppend}
                 onDelete={handleDelete}
+                onRegenerate={handleRegenerateMsg}
               />
             ))}
           </Stack>
@@ -491,11 +543,13 @@ function MessageBubble({
   onApply,
   onAppend,
   onDelete,
+  onRegenerate,
 }: {
   msg: ChatMessage;
   onApply: (content: string) => void;
   onAppend: (content: string) => void;
   onDelete: (id: string) => void;
+  onRegenerate: (id: string) => void;
 }) {
   const [thinkingOpen, setThinkingOpen] = useState(false);
   const isUser = msg.role === "user";
@@ -543,6 +597,15 @@ function MessageBubble({
           </>
         )}
 
+        {/* Tool calls — one row per call, result collapsed by default */}
+        {msg.toolCalls && msg.toolCalls.length > 0 && (
+          <Stack gap={4}>
+            {msg.toolCalls.map((tc, i) => (
+              <ToolCallRow key={i} tc={tc} />
+            ))}
+          </Stack>
+        )}
+
         {/* Main content */}
         <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
           {msg.content}
@@ -572,6 +635,15 @@ function MessageBubble({
             </ActionIcon>
             <ActionIcon
               variant="subtle"
+              color="grape"
+              size="sm"
+              title="Regenerate from here"
+              onClick={() => onRegenerate(msg.id)}
+            >
+              <IconRefresh size={14} />
+            </ActionIcon>
+            <ActionIcon
+              variant="subtle"
               color="red"
               size="sm"
               title="Delete message"
@@ -582,6 +654,52 @@ function MessageBubble({
           </Group>
         )}
       </Stack>
+    </Paper>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ToolCallRow sub-component
+// ---------------------------------------------------------------------------
+
+function formatArgs(args: Record<string, unknown>): string {
+  return Object.entries(args)
+    .filter(([, v]) => v !== null && v !== undefined)
+    .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+    .join(", ");
+}
+
+function ToolCallRow({ tc }: { tc: ToolCallEntry }) {
+  const [open, setOpen] = useState(false);
+  const pending = tc.result === undefined;
+
+  return (
+    <Paper p={6} withBorder bg="dark.7">
+      <Group
+        gap={4}
+        style={{ cursor: pending ? "default" : "pointer" }}
+        onClick={() => !pending && setOpen((o) => !o)}
+      >
+        {!pending && (
+          open ? <IconChevronDown size={11} /> : <IconChevronRight size={11} />
+        )}
+        <Text size="xs" c="teal.3" fw={600} style={{ fontFamily: "monospace" }}>
+          {tc.tool_name}({formatArgs(tc.arguments)})
+        </Text>
+        {pending && (
+          <Text size="xs" c="dimmed" fs="italic">running…</Text>
+        )}
+      </Group>
+      <Collapse in={open}>
+        <Text
+          size="xs"
+          c="dimmed"
+          mt={4}
+          style={{ whiteSpace: "pre-wrap", maxHeight: 160, overflow: "auto" }}
+        >
+          {tc.result}
+        </Text>
+      </Collapse>
     </Paper>
   );
 }
