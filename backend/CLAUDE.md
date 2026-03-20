@@ -32,8 +32,9 @@ backend/
       db_import_export.py — gzipped JSONL per table
       db_management.py    — DB introspection service (status, schema drift, create tables)
       prompts/           — LLM prompt package (one documented file per prompt)
-      chat_tools.py      — Agent tools, NPC logic, stat parsing
-      chat_service.py    — Chat generation, regeneration, rewind
+      chat_tools.py         — Agent tools, NPC logic, stat parsing
+      chat_service.py       — Chat CRUD (sessions, messages, memories, rewind)
+      chat_agent_service.py — LLM generation, SSE streaming, stat updates
   pyproject.toml         — Dependencies
   data/                  — SQLite DB location (dev)
 ```

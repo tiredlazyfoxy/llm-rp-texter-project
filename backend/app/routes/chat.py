@@ -21,6 +21,7 @@ from app.models.schemas.chat import (
 )
 from app.models.user import User, UserRole
 from app.services import chat_service
+from app.services import chat_agent_service
 from app.services.auth import require_role
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,7 @@ async def send_message(
     req: SendMessageRequest,
     caller: User = Depends(_require_player),
 ) -> StreamingResponse:
-    generator = await chat_service.generate_response(int(chat_id), caller.id, req.content)
+    generator = await chat_agent_service.generate_response(int(chat_id), caller.id, req.content)
     return StreamingResponse(generator, media_type="text/event-stream")
 
 
@@ -108,7 +109,7 @@ async def regenerate(
     chat_id: str,
     caller: User = Depends(_require_player),
 ) -> StreamingResponse:
-    generator = await chat_service.regenerate_response(int(chat_id), caller.id)
+    generator = await chat_agent_service.regenerate_response(int(chat_id), caller.id)
     return StreamingResponse(generator, media_type="text/event-stream")
 
 
