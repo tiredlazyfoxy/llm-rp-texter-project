@@ -1,6 +1,6 @@
 """World lore fact data access. Session-free public API."""
 
-from sqlmodel import select
+from sqlmodel import select, asc
 
 from app.db.engine import get_standalone_session
 from app.models.world import WorldLoreFact
@@ -10,6 +10,17 @@ async def get_by_id(fact_id: int) -> WorldLoreFact | None:
     session = await get_standalone_session()
     async with session:
         return (await session.exec(select(WorldLoreFact).where(WorldLoreFact.id == fact_id))).one_or_none()
+
+
+async def list_injected_by_world(world_id: int) -> list[WorldLoreFact]:
+    """Return is_injected=True facts sorted by weight ascending."""
+    session = await get_standalone_session()
+    async with session:
+        return list((await session.exec(
+            select(WorldLoreFact)
+            .where(WorldLoreFact.world_id == world_id, WorldLoreFact.is_injected == True)  # noqa: E712
+            .order_by(asc(WorldLoreFact.weight))
+        )).all())
 
 
 async def list_by_world(world_id: int) -> list[WorldLoreFact]:

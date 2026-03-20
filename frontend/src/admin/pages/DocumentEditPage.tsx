@@ -7,8 +7,10 @@ import {
   Group,
   Loader,
   MultiSelect,
+  NumberInput,
   Paper,
   Stack,
+  Switch,
   Text,
   TextInput,
   Textarea,
@@ -61,6 +63,8 @@ export function DocumentEditPage() {
   const [content, setContent] = useState("");
   const [originalContent, setOriginalContent] = useState("");
   const [exits, setExits] = useState<string[]>([]);
+  const [isInjected, setIsInjected] = useState(false);
+  const [weight, setWeight] = useState(0);
 
   // Location options for exits
   const [locationOptions, setLocationOptions] = useState<{ value: string; label: string }[]>([]);
@@ -82,6 +86,8 @@ export function DocumentEditPage() {
       setContent(document.content);
       setOriginalContent(document.content);
       setExits(document.exits || []);
+      setIsInjected(document.is_injected);
+      setWeight(document.weight);
 
       if (document.doc_type === "npc") {
         // Load all locations for link multiselects
@@ -172,6 +178,8 @@ export function DocumentEditPage() {
         name: doc.doc_type !== "lore_fact" ? name : undefined,
         content,
         exits: doc.doc_type === "location" ? exits : undefined,
+        is_injected: doc.doc_type === "lore_fact" ? isInjected : undefined,
+        weight: doc.doc_type === "lore_fact" ? weight : undefined,
       });
       if (result.embedding_warning) {
         setEmbeddingWarning(result.embedding_warning);
@@ -211,7 +219,8 @@ export function DocumentEditPage() {
   const allowedOptions = linkOptions.filter(o => !prohibitedSet.has(o.value));
   const prohibitedOptions = linkOptions.filter(o => !allowedSet.has(o.value));
 
-  const isContentDirty = content !== originalContent;
+  const isContentDirty = content !== originalContent
+    || (doc?.doc_type === "lore_fact" && (isInjected !== doc.is_injected || weight !== doc.weight));
   const linkLabel = doc.doc_type === "npc" ? "Locations" : "NPCs";
 
   return (
@@ -235,6 +244,30 @@ export function DocumentEditPage() {
       {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>{error}</Alert>}
       {success && <Alert color="green" mb="md" withCloseButton onClose={() => setSuccess(null)}>{success}</Alert>}
       {embeddingWarning && <Alert color="yellow" mb="md" withCloseButton onClose={() => setEmbeddingWarning(null)}>{embeddingWarning}</Alert>}
+
+      {/* Lore fact metadata: inject toggle + weight */}
+      {doc.doc_type === "lore_fact" && (
+        <Paper p="md" mb="md" withBorder>
+          <Stack gap="sm">
+            <Switch
+              label="Always inject into context"
+              description="When enabled, this lore fact is always included in the system prompt (even with tools mode). Excluded from tool search results."
+              checked={isInjected}
+              onChange={e => setIsInjected(e.currentTarget.checked)}
+            />
+            {isInjected && (
+              <NumberInput
+                label="Injection order"
+                description="Lower numbers appear first in the injected context."
+                value={weight}
+                onChange={v => setWeight(typeof v === "number" ? v : 0)}
+                min={0}
+                w={160}
+              />
+            )}
+          </Stack>
+        </Paper>
+      )}
 
       {/* Metadata: name, exits, links */}
       {doc.doc_type !== "lore_fact" && (

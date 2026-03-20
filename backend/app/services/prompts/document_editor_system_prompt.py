@@ -50,6 +50,7 @@ def build_document_editor_system(
     world_lore: str,
     current_content: str,
     enable_tools: bool = False,
+    injected_lore: str = "",
 ) -> str:
     """Build the system prompt for the document editor LLM chat."""
     label = _DOC_TYPE_LABELS.get(doc_type, doc_type)
@@ -64,6 +65,10 @@ def build_document_editor_system(
 
     if world_description:
         sections.append(f"## World Description\n\n{world_description}")
+
+    # Always-injected lore facts appear regardless of tools mode
+    if injected_lore:
+        sections.append(f"## World Context\n\n{injected_lore}")
 
     if world_lore:
         sections.append(f"## World Lore\n\n{world_lore}")

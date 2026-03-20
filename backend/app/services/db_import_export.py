@@ -177,6 +177,8 @@ def _lore_fact_to_dict(fact: WorldLoreFact) -> dict:
         "id": fact.id,
         "world_id": fact.world_id,
         "content": fact.content,
+        "is_injected": fact.is_injected,
+        "weight": fact.weight,
         "created_at": _serialize_datetime(fact.created_at),
         "modified_at": _serialize_datetime(fact.modified_at),
     }
@@ -187,6 +189,8 @@ def _dict_to_lore_fact(d: dict) -> WorldLoreFact:
         id=d["id"],
         world_id=d["world_id"],
         content=d.get("content", ""),
+        is_injected=d.get("is_injected", False),
+        weight=d.get("weight", 0),
         created_at=_parse_datetime(d.get("created_at")),
         modified_at=_parse_datetime(d.get("modified_at")),
     )

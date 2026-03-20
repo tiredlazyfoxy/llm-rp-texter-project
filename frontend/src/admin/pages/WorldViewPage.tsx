@@ -20,6 +20,7 @@ import {
   IconDots,
   IconDownload,
   IconEdit,
+  IconPin,
   IconPlus,
   IconRefresh,
   IconTrash,
@@ -344,63 +345,73 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
         <Group justify="center" py="xl"><Loader /></Group>
       ) : docs.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No documents yet.</Text>
-      ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Name</Table.Th>
-              {!docTypeFilter && <Table.Th>Type</Table.Th>}
-              <Table.Th>Modified</Table.Th>
-              <Table.Th w={60} />
+      ) : (() => {
+        const isLoreTab = docTypeFilter === "lore_fact";
+        const injected = isLoreTab ? [...docs].filter(d => d.is_injected).sort((a, b) => a.weight - b.weight) : [];
+        const regular = isLoreTab ? docs.filter(d => !d.is_injected) : docs;
+
+        const renderRow = (doc: DocumentItem) => {
+          const editHref = `/admin/worlds/${worldId}/documents/${doc.id}/edit`;
+          return (
+            <Table.Tr
+              key={doc.id}
+              style={{ cursor: "pointer" }}
+              onClick={() => { window.location.href = editHref; }}
+            >
+              <Table.Td>
+                <Group gap={6} wrap="nowrap">
+                  {doc.is_injected && <IconPin size={13} color="var(--mantine-color-orange-5)" style={{ flexShrink: 0 }} />}
+                  <Text size="sm" fw={500} lineClamp={1}>{docDisplayName(doc)}</Text>
+                </Group>
+              </Table.Td>
+              {!docTypeFilter && (
+                <Table.Td>
+                  <Badge size="sm" color={docTypeBadgeColor(doc.doc_type)}>
+                    {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
+                  </Badge>
+                </Table.Td>
+              )}
+              <Table.Td><Text size="sm" c="dimmed">{formatDate(doc.modified_at)}</Text></Table.Td>
+              <Table.Td>
+                <Menu position="bottom-end" withArrow>
+                  <Menu.Target>
+                    <Button variant="subtle" size="compact-sm" px={4} onClick={e => e.stopPropagation()}><IconDots size={16} /></Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => { window.location.href = editHref; }}>Edit</Menu.Item>
+                    <Menu.Item leftSection={<IconDownload size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDownload(doc); }}>Download</Menu.Item>
+                    <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDelete(doc); }}>Delete</Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              </Table.Td>
             </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {docs.map(doc => {
-              const editHref = `/admin/worlds/${worldId}/documents/${doc.id}/edit`;
-              return (
-                <Table.Tr
-                  key={doc.id}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => { window.location.href = editHref; }}
-                >
-                  <Table.Td>
-                    <Text size="sm" fw={500} lineClamp={1}>{docDisplayName(doc)}</Text>
-                  </Table.Td>
-                  {!docTypeFilter && (
-                    <Table.Td>
-                      <Badge size="sm" color={docTypeBadgeColor(doc.doc_type)}>
-                        {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
-                      </Badge>
-                    </Table.Td>
-                  )}
-                  <Table.Td><Text size="sm" c="dimmed">{formatDate(doc.modified_at)}</Text></Table.Td>
-                  <Table.Td>
-                    <Menu position="bottom-end" withArrow>
-                      <Menu.Target>
-                        <Button variant="subtle" size="compact-sm" px={4} onClick={e => e.stopPropagation()}><IconDots size={16} /></Button>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        <Menu.Item
-                          leftSection={<IconEdit size={14} />}
-                          onClick={() => { window.location.href = editHref; }}
-                        >
-                          Edit
-                        </Menu.Item>
-                        <Menu.Item leftSection={<IconDownload size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDownload(doc); }}>
-                          Download
-                        </Menu.Item>
-                        <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDelete(doc); }}>
-                          Delete
-                        </Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
+          );
+        };
+
+        return (
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                {!docTypeFilter && <Table.Th>Type</Table.Th>}
+                <Table.Th>Modified</Table.Th>
+                <Table.Th w={60} />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {injected.length > 0 && injected.map(renderRow)}
+              {injected.length > 0 && regular.length > 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={3} py={4}>
+                    <Text size="xs" c="dimmed" fs="italic">— search-only lore —</Text>
                   </Table.Td>
                 </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
-      )}
+              )}
+              {regular.map(renderRow)}
+            </Table.Tbody>
+          </Table>
+        );
+      })()}
 
     </Stack>
   );

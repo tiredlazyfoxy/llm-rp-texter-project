@@ -87,17 +87,21 @@ async def chat_stream(
     if world is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found")
 
-    # When tools are enabled the LLM fetches lore actively via search/get_lore.
-    # Only inject full lore context in the no-tools (plain streaming) path.
+    # is_injected lore facts are always included in the system prompt (even with tools enabled)
+    injected_facts = await lore_facts_db.list_injected_by_world(int(req.world_id))
+    injected_lore = "\n\n".join(f.content for f in injected_facts if f.content)
+
+    # When tools are enabled, the LLM fetches non-injected lore actively via search/get_lore.
+    # Without tools, inject all non-injected facts too.
     if req.enable_tools:
         world_lore = ""
     else:
+        all_facts = await lore_facts_db.list_by_world(int(req.world_id))
         lore_parts: list[str] = []
         if world.lore:
             lore_parts.append(world.lore)
-        facts = await lore_facts_db.list_by_world(int(req.world_id))
-        for fact in facts:
-            if fact.content:
+        for fact in all_facts:
+            if not fact.is_injected and fact.content:
                 lore_parts.append(fact.content)
         world_lore = "\n\n".join(lore_parts)
 
@@ -106,6 +110,7 @@ async def chat_stream(
         world_name=world.name,
         world_description=world.description,
         world_lore=world_lore,
+        injected_lore=injected_lore,
         current_content=req.current_content,
         enable_tools=req.enable_tools,
     )
