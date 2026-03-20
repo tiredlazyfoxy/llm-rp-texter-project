@@ -48,6 +48,7 @@ frontend/
 - `/admin/worlds` — WorldsListPage
 - `/admin/worlds/:id` — WorldViewPage (tabbed: Info, All Docs, Locations, NPCs, Lore Facts, Chats)
 - `/admin/worlds/:id/edit` — WorldEditPage
+- `/admin/worlds/:id/field/:fieldName` — WorldFieldEditPage (AI-assisted editing of description/system_prompt/initial_message)
 - `/admin/worlds/:id/documents/:docId/edit` — DocumentEditPage
 - `/admin/llm-servers` — LlmServersPage
 - `/admin/database` — DbManagementPage

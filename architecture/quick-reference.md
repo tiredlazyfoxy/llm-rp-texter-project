@@ -203,7 +203,7 @@ Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel`
 - Stage 1 Step 2: World models, vector storage, import/export — done
 - Stage 1 Step 3: LLM Servers CRUD + embedding server designation — done
 - Stage 1 Step 4: World editor (admin CRUD UI for locations, NPCs, lore facts, rules) — done
-- Stage 1 Step 5: LLM-assisted world editing (document editor chat panel, thinking mode, apply/append) — done
+- Stage 1 Step 5: LLM-assisted world editing (document editor chat panel + field editor for description/system_prompt/initial_message, thinking mode, apply/append) — done
 - Stage 1 Step 6: DB Management admin page — done
 - Stage 1 Step 7: Admin LLM tools (search, get_lore, web_search), SSE streaming for tools, per-message regenerate — done
 - DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export)
