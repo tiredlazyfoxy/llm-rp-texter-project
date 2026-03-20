@@ -157,10 +157,16 @@ function InfoTab({ world, worldId }: { world: WorldDetail; worldId: string }) {
             <Text fw={600} w={120}>Status</Text>
             <Badge color={statusColor(world.status)}>{world.status}</Badge>
           </Group>
-          <Group align="flex-start">
-            <Text fw={600} w={120}>Description</Text>
-            <Text style={{ flex: 1 }}>{world.description || <Text span c="dimmed">-</Text>}</Text>
-          </Group>
+          <Stack gap={4}>
+            <Text fw={600}>Description</Text>
+            {world.description ? (
+              <div style={{ background: "var(--mantine-color-default)", borderRadius: 4, padding: "8px 10px" }}>
+                <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{world.description}</Text>
+              </div>
+            ) : (
+              <Text size="sm" c="dimmed">-</Text>
+            )}
+          </Stack>
           {world.system_prompt && (
             <Stack gap={4}>
               <Text fw={600}>System Prompt</Text>
