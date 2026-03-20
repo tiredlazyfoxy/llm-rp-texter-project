@@ -10,6 +10,7 @@ from app.routes.admin.db_management import router as db_management_router
 from app.routes.admin.users import router as admin_users_router
 from app.routes.admin.worlds import router as worlds_router
 from app.routes.auth import router as auth_router
+from app.routes.chat import router as chat_router
 from app.routes.llm_chat import router as llm_chat_router
 from app.routes.llm_models import router as llm_models_router
 from app.routes.llm_servers import router as llm_servers_router
@@ -59,6 +60,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(chat_router)
 app.include_router(admin_users_router)
 app.include_router(db_management_router)
 app.include_router(llm_servers_router)

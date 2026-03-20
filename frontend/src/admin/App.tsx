@@ -55,7 +55,7 @@ export function App() {
 
   return (
     <MantineProvider theme={theme} defaultColorScheme="dark">
-      <AppLayout navItems={NAV_ITEMS}>
+      <AppLayout navItems={NAV_ITEMS} logoHref="/">
         <AdminContent />
       </AppLayout>
     </MantineProvider>

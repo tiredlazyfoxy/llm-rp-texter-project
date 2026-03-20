@@ -17,8 +17,14 @@ class ChatSession(SQLModel, table=True):
     current_turn: int = Field(default=0)
     status: str = Field(default="active")
     llm_server_id: int | None = Field(default=None, foreign_key="llm_servers.id")
-    llm_model_id: str | None = None
-    temperature: float = Field(default=0.7)
+    tool_model_id: str | None = None
+    tool_temperature: float = Field(default=0.7)
+    tool_repeat_penalty: float = Field(default=1.0)
+    tool_top_p: float = Field(default=1.0)
+    text_model_id: str | None = None
+    text_temperature: float = Field(default=0.7)
+    text_repeat_penalty: float = Field(default=1.0)
+    text_top_p: float = Field(default=1.0)
     user_instructions: str = Field(default="")
     created_at: datetime
     modified_at: datetime

@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
-import { MantineProvider, Container, Text } from "@mantine/core";
-import { IconMessages, IconWorld } from "@tabler/icons-react";
+import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
 import "../global.css";
 import { theme } from "../theme";
 import { AppLayout } from "../components/AppLayout";
-import type { NavItem } from "../components/AppSidebar";
+import { UserSidebar } from "./components/UserSidebar";
+import { ChatListPage } from "./pages/ChatListPage";
+import { CharacterSetupPage } from "./pages/CharacterSetupPage";
+import { ChatViewPage } from "./pages/ChatViewPage";
 
-const NAV_ITEMS: NavItem[] = [
-  { icon: IconMessages, label: "Chats", href: "/" },
-  { icon: IconWorld, label: "Worlds", href: "/worlds" },
-];
+function UserContent() {
+  const path = window.location.pathname;
+  if (/\/chat\/\d+/.test(path)) return <ChatViewPage />;
+  if (/\/worlds\/\d+\/new/.test(path)) return <CharacterSetupPage />;
+  return <ChatListPage />;
+}
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -27,10 +31,8 @@ export function App() {
 
   return (
     <MantineProvider theme={theme} defaultColorScheme="dark">
-      <AppLayout navItems={NAV_ITEMS}>
-        <Container size="lg" py="md">
-          <Text c="dimmed">User SPA placeholder</Text>
-        </Container>
+      <AppLayout sidebar={<UserSidebar />}>
+        <UserContent />
       </AppLayout>
     </MantineProvider>
   );
