@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
 import { formatDate } from "../../utils/formatDate";
 import {
   Alert,
@@ -107,6 +107,38 @@ function docDisplayName(doc: DocumentItem): string {
 }
 
 // ---------------------------------------------------------------------------
+// Collapsible preformatted text block
+// ---------------------------------------------------------------------------
+
+const COLLAPSED_HEIGHT = 220;
+
+function CollapsibleText({ text, mono = false }: { text: string; mono?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const innerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (innerRef.current) {
+      setOverflows(innerRef.current.scrollHeight > COLLAPSED_HEIGHT);
+    }
+  }, [text]);
+
+  return (
+    <div
+      style={{ position: "relative", overflow: "hidden", maxHeight: expanded ? undefined : COLLAPSED_HEIGHT, background: "var(--mantine-color-default)", borderRadius: 4, cursor: overflows ? "pointer" : undefined }}
+      onClick={() => overflows && setExpanded(e => !e)}
+    >
+      <div ref={innerRef} style={{ padding: "8px 10px" }}>
+        <Text size="sm" style={{ whiteSpace: "pre-wrap", fontFamily: mono ? "monospace" : undefined }}>{text}</Text>
+      </div>
+      {!expanded && overflows && (
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 48, background: "linear-gradient(transparent, var(--mantine-color-default))" }} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Info tab content
 // ---------------------------------------------------------------------------
 
@@ -129,6 +161,18 @@ function InfoTab({ world, worldId }: { world: WorldDetail; worldId: string }) {
             <Text fw={600} w={120}>Description</Text>
             <Text style={{ flex: 1 }}>{world.description || <Text span c="dimmed">-</Text>}</Text>
           </Group>
+          {world.system_prompt && (
+            <Stack gap={4}>
+              <Text fw={600}>System Prompt</Text>
+              <CollapsibleText text={world.system_prompt} mono />
+            </Stack>
+          )}
+          {world.initial_message && (
+            <Stack gap={4}>
+              <Text fw={600}>Initial Message</Text>
+              <CollapsibleText text={world.initial_message} />
+            </Stack>
+          )}
         </Stack>
       </Paper>
 
