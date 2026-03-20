@@ -159,12 +159,21 @@ Implemented in `backend/app/services/admin_tools.py`. Tool schemas via `pydantic
 
 ## Stage 2 Agent Tools (stage2_step2, planned)
 
-Player-facing in-game context tools (DB queries only, no external HTTP):
+Player-facing in-game tools. Implemented in `backend/app/services/chat_tools.py`. Separate from admin tools — no shared code.
 
-- **get_location_info(location_id)** — Full location details + linked NPCs
-- **get_npc_info(npc_id)** — Full NPC details + location links
+All document-lookup tools use **free text → vector search → full document** (no ID lookup).
 
-Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel` params.
+- **get_location_info(query)** — Vector search scoped to `location`. Returns full location doc + exits + linked NPCs.
+- **get_npc_info(query)** — Vector search scoped to `npc`. Returns full NPC doc + location links.
+- **get_lore(query)** — Vector search scoped to `lore_fact`, top 10 candidates, skips injected IDs. Returns single best non-injected lore doc.
+- **search(query, source_type?)** — Vector search across all types, returns top 10 chunks with metadata. `source_type` filters to `"location"`, `"npc"`, or `"lore_fact"`.
+- **web_search(query)** — Google Custom Search API. Requires `SEARCH_CSE_KEY` and `SEARCH_CSE_ID`. Returns 5 results (title, URL, snippet). (Same env vars and logic as admin `web_search` — separate implementation.)
+- **get_memory()** — Returns all `ChatMemory` rows for the session concatenated with `\n---\n`.
+- **add_memory(content)** — Appends a new `ChatMemory` row for the session.
+
+Tool registration: `get_chat_tools(db, world_id, session_id)` → `(tool_definitions, callables)`.
+
+**Lore injection filter:** `get_lore` skips lore facts already injected into the system prompt (same logic as admin `get_lore` — avoids duplicating context).
 
 ## Stat System
 

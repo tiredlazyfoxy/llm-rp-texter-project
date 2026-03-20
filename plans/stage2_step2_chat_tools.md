@@ -131,31 +131,53 @@ Summarize the following conversation segment:
 
 Pydantic parameter schemas + async tool implementations. All tools are internal — DB queries only, no external HTTP calls.
 
+All document-lookup tools (`get_location_info`, `get_npc_info`, `get_lore`) follow the same pattern: **free text → vector search (top 1) → return full document**.
+
 ### Tool: `get_location_info`
 
 ```python
 class GetLocationInfoParams(BaseModel):
-    """Parameters for retrieving full location details."""
-    location_id: str  # snowflake as string
+    """Parameters for retrieving a location by semantic search."""
+    query: str  # free text describing the location to find
 ```
 
 Implementation:
-- Loads `WorldLocation` by ID, verifies `world_id` matches
-- Returns JSON with: name, full content, exits (if any), list of NPCs linked to this location (name + link_type)
-- Returns `{"error": "Location not found"}` if missing or wrong world
+- Run vector search filtered by `world_id` and `source_type="location"`, top 1 result
+- Load full `WorldLocation` by `source_id` from best-match chunk
+- Return JSON with: name, full content, exits (if any), list of NPCs linked to this location (name + link_type)
+- Return `{"error": "No location found matching the query"}` if no results
 
 ### Tool: `get_npc_info`
 
 ```python
 class GetNPCInfoParams(BaseModel):
-    """Parameters for retrieving full NPC details."""
-    npc_id: str  # snowflake as string
+    """Parameters for retrieving an NPC by semantic search."""
+    query: str  # free text describing the NPC to find
 ```
 
 Implementation:
-- Loads `WorldNPC` by ID, verifies `world_id` matches
-- Returns JSON with: name, full content, list of location links (location name + link_type)
-- Returns `{"error": "NPC not found"}` if missing or wrong world
+- Run vector search filtered by `world_id` and `source_type="npc"`, top 1 result
+- Load full `WorldNPC` by `source_id` from best-match chunk
+- Return JSON with: name, full content, list of location links (location name + link_type)
+- Return `{"error": "No NPC found matching the query"}` if no results
+
+### Tool: `get_lore`
+
+```python
+class GetLoreParams(BaseModel):
+    """Parameters for retrieving a lore document by semantic search."""
+    query: str  # free text describing the lore to find
+```
+
+Implementation:
+- Load injected lore IDs for `world_id` via `db.lore_facts.list_injected_by_world()` → `{f.id for f in facts}`
+- Run vector search filtered by `world_id` and `source_type="lore_fact"`, fetch top 10 candidates
+- Iterate candidates in relevance order; skip any whose `source_id` is in the injected set
+- Load full `WorldLoreFact` for the first non-injected match
+- Return JSON with: id, full content
+- Return `{"error": "No lore found matching the query"}` if no non-injected match found
+
+Rationale: injected lore facts are already present in the system prompt — returning them again via the tool would duplicate context.
 
 ### Tool: `search`
 
@@ -168,25 +190,54 @@ class SearchParams(BaseModel):
 
 Implementation:
 - Uses LanceDB vector search, filtered by `world_id` and optionally `source_type`
-- Returns top-K relevant text chunks as JSON array
+- Returns **top 10** relevant text chunks as JSON array
 - Each result includes: source_type, source_id, source_name (if applicable), chunk text, similarity score
 
-### Tool: `google_search` (STUB)
+### Tool: `web_search`
 
 ```python
-class GoogleSearchParams(BaseModel):
-    """Parameters for web search. Currently a stub."""
+class WebSearchParams(BaseModel):
+    """Parameters for web search using Google Custom Search."""
     query: str
 ```
 
+Implementation (separate from `admin_tools.py` — same logic, no shared code):
+
+- Read `SEARCH_CSE_KEY` and `SEARCH_CSE_ID` from env; if missing return `"Web search is not configured. Set SEARCH_CSE_KEY and SEARCH_CSE_ID environment variables."`
+- `GET https://www.googleapis.com/customsearch/v1` with params `key`, `cx`, `q`, `num=5`, timeout 15s
+- On HTTP/network error: return `"Web search failed: {exc}"`
+- Format each result as `"{i}. {title}\n{url}\n{snippet}"`, join with `\n\n`
+- Return `"No web results found."` if response has no items
+
+### Tool: `get_memory`
+
+```python
+class GetMemoryParams(BaseModel):
+    """Parameters for retrieving all session memories. Takes no arguments — session is captured in closure."""
+```
+
 Implementation:
-- Returns `{"info": "Google search is not yet implemented. Please use the 'search' tool to find information within the world knowledge base instead.", "query": query}`
-- Real integration deferred to a later stage
+- Load all `ChatMemory` rows for `session_id`, ordered by `created_at`
+- Concatenate all `content` fields with `\n---\n` separator
+- Return `{"memories": combined_text}` or `{"memories": ""}` if none
+
+### Tool: `add_memory`
+
+```python
+class AddMemoryParams(BaseModel):
+    """Parameters for adding a new memory to the current session."""
+    content: str  # the memory text to store
+```
+
+Implementation:
+- Create a new `ChatMemory` row with `session_id`, `content`, `created_at=now`
+- Persist via `db.memories.create(session_id, content)`
+- Return `{"status": "ok"}`
 
 ### Tool Registration Function
 
 ```python
-def get_chat_tools(db: AsyncSession, world_id: int) -> tuple[list[dict], dict[str, Callable]]:
+def get_chat_tools(db: AsyncSession, world_id: int, session_id: int) -> tuple[list[dict], dict[str, Callable]]:
     """
     Returns (tool_definitions, tool_callables) for use with PythonLLMClient.
 
@@ -197,13 +248,16 @@ def get_chat_tools(db: AsyncSession, world_id: int) -> tuple[list[dict], dict[st
 
 Uses `pydantic_to_openai_tool()` from PythonLLMClient to convert Pydantic schemas to OpenAI tool format.
 
-Callables are closures capturing `db` and `world_id`:
+Callables are closures capturing `db`, `world_id`, and `session_id`:
 ```python
 callables = {
-    "get_location_info": lambda **kw: get_location_info(db=db, world_id=world_id, **kw),
-    "get_npc_info": lambda **kw: get_npc_info(db=db, world_id=world_id, **kw),
-    "search": lambda **kw: search(world_id=world_id, **kw),
-    "google_search": lambda **kw: google_search(**kw),
+    "get_location_info": lambda **kw: get_location_info(world_id=world_id, **kw),
+    "get_npc_info":      lambda **kw: get_npc_info(world_id=world_id, **kw),
+    "get_lore":          lambda **kw: get_lore(world_id=world_id, **kw),
+    "search":            lambda **kw: search(world_id=world_id, **kw),
+    "web_search":        lambda **kw: web_search(**kw),
+    "get_memory":        lambda **kw: get_memory(db=db, session_id=session_id, **kw),
+    "add_memory":        lambda **kw: add_memory(db=db, session_id=session_id, **kw),
 }
 ```
 
@@ -316,6 +370,7 @@ def get_location_summary(location: WorldLocation) -> str:
 | `backend/app/services/prompts/summarize_system_prompt.py` | SUMMARIZE_SYSTEM_PROMPT + documentation |
 | `backend/app/services/prompts/summarize_user_prompt.py` | SUMMARIZE_USER_PROMPT + documentation |
 | `backend/app/services/chat_tools.py` | Tool schemas, implementations, NPC logic, stat parsing, formatting helpers |
+| `backend/app/db/memories.py` | ChatMemory CRUD: `create(session_id, content)`, `list_by_session(session_id)` |
 
 ---
 
@@ -325,22 +380,29 @@ def get_location_summary(location: WorldLocation) -> str:
 - Stage 1 Step 3: LLM server management (`LlmServer`, model resolution)
 - Stage 1 Step 5: LLM client utilities (`get_llm_client_for_model`)
 - LanceDB vector storage (from stage 1 step 2)
+- `ChatMemory` model (stage 2 step 1)
 
 ---
 
 ## Verification
 
 1. **Prompts**: Render `CHAT_SYSTEM_PROMPT` with sample world data — verify all variables interpolate correctly, output is well-structured
-2. **get_location_info**: Call with valid/invalid location IDs — verify correct JSON response or error
-3. **get_npc_info**: Call with valid/invalid NPC IDs — verify correct JSON response or error
-4. **search**: Call with a query against a world with indexed documents — verify relevant chunks returned
-5. **google_search**: Call — verify stub response returned
-6. **get_npcs_at_location**: Test with:
+2. **get_location_info**: Call with a free-text query matching a known location → verify full location document returned; call with nonsense query → verify error
+3. **get_npc_info**: Call with a free-text query matching a known NPC → verify full NPC document returned; call with nonsense query → verify error
+4. **get_lore**: Call with a free-text query matching a known lore fact → verify full lore document returned; call with nonsense query → verify error
+5. **search**: Call with a query against a world with indexed documents → verify top 10 chunks returned
+6. **web_search**: Call with env vars unset → verify "not configured" message; call with valid env vars → verify results returned
+6a. **get_lore injection filter**: With a lore fact marked `is_injected=True` as the top vector match, verify it is skipped and the next non-injected fact is returned instead
+7. **get_memory**: Call with empty session → verify `{"memories": ""}` returned; call after adding memories → verify combined text
+8. **add_memory**: Call → verify new `ChatMemory` row created
+9. **get_npcs_at_location**: Test with:
+
    - NPC with no links (roaming) → appears at any location
    - NPC with `present` link to location A → appears at A, not at B
    - NPC with `excluded` link to location B → appears at A, not at B
-7. **parse_stat_updates**: Test with response containing `[STAT_UPDATE]` block → verify clean content + parsed updates
-8. **parse_stat_updates**: Test with response without block → verify content unchanged, empty updates
-9. **validate_and_apply_stat_updates**: Test int stat clamping, enum validation, set validation, unknown stat name handling
-10. **Tool registration**: Call `get_chat_tools()` — verify returns valid tool definitions and callables
-11. **Prompt documentation**: Each prompt file has complete module docstring with all 5 required sections (PURPOSE, USAGE, VARIABLES, DESIGN RATIONALE, CHANGELOG)
+
+10. **parse_stat_updates**: Test with response containing `[STAT_UPDATE]` block → verify clean content + parsed updates
+11. **parse_stat_updates**: Test with response without block → verify content unchanged, empty updates
+12. **validate_and_apply_stat_updates**: Test int stat clamping, enum validation, set validation, unknown stat name handling
+13. **Tool registration**: Call `get_chat_tools()` with `session_id` — verify returns valid tool definitions and callables
+14. **Prompt documentation**: Each prompt file has complete module docstring with all 5 required sections (PURPOSE, USAGE, VARIABLES, DESIGN RATIONALE, CHANGELOG)
