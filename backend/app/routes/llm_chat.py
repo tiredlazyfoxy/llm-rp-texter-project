@@ -16,7 +16,7 @@ from llm.message import LLMMessage
 
 from app.services.auth import require_role
 from app.services.llm_chat import get_llm_client_for_model
-from app.services.prompts import build_document_editor_system
+from app.services.prompts import build_document_editor_system, build_world_field_editor_system
 
 logger = logging.getLogger(__name__)
 
@@ -105,15 +105,26 @@ async def chat_stream(
                 lore_parts.append(fact.content)
         world_lore = "\n\n".join(lore_parts)
 
-    system_prompt = build_document_editor_system(
-        doc_type=req.doc_type,
-        world_name=world.name,
-        world_description=world.description,
-        world_lore=world_lore,
-        injected_lore=injected_lore,
-        current_content=req.current_content,
-        enable_tools=req.enable_tools,
-    )
+    if req.field_type:
+        system_prompt = build_world_field_editor_system(
+            field_type=req.field_type,
+            world_name=world.name,
+            world_description=world.description,
+            world_lore=world_lore,
+            injected_lore=injected_lore,
+            current_content=req.current_content,
+            enable_tools=req.enable_tools,
+        )
+    else:
+        system_prompt = build_document_editor_system(
+            doc_type=req.doc_type,
+            world_name=world.name,
+            world_description=world.description,
+            world_lore=world_lore,
+            injected_lore=injected_lore,
+            current_content=req.current_content,
+            enable_tools=req.enable_tools,
+        )
 
     client = await get_llm_client_for_model(req.model_id)
 

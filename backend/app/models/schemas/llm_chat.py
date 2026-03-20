@@ -18,5 +18,6 @@ class LlmChatRequest(BaseModel):
     enable_tools: bool = False
     current_content: str
     world_id: str
-    doc_id: str
-    doc_type: str  # "location" | "npc" | "lore_fact"
+    doc_id: str = ""
+    doc_type: str = ""   # "location" | "npc" | "lore_fact"
+    field_type: str = "" # "description" | "system_prompt" | "initial_message"

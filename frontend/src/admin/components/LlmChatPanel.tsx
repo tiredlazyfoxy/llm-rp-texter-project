@@ -65,8 +65,11 @@ function loadParams(): EditorLlmParams {
 interface LlmChatPanelProps {
   currentContent: string;
   worldId: string;
-  docId: string;
-  docType: "location" | "npc" | "lore_fact";
+  // Document mode
+  docId?: string;
+  docType?: "location" | "npc" | "lore_fact";
+  // World field mode
+  fieldType?: "description" | "system_prompt" | "initial_message";
   onApply: (content: string) => void;
   onAppend: (content: string) => void;
 }
@@ -80,6 +83,7 @@ export function LlmChatPanel({
   worldId,
   docId,
   docType,
+  fieldType,
   onApply,
   onAppend,
 }: LlmChatPanelProps) {
@@ -190,8 +194,9 @@ export function LlmChatPanel({
         enable_tools: params.enable_tools,
         current_content: currentContent,
         world_id: worldId,
-        doc_id: docId,
-        doc_type: docType,
+        doc_id: docId ?? "",
+        doc_type: docType ?? "",
+        field_type: fieldType ?? "",
       };
 
       const handlers: SSEHandlers = {
@@ -281,7 +286,7 @@ export function LlmChatPanel({
 
       abortRef.current = streamChat(request, handlers);
     },
-    [selectedModel, params, currentContent, worldId, docId, docType],
+    [selectedModel, params, currentContent, worldId, docId, docType, fieldType],
   );
 
   // ---- Actions -------------------------------------------------------------

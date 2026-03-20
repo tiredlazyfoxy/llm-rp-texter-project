@@ -14,7 +14,8 @@ export interface LlmChatRequest {
   current_content: string;
   world_id: string;
   doc_id: string;
-  doc_type: "location" | "npc" | "lore_fact";
+  doc_type: string;
+  field_type: string;
 }
 
 export interface ToolCallEntry {
