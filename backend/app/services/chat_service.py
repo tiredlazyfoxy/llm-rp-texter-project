@@ -144,11 +144,26 @@ async def _build_detail_response(session: ChatSession) -> ChatDetailResponse:
         variant_msgs = await chats_db.list_variants_for_turn(session.id, session.current_turn)
         variants = [_msg_to_response(m) for m in variant_msgs]
 
+    summaries = await chats_db.list_summaries(session.id)
+    summary_responses = [
+        ChatSummaryResponse(
+            id=str(s.id),
+            start_message_id=str(s.start_message_id),
+            end_message_id=str(s.end_message_id),
+            start_turn=s.start_turn,
+            end_turn=s.end_turn,
+            content=s.content,
+            created_at=s.created_at.isoformat(),
+        )
+        for s in summaries
+    ]
+
     return ChatDetailResponse(
         session=session_resp,
         messages=[_msg_to_response(m) for m in messages],
         snapshots=snap_responses,
         variants=variants,
+        summaries=summary_responses,
     )
 
 
@@ -460,6 +475,8 @@ async def list_memories(session_id: int, user_id: int) -> list[ChatSummaryRespon
     return [
         ChatSummaryResponse(
             id=str(s.id),
+            start_message_id=str(s.start_message_id),
+            end_message_id=str(s.end_message_id),
             start_turn=s.start_turn,
             end_turn=s.end_turn,
             content=s.content,
@@ -467,6 +484,20 @@ async def list_memories(session_id: int, user_id: int) -> list[ChatSummaryRespon
         )
         for s in summaries
     ]
+
+
+async def get_summary_messages(
+    session_id: int, summary_id: int, user_id: int,
+) -> list[ChatMessageResponse]:
+    """Get original messages for a specific summary (lazy load on expand)."""
+    chat = await chats_db.get_session_by_id(session_id)
+    if chat is None or chat.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+    summary = await chats_db.get_summary_by_id(summary_id)
+    if summary is None or summary.session_id != session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Summary not found")
+    messages = await chats_db.list_messages_by_summary_id(summary_id)
+    return [_msg_to_response(m) for m in messages]
 
 
 async def delete_memory(session_id: int, memory_id: int, user_id: int) -> None:

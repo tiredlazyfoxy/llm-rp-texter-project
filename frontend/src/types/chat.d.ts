@@ -69,6 +69,7 @@ interface ChatDetail {
   messages: ChatMessage[];
   snapshots: ChatStateSnapshot[];
   variants: ChatMessage[];
+  summaries: ChatSummary[];
 }
 
 interface WorldInfo {
@@ -124,6 +125,25 @@ interface ChatSummaryItem {
   end_turn: number;
   content: string;
   created_at: string;
+}
+
+interface ChatSummary {
+  id: string;
+  start_message_id: string;
+  end_message_id: string;
+  start_turn: number;
+  end_turn: number;
+  content: string;
+  created_at: string;
+}
+
+interface CompactRequest {
+  up_to_message_id: string;
+}
+
+interface CompactResponse {
+  summary: ChatSummary;
+  updated_message_count: number;
 }
 
 // SSE event data types

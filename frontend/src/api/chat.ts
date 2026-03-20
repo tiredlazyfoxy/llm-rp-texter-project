@@ -68,6 +68,27 @@ export async function deleteChatMemory(chatId: string, memoryId: string): Promis
   await authRequest(`/api/chats/${chatId}/memories/${memoryId}`, { method: "DELETE" });
 }
 
+export async function compactChat(chatId: string, req: CompactRequest): Promise<CompactResponse> {
+  return authRequest<CompactResponse>(`/api/chats/${chatId}/compact`, {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function listSummaries(chatId: string): Promise<ChatSummary[]> {
+  return authRequest<ChatSummary[]>(`/api/chats/${chatId}/summaries`);
+}
+
+export async function getOriginalMessages(chatId: string, summaryId: string): Promise<ChatMessage[]> {
+  return authRequest<ChatMessage[]>(`/api/chats/${chatId}/summaries/${summaryId}/messages`);
+}
+
+export async function regenerateSummary(chatId: string, summaryId: string): Promise<ChatSummary> {
+  return authRequest<ChatSummary>(`/api/chats/${chatId}/summaries/${summaryId}/regenerate`, {
+    method: "POST",
+  });
+}
+
 function _streamChat(
   url: string,
   body: object | null,

@@ -99,6 +99,7 @@ class ChatDetailResponse(BaseModel):
     messages: list[ChatMessageResponse]
     snapshots: list[ChatStateSnapshotResponse]
     variants: list[ChatMessageResponse]
+    summaries: list["ChatSummaryResponse"] = []
 
 
 class LocationBrief(BaseModel):
@@ -129,7 +130,18 @@ class WorldInfoResponse(BaseModel):
 
 class ChatSummaryResponse(BaseModel):
     id: str
+    start_message_id: str
+    end_message_id: str
     start_turn: int
     end_turn: int
     content: str
     created_at: str
+
+
+class CompactRequest(BaseModel):
+    up_to_message_id: str
+
+
+class CompactResponse(BaseModel):
+    summary: ChatSummaryResponse
+    updated_message_count: int

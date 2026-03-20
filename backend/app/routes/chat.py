@@ -9,9 +9,12 @@ from app.models.schemas.llm_servers import EnabledModelsListResponse
 from app.services import llm_servers as llm_service
 from app.models.schemas.chat import (
     ChatDetailResponse,
+    ChatMessageResponse,
     ChatSessionListResponse,
     ChatSessionResponse,
     ChatSummaryResponse,
+    CompactRequest,
+    CompactResponse,
     ContinueRequest,
     CreateChatRequest,
     RewindRequest,
@@ -22,6 +25,7 @@ from app.models.schemas.chat import (
 from app.models.user import User, UserRole
 from app.services import chat_service
 from app.services import chat_agent_service
+from app.services import summarization_service
 from app.services.auth import require_role
 
 logger = logging.getLogger(__name__)
@@ -186,3 +190,68 @@ async def delete_memory(
 ) -> dict:
     await chat_service.delete_memory(int(chat_id), int(memory_id), caller.id)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Summaries / compaction
+# ---------------------------------------------------------------------------
+
+@router.post("/{chat_id}/compact", response_model=CompactResponse)
+async def compact_chat(
+    chat_id: str,
+    req: CompactRequest,
+    caller: User = Depends(_require_player),
+) -> CompactResponse:
+    summary, count = await summarization_service.compact_messages(
+        int(chat_id), int(req.up_to_message_id), caller.id,
+    )
+    return CompactResponse(
+        summary=ChatSummaryResponse(
+            id=str(summary.id),
+            start_message_id=str(summary.start_message_id),
+            end_message_id=str(summary.end_message_id),
+            start_turn=summary.start_turn,
+            end_turn=summary.end_turn,
+            content=summary.content,
+            created_at=summary.created_at.isoformat(),
+        ),
+        updated_message_count=count,
+    )
+
+
+@router.post("/{chat_id}/summaries/{summary_id}/regenerate", response_model=ChatSummaryResponse)
+async def regenerate_summary(
+    chat_id: str,
+    summary_id: str,
+    caller: User = Depends(_require_player),
+) -> ChatSummaryResponse:
+    summary = await summarization_service.regenerate_summary(int(summary_id), caller.id)
+    return ChatSummaryResponse(
+        id=str(summary.id),
+        start_message_id=str(summary.start_message_id),
+        end_message_id=str(summary.end_message_id),
+        start_turn=summary.start_turn,
+        end_turn=summary.end_turn,
+        content=summary.content,
+        created_at=summary.created_at.isoformat(),
+    )
+
+
+@router.get("/{chat_id}/summaries", response_model=list[ChatSummaryResponse])
+async def list_summaries(
+    chat_id: str,
+    caller: User = Depends(_require_player),
+) -> list[ChatSummaryResponse]:
+    return await chat_service.list_memories(int(chat_id), caller.id)
+
+
+@router.get(
+    "/{chat_id}/summaries/{summary_id}/messages",
+    response_model=list[ChatMessageResponse],
+)
+async def get_summary_messages(
+    chat_id: str,
+    summary_id: str,
+    caller: User = Depends(_require_player),
+) -> list[ChatMessageResponse]:
+    return await chat_service.get_summary_messages(int(chat_id), int(summary_id), caller.id)

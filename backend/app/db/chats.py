@@ -327,6 +327,48 @@ async def delete_summaries_after_turn(session_id: int, target_turn: int) -> None
         await db.commit()
 
 
+async def create_summary(summary: ChatSummary) -> ChatSummary:
+    session = await get_standalone_session()
+    async with session:
+        session.add(summary)
+        await session.commit()
+        await session.refresh(summary)
+        return summary
+
+
+async def update_summary(summary: ChatSummary) -> None:
+    session = await get_standalone_session()
+    async with session:
+        await session.merge(summary)
+        await session.commit()
+
+
+async def list_messages_by_summary_id(summary_id: int) -> list[ChatMessage]:
+    session = await get_standalone_session()
+    async with session:
+        return list((await session.exec(
+            select(ChatMessage)
+            .where(ChatMessage.summary_id == summary_id)
+            .order_by(ChatMessage.turn_number.asc(), ChatMessage.created_at.asc())  # type: ignore[arg-type]
+        )).all())
+
+
+async def set_summary_id_on_messages(message_ids: list[int], summary_id: int) -> int:
+    """Bulk-set summary_id on messages. Returns count of affected rows."""
+    if not message_ids:
+        return 0
+    session = await get_standalone_session()
+    async with session:
+        msgs = (await session.exec(
+            select(ChatMessage).where(ChatMessage.id.in_(message_ids))  # type: ignore[arg-type]
+        )).all()
+        for m in msgs:
+            m.summary_id = summary_id
+            await session.merge(m)
+        await session.commit()
+        return len(msgs)
+
+
 # ---------------------------------------------------------------------------
 # Helpers used by service layer
 # ---------------------------------------------------------------------------

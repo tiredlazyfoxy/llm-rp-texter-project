@@ -58,6 +58,32 @@ def _apply_stat_updates(
     return character_stats, world_stats
 
 
+async def _build_llm_messages(session_id: int) -> list[dict[str, str]]:
+    """Build LLM message list: summary blocks + non-summarized active messages."""
+    from llm.message import LLMMessage
+
+    llm_messages: list[LLMMessage] = []
+
+    # Insert summary blocks
+    summaries = await chats_db.list_summaries(session_id)
+    for s in summaries:
+        llm_messages.append({
+            "role": "user",
+            "content": f"[Summary of turns {s.start_turn}\u2013{s.end_turn}]:\n{s.content}",
+        })
+
+    # Non-summarized active messages (list_active_messages already filters summary_id IS NULL)
+    active_msgs = await chats_db.list_active_messages(session_id)
+    for m in active_msgs:
+        if m.role in ("user", "assistant", "system"):
+            llm_messages.append({
+                "role": m.role if m.role in ("user", "assistant") else "user",
+                "content": m.content,
+            })
+
+    return llm_messages
+
+
 # ---------------------------------------------------------------------------
 # SSE generation: generate_response
 # ---------------------------------------------------------------------------
@@ -105,14 +131,8 @@ async def generate_response(
             user_instructions=chat.user_instructions,
         )
 
-        # Build message history for LLM
-        from llm.message import LLMMessage
-        active_msgs = await chats_db.list_active_messages(session_id)
-        llm_messages: list[LLMMessage] = [
-            {"role": m.role if m.role in ("user", "assistant") else "user", "content": m.content}
-            for m in active_msgs
-            if m.role in ("user", "assistant", "system")
-        ]
+        # Build message history for LLM (summaries + non-summarized messages)
+        llm_messages = await _build_llm_messages(session_id)
 
         client = await get_llm_client_for_model(model_id)
 
@@ -295,13 +315,27 @@ async def regenerate_response(
         )
 
         from llm.message import LLMMessage
-        # Active messages up to (not including) current turn
+        # Build context with summaries + non-summarized messages (excludes current turn's assistant)
+        all_llm = await _build_llm_messages(session_id)
+        # Filter out messages from current turn (user message will be re-added)
+        # _build_llm_messages includes everything active; we need to trim current turn
+        # Rebuild: keep summary blocks + messages before current turn
+        llm_messages: list[LLMMessage] = []
+        summaries = await chats_db.list_summaries(session_id)
+        for s in summaries:
+            llm_messages.append({
+                "role": "user",
+                "content": f"[Summary of turns {s.start_turn}\u2013{s.end_turn}]:\n{s.content}",
+            })
         all_active = await chats_db.list_active_messages(session_id)
-        prev_msgs = [m for m in all_active if m.turn_number < turn]
-        llm_messages: list[LLMMessage] = [
-            {"role": m.role if m.role in ("user", "assistant") else "user", "content": m.content}
-            for m in prev_msgs
-        ]
+        for m in all_active:
+            if m.turn_number >= turn:
+                continue
+            if m.role in ("user", "assistant", "system"):
+                llm_messages.append({
+                    "role": m.role if m.role in ("user", "assistant") else "user",
+                    "content": m.content,
+                })
         # Add user message for current turn
         if user_content:
             llm_messages.append({"role": "user", "content": user_content})

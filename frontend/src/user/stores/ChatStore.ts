@@ -1,4 +1,4 @@
-import { makeAutoObservable, runInAction } from "mobx";
+import { makeAutoObservable, observable, runInAction } from "mobx";
 import * as chatApi from "../../api/chat";
 
 class ChatStore {
@@ -9,6 +9,12 @@ class ChatStore {
   isSending = false;
   error: string | null = null;
   memories: ChatSummaryItem[] = [];
+
+  // Summary state
+  summaries: ChatSummary[] = [];
+  expandedSummaryMessages: Map<string, ChatMessage[]> = observable.map();
+  isCompacting = false;
+  isRegeneratingSummary: string | null = null;
 
   // Streaming state
   streamingContent = "";
@@ -24,6 +30,30 @@ class ChatStore {
 
   get activeMessages(): ChatMessage[] {
     return this.currentChat?.messages ?? [];
+  }
+
+  /** Interleaved summaries + non-summarized messages in chronological order. */
+  get displayItems(): Array<ChatSummary | ChatMessage> {
+    const msgs = this.activeMessages;
+    const sums = this.summaries;
+    if (!sums.length) return msgs;
+
+    const items: Array<ChatSummary | ChatMessage> = [];
+    let sumIdx = 0;
+    for (const msg of msgs) {
+      // Insert any summaries whose end_turn < this message's turn
+      while (sumIdx < sums.length && sums[sumIdx].end_turn < msg.turn_number) {
+        items.push(sums[sumIdx]);
+        sumIdx++;
+      }
+      items.push(msg);
+    }
+    // Append remaining summaries (if messages list is empty or all messages are before summaries)
+    while (sumIdx < sums.length) {
+      items.push(sums[sumIdx]);
+      sumIdx++;
+    }
+    return items;
   }
 
   get latestTurnVariants(): ChatMessage[] {
@@ -62,7 +92,11 @@ class ChatStore {
     runInAction(() => { this.isLoading = true; this.error = null; });
     try {
       const detail = await chatApi.getChatDetail(chatId);
-      runInAction(() => { this.currentChat = detail; });
+      runInAction(() => {
+        this.currentChat = detail;
+        this.summaries = detail.summaries ?? [];
+        this.expandedSummaryMessages.clear();
+      });
     } catch (e) {
       runInAction(() => { this.error = String(e); });
     } finally {
@@ -190,7 +224,11 @@ class ChatStore {
   async rewindToTurn(turn: number): Promise<void> {
     if (!this.currentChat) return;
     const detail = await chatApi.rewindChat(this.currentChat.session.id, { target_turn: turn });
-    runInAction(() => { this.currentChat = detail; });
+    runInAction(() => {
+      this.currentChat = detail;
+      this.summaries = detail.summaries ?? [];
+      this.expandedSummaryMessages.clear();
+    });
   }
 
   async updateSettings(req: UpdateChatSettingsRequest): Promise<void> {
@@ -230,6 +268,71 @@ class ChatStore {
     if (!this.currentChat) return;
     await chatApi.deleteChatMemory(this.currentChat.session.id, memoryId);
     runInAction(() => { this.memories = this.memories.filter((m) => m.id !== memoryId); });
+  }
+
+  // ------- Summary / compaction actions -------
+
+  async compactUpTo(messageId: string): Promise<void> {
+    if (!this.currentChat || this.isCompacting) return;
+    const chatId = this.currentChat.session.id;
+    runInAction(() => { this.isCompacting = true; });
+    try {
+      const resp = await chatApi.compactChat(chatId, { up_to_message_id: messageId });
+      runInAction(() => {
+        this.summaries.push(resp.summary);
+        // Remove compacted messages from the active messages list
+        if (this.currentChat) {
+          const endMsgId = resp.summary.end_message_id;
+          const startMsgId = resp.summary.start_message_id;
+          let removing = false;
+          this.currentChat.messages = this.currentChat.messages.filter((m) => {
+            if (m.id === startMsgId) removing = true;
+            if (removing) {
+              const isEnd = m.id === endMsgId;
+              if (isEnd) removing = false;
+              return false; // remove
+            }
+            return true;
+          });
+        }
+      });
+    } catch (e) {
+      runInAction(() => { this.error = String(e); });
+    } finally {
+      runInAction(() => { this.isCompacting = false; });
+    }
+  }
+
+  async regenerateSummary(summaryId: string): Promise<void> {
+    if (!this.currentChat) return;
+    const chatId = this.currentChat.session.id;
+    runInAction(() => { this.isRegeneratingSummary = summaryId; });
+    try {
+      const updated = await chatApi.regenerateSummary(chatId, summaryId);
+      runInAction(() => {
+        const idx = this.summaries.findIndex((s) => s.id === summaryId);
+        if (idx !== -1) this.summaries[idx] = updated;
+      });
+    } catch (e) {
+      runInAction(() => { this.error = String(e); });
+    } finally {
+      runInAction(() => { this.isRegeneratingSummary = null; });
+    }
+  }
+
+  async expandSummary(summaryId: string): Promise<void> {
+    if (!this.currentChat || this.expandedSummaryMessages.has(summaryId)) return;
+    const chatId = this.currentChat.session.id;
+    try {
+      const messages = await chatApi.getOriginalMessages(chatId, summaryId);
+      runInAction(() => { this.expandedSummaryMessages.set(summaryId, messages); });
+    } catch (e) {
+      runInAction(() => { this.error = String(e); });
+    }
+  }
+
+  collapseSummary(summaryId: string): void {
+    this.expandedSummaryMessages.delete(summaryId);
   }
 }
 
