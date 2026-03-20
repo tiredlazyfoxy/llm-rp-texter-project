@@ -12,6 +12,7 @@ import {
 import { observer } from "mobx-react-lite";
 import { chatStore } from "../stores/ChatStore";
 import { authRequest } from "../../api/request";
+import { saveToolModel, saveTextModel } from "../../utils/modelSettings";
 
 interface EnabledModelInfo {
   server_id: string;
@@ -95,6 +96,8 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, o
 
   async function handleSave() {
     setSaving(true);
+    saveToolModel(toolModel);
+    saveTextModel(textModel);
     await chatStore.updateSettings({ tool_model: toolModel, text_model: textModel, user_instructions: instructions });
     setSaving(false);
     onClose();

@@ -222,12 +222,14 @@ def _now() -> datetime:
 # Public API: list worlds
 # ---------------------------------------------------------------------------
 
-async def list_public_worlds() -> list[WorldInfoResponse]:
+async def list_public_worlds(caller_id: int) -> list[WorldInfoResponse]:
     from app.models.world import WorldStatus
     worlds = await worlds_db.list_all()
     result: list[WorldInfoResponse] = []
     for w in worlds:
-        if w.status != WorldStatus.public:
+        if w.status == WorldStatus.draft or w.status == WorldStatus.archived:
+            continue
+        if w.status == WorldStatus.private and w.owner_id != caller_id:
             continue
         locs = await locations_db.list_by_world(w.id)
         stat_defs = await stat_defs_db.list_by_world(w.id)
@@ -271,8 +273,10 @@ async def create_chat(
     from app.models.world import WorldStatus
 
     world = await worlds_db.get_by_id(world_id)
-    if world is None or world.status != WorldStatus.public:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found or not public")
+    if world is None or world.status == WorldStatus.draft or world.status == WorldStatus.archived:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found or not available")
+    if world.status == WorldStatus.private and world.owner_id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="World is private")
 
     loc = await locations_db.get_by_id(starting_location_id)
     if loc is None or loc.world_id != world_id:
@@ -297,7 +301,7 @@ async def create_chat(
     world_stats = _init_stats_from_defs([d for d in stat_defs if d.scope.value == "world"])
 
     now = _now()
-    session_id = snowflake_svc.generate()
+    session_id = snowflake_svc.generate_id()
 
     chat = ChatSession(
         id=session_id,
@@ -325,7 +329,7 @@ async def create_chat(
     chat = await chats_db.create_session(chat)
 
     # Turn 0 snapshot
-    snap_id = snowflake_svc.generate()
+    snap_id = snowflake_svc.generate_id()
     snap = ChatStateSnapshot(
         id=snap_id,
         session_id=chat.id,
@@ -346,7 +350,7 @@ async def create_chat(
         "{location_summary}", loc.content or "",
     )
     if initial_content:
-        msg_id = snowflake_svc.generate()
+        msg_id = snowflake_svc.generate_id()
         init_msg = ChatMessage(
             id=msg_id,
             session_id=chat.id,
@@ -534,7 +538,7 @@ async def generate_response(
         turn = chat.current_turn + 1
 
         # Save user message
-        user_msg_id = snowflake_svc.generate()
+        user_msg_id = snowflake_svc.generate_id()
         user_msg = ChatMessage(
             id=user_msg_id,
             session_id=session_id,
@@ -629,7 +633,7 @@ async def generate_response(
                 new_char, new_world = _apply_stat_updates(char_stats, world_stats, updates)
 
                 # Save assistant message
-                msg_id = snowflake_svc.generate()
+                msg_id = snowflake_svc.generate_id()
                 asst_msg = ChatMessage(
                     id=msg_id,
                     session_id=session_id,
@@ -649,7 +653,7 @@ async def generate_response(
                 await chats_db.update_session(chat)
 
                 # Save snapshot
-                snap_id = snowflake_svc.generate()
+                snap_id = snowflake_svc.generate_id()
                 snap = ChatStateSnapshot(
                     id=snap_id,
                     session_id=session_id,
@@ -815,7 +819,7 @@ async def regenerate_response(
                 world_stats_dict = chats_db.parse_stats(chat.world_stats)
                 new_char, new_world = _apply_stat_updates(char_stats, world_stats_dict, updates)
 
-                msg_id = snowflake_svc.generate()
+                msg_id = snowflake_svc.generate_id()
                 asst_msg = ChatMessage(
                     id=msg_id,
                     session_id=session_id,
@@ -834,7 +838,7 @@ async def regenerate_response(
                     snap.world_stats = chats_db.serialize_stats(new_world)
                     await chats_db.update_snapshot(snap)
                 else:
-                    snap_id = snowflake_svc.generate()
+                    snap_id = snowflake_svc.generate_id()
                     new_snap = ChatStateSnapshot(
                         id=snap_id,
                         session_id=session_id,

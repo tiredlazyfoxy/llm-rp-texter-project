@@ -48,9 +48,9 @@ async def list_chat_models(
 
 @router.get("/worlds", response_model=list[WorldInfoResponse])
 async def list_public_worlds(
-    _caller: User = Depends(_require_player),
+    caller: User = Depends(_require_player),
 ) -> list[WorldInfoResponse]:
-    return await chat_service.list_public_worlds()
+    return await chat_service.list_public_worlds(caller_id=caller.id)
 
 
 # ---------------------------------------------------------------------------

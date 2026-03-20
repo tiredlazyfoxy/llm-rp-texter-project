@@ -16,7 +16,6 @@ import {
 } from "@tabler/icons-react";
 import { listMyChats, listPublicWorlds } from "../../api/chat";
 import { formatDate } from "../../utils/formatDate";
-import { WorldInfoModal } from "./WorldInfoModal";
 
 interface WorldEntry {
   world: WorldInfo;
@@ -30,13 +29,10 @@ export function UserSidebar() {
   const [chats, setChats] = useState<ChatSessionItem[]>([]);
   const [expandedWorlds, setExpandedWorlds] = useState<Set<string>>(new Set());
   const [showMoreWorlds, setShowMoreWorlds] = useState<Set<string>>(new Set());
-  const [selectedWorld, setSelectedWorld] = useState<WorldInfo | null>(null);
 
   useEffect(() => {
-    Promise.all([listPublicWorlds(), listMyChats()]).then(([ws, cs]) => {
-      setWorlds(ws);
-      setChats(cs);
-    }).catch(() => {});
+    listPublicWorlds().then(setWorlds).catch(() => {});
+    listMyChats().then(setChats).catch(() => {});
   }, []);
 
   const width = collapsed ? 48 : 240;
@@ -79,8 +75,7 @@ export function UserSidebar() {
   const path = window.location.pathname;
 
   return (
-    <>
-      <nav
+    <nav
         style={{
           width,
           minWidth: width,
@@ -163,7 +158,8 @@ export function UserSidebar() {
                     <UnstyledButton
                       p={8}
                       style={{ width: "100%", display: "flex", justifyContent: "center" }}
-                      onClick={() => setSelectedWorld(world)}
+                      component="a"
+                      href={`/worlds/${world.id}`}
                     >
                       <IconWorld size={18} color="var(--mantine-color-steel-5)" />
                     </UnstyledButton>
@@ -191,7 +187,9 @@ export function UserSidebar() {
                       c="dimmed"
                       style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}
                       title={world.name}
-                      onClick={(e) => { e.stopPropagation(); setSelectedWorld(world); }}
+                      component="a"
+                      href={`/worlds/${world.id}`}
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {world.name}
                     </Text>
@@ -254,8 +252,5 @@ export function UserSidebar() {
           })}
         </Stack>
       </nav>
-
-      <WorldInfoModal world={selectedWorld} onClose={() => setSelectedWorld(null)} />
-    </>
   );
 }

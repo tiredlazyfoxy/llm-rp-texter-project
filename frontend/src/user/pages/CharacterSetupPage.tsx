@@ -14,6 +14,7 @@ import {
 } from "@mantine/core";
 import { listPublicWorlds, createChat } from "../../api/chat";
 import { authRequest } from "../../api/request";
+import { loadToolModel, loadTextModel, saveToolModel, saveTextModel } from "../../utils/modelSettings";
 
 interface EnabledModelInfo {
   server_id: string;
@@ -70,8 +71,6 @@ function ModelSection({
   );
 }
 
-const DEFAULT_MODEL: ModelConfig = { model_id: null, temperature: 0.7, repeat_penalty: 1.0, top_p: 1.0 };
-
 export function CharacterSetupPage() {
   const worldId = _worldIdFromPath();
   const [world, setWorld] = useState<WorldInfo | null>(null);
@@ -79,8 +78,8 @@ export function CharacterSetupPage() {
   const [placeholders, setPlaceholders] = useState<string[]>([]);
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [locationId, setLocationId] = useState<string>("");
-  const [toolModel, setToolModel] = useState<ModelConfig>(DEFAULT_MODEL);
-  const [textModel, setTextModel] = useState<ModelConfig>(DEFAULT_MODEL);
+  const [toolModel, setToolModel] = useState<ModelConfig>(loadToolModel);
+  const [textModel, setTextModel] = useState<ModelConfig>(loadTextModel);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -99,9 +98,10 @@ export function CharacterSetupPage() {
     authRequest<{ models: EnabledModelInfo[] }>("/api/chats/models").then((res) => {
       setAvailableModels(res.models);
       if (res.models.length > 0) {
-        const first = { ...DEFAULT_MODEL, model_id: res.models[0].model_id };
-        setToolModel(first);
-        setTextModel(first);
+        const ids = res.models.map((m) => m.model_id);
+        // If saved model_id is not in available list, fall back to first
+        setToolModel((prev) => ids.includes(prev.model_id ?? "") ? prev : { ...prev, model_id: res.models[0].model_id });
+        setTextModel((prev) => ids.includes(prev.model_id ?? "") ? prev : { ...prev, model_id: res.models[0].model_id });
       }
     }).catch(() => {});
   }, [worldId]);
@@ -156,7 +156,7 @@ export function CharacterSetupPage() {
       <ModelSection
         label="Tooling model"
         model={toolModel}
-        onChange={setToolModel}
+        onChange={(m) => { setToolModel(m); saveToolModel(m); }}
         availableModels={availableModels}
       />
 
@@ -164,7 +164,7 @@ export function CharacterSetupPage() {
       <ModelSection
         label="Text model"
         model={textModel}
-        onChange={setTextModel}
+        onChange={(m) => { setTextModel(m); saveTextModel(m); }}
         availableModels={availableModels}
       />
 
