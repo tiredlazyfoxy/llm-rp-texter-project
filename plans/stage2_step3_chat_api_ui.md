@@ -104,6 +104,23 @@ All endpoints require **player** role (any authenticated user). Mounted at `/api
 
 **File**: `backend/app/models/schemas/chat.py`
 
+#### Shared: `ModelConfig`
+
+```python
+class ModelConfig(BaseModel):
+    model_id: str | None = None       # None = unset / use server default
+    temperature: float = 0.7          # 0.0–2.0
+    repeat_penalty: float = 1.0       # 1.0 = neutral, >1.0 penalises repetition
+    top_p: float = 1.0                # nucleus sampling, 1.0 = off
+```
+
+Two roles — stored and passed separately everywhere:
+
+- **`tool_model`** — used for tool-calling / reasoning steps (stage 3: first-pass agent)
+- **`text_model`** — used for narrative text generation (stage 3: second-pass writer)
+
+In stage 2 (single-step generation), `text_model` drives the combined LLM call; `tool_model` settings are stored but reserved for stage 3's two-stage pipeline.
+
 #### Request Schemas
 
 ```python
@@ -112,7 +129,8 @@ class CreateChatRequest(BaseModel):
     character_name: str
     template_variables: dict[str, str]    # placeholder name -> value
     starting_location_id: str             # snowflake as string
-    llm_model_id: str                     # which model to use
+    tool_model: ModelConfig               # tooling / reasoning model settings
+    text_model: ModelConfig               # narrative text generation model settings
 
 class SendMessageRequest(BaseModel):
     content: str
@@ -124,8 +142,9 @@ class RewindRequest(BaseModel):
     target_turn: int
 
 class UpdateChatSettingsRequest(BaseModel):
-    temperature: float | None = None      # 0.0–2.0, None = keep current
-    user_instructions: str | None = None  # None = keep current
+    tool_model: ModelConfig | None = None   # None = keep current
+    text_model: ModelConfig | None = None   # None = keep current
+    user_instructions: str | None = None    # None = keep current
 ```
 
 #### Response Schemas
@@ -143,8 +162,8 @@ class ChatSessionResponse(BaseModel):
     current_location_name: str | None     # denormalized for display
     current_turn: int
     status: str
-    llm_model_id: str | None
-    temperature: float
+    tool_model: ModelConfig
+    text_model: ModelConfig
     user_instructions: str
     created_at: str
     modified_at: str
@@ -223,8 +242,7 @@ class WorldInfoResponse(BaseModel):
 | POST | `/api/chats/:id/regenerate` | — | SSE stream | Regenerate last assistant message |
 | POST | `/api/chats/:id/continue` | `ContinueRequest` | `{"ok": true}` | Pick variant, delete others |
 | POST | `/api/chats/:id/rewind` | `RewindRequest` | `ChatDetailResponse` | Rewind to target turn |
-| PUT | `/api/chats/:id/model` | `{"llm_model_id": str}` | `{"ok": true}` | Change LLM model for chat |
-| PUT | `/api/chats/:id/settings` | `UpdateChatSettingsRequest` | `{"ok": true}` | Update chat settings (temperature, instructions) |
+| PUT | `/api/chats/:id/settings` | `UpdateChatSettingsRequest` | `{"ok": true}` | Update model configs and/or instructions |
 | PUT | `/api/chats/:id/archive` | — | `{"ok": true}` | Archive chat (make read-only) |
 | DELETE | `/api/chats/:id` | — | `{"ok": true}` | Delete chat and all related data |
 
@@ -262,8 +280,16 @@ class WorldInfoResponse(BaseModel):
 **File**: `frontend/src/types/chat.d.ts`
 
 ```typescript
+interface ModelConfig {
+  model_id: string | null;
+  temperature: number;       // 0.0–2.0
+  repeat_penalty: number;    // 1.0 = neutral
+  top_p: number;             // 1.0 = off
+}
+
 interface ChatSessionItem {
   id: string;
+  world_id: string;
   world_name: string;
   character_name: string;
   current_turn: number;
@@ -283,15 +309,16 @@ interface ChatSession {
   current_location_name: string | null;
   current_turn: number;
   status: "active" | "archived";
-  llm_model_id: string | null;
-  temperature: number;
+  tool_model: ModelConfig;
+  text_model: ModelConfig;
   user_instructions: string;
   created_at: string;
   modified_at: string;
 }
 
 interface UpdateChatSettingsRequest {
-  temperature?: number;
+  tool_model?: ModelConfig;
+  text_model?: ModelConfig;
   user_instructions?: string;
 }
 
@@ -357,7 +384,8 @@ interface CreateChatRequest {
   character_name: string;
   template_variables: Record<string, string>;
   starting_location_id: string;
-  llm_model_id: string;
+  tool_model: ModelConfig;
+  text_model: ModelConfig;
 }
 
 interface SendMessageRequest {
@@ -418,7 +446,6 @@ async function listMyChats(): Promise<ChatSessionItem[]>;
 async function getChatDetail(chatId: string): Promise<ChatDetail>;
 async function continueChat(chatId: string, req: ContinueRequest): Promise<void>;
 async function rewindChat(chatId: string, req: RewindRequest): Promise<ChatDetail>;
-async function changeChatModel(chatId: string, modelId: string): Promise<void>;
 async function updateChatSettings(chatId: string, req: UpdateChatSettingsRequest): Promise<void>;
 async function archiveChat(chatId: string): Promise<void>;
 async function deleteChat(chatId: string): Promise<void>;
@@ -472,7 +499,6 @@ class ChatStore {
   async regenerate(): Promise<void>;  // manages SSE streaming
   async continueWithVariant(variantId: string): Promise<void>;
   async rewindToTurn(turn: number): Promise<void>;
-  async changeModel(modelId: string): Promise<void>;
   async updateSettings(req: UpdateChatSettingsRequest): Promise<void>;
   async archiveChat(): Promise<void>;
   async deleteChat(): Promise<void>;  // delete current chat, navigate to list
@@ -522,7 +548,8 @@ Routes:
   - World name and description (read-only preview)
   - Input field for each placeholder (`{NAME}` always first)
   - Location picker: dropdown of world locations
-  - Model picker: dropdown of enabled models (reuses `GET /api/llm/models` from stage 1 step 3)
+  - **Tooling Model** picker + settings (temperature, repeat penalty, top-p)
+  - **Text Model** picker + settings (temperature, repeat penalty, top-p)
   - "Start Adventure" button
 - On submit: `createChat()` → navigate to `/chat/:chatId`
 
@@ -600,10 +627,13 @@ Main chat interface layout:
 ### ChatSettingsPanel — `frontend/src/user/components/ChatSettingsPanel.tsx`
 
 - Hidden/collapsible drawer or panel, toggled from the header [Menu] or a gear icon
-- **Temperature**: slider (0.0–2.0, step 0.1), shows current value
-- **User Instructions**: multi-line textarea for additional instructions appended to the system prompt
-- **Model picker**: dropdown to change LLM model (reuses enabled models list)
-- "Save" button → calls `updateSettings()` and/or `changeModel()`
+- Two sections: **Tooling Model** and **Text Model**, each with:
+  - Model picker: dropdown (enabled models list from `GET /api/llm/models`)
+  - Temperature slider (0.0–2.0, step 0.1)
+  - Repeat penalty slider (0.5–2.0, step 0.05, default 1.0)
+  - Top-p slider (0.0–1.0, step 0.05, default 1.0)
+- **User Instructions**: multi-line textarea for additional instructions appended to system prompt
+- "Save" button → calls `updateSettings()` with both model configs + instructions
 - Changes take effect on the next LLM call (no retroactive effect)
 
 ---
@@ -635,7 +665,33 @@ Main chat interface layout:
 | File | Change |
 |---|---|
 | `backend/app/main.py` | Mount chat router at `/api/chats` |
+| `backend/app/models/chat_session.py` | **Amend stage2_step1**: replace `llm_model_id`+`temperature` with flat dual-model columns (see below) |
 | `frontend/src/user/App.tsx` | Add routes, ChatStore provider |
+
+### `ChatSession` DB model amendment (stage2_step1 deliverable)
+
+Replace these columns:
+
+```text
+llm_server_id: int | None   → keep (still used for server selection)
+llm_model_id: str | None    → REMOVE
+temperature: float           → REMOVE
+```
+
+Add these columns:
+
+```python
+tool_model_id: str | None = None
+tool_temperature: float = Field(default=0.7)
+tool_repeat_penalty: float = Field(default=1.0)
+tool_top_p: float = Field(default=1.0)
+text_model_id: str | None = None
+text_temperature: float = Field(default=0.7)
+text_repeat_penalty: float = Field(default=1.0)
+text_top_p: float = Field(default=1.0)
+```
+
+The service layer maps these flat columns to/from `ModelConfig` when building API responses.
 
 ---
 
