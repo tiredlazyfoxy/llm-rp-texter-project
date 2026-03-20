@@ -44,6 +44,8 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **chat_summaries**: id, session_id, start_message_id, end_message_id, start_turn, end_turn, content, created_at
 
+**chat_memories**: id (snowflake, natural order), session_id, content (free text), created_at. Managed via MCP tools.
+
 ### Vector Storage (LanceDB, external)
 
 Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_index, text, vector. Rebuilt from source documents on import.
@@ -207,3 +209,4 @@ Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel`
 - Stage 1 Step 6: DB Management admin page — done
 - Stage 1 Step 7: Admin LLM tools (search, get_lore, web_search), SSE streaming for tools, per-message regenerate — done
 - DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export)
+- Stage 2 Step 1: Chat DB models (chat_sessions, chat_messages, chat_state_snapshots, chat_summaries, chat_memories) + import/export — done

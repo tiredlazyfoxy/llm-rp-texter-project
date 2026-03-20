@@ -1,0 +1,24 @@
+from datetime import datetime
+
+from sqlmodel import Field, SQLModel
+
+
+class ChatSession(SQLModel, table=True):
+    __tablename__ = "chat_sessions"
+
+    id: int = Field(primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    world_id: int = Field(foreign_key="worlds.id", index=True)
+    current_location_id: int | None = Field(default=None, foreign_key="world_locations.id")
+    character_name: str
+    character_description: str
+    character_stats: str = Field(default="{}")
+    world_stats: str = Field(default="{}")
+    current_turn: int = Field(default=0)
+    status: str = Field(default="active")
+    llm_server_id: int | None = Field(default=None, foreign_key="llm_servers.id")
+    llm_model_id: str | None = None
+    temperature: float = Field(default=0.7)
+    user_instructions: str = Field(default="")
+    created_at: datetime
+    modified_at: datetime

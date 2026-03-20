@@ -7,6 +7,11 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 import app.models.world  # noqa: F401 — register world tables with SQLModel metadata
+import app.models.chat_session  # noqa: F401
+import app.models.chat_summary  # noqa: F401
+import app.models.chat_message  # noqa: F401
+import app.models.chat_state_snapshot  # noqa: F401
+import app.models.chat_memory  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
