@@ -129,10 +129,6 @@ function InfoTab({ world, worldId }: { world: WorldDetail; worldId: string }) {
             <Text fw={600} w={120}>Description</Text>
             <Text style={{ flex: 1 }}>{world.description || <Text span c="dimmed">-</Text>}</Text>
           </Group>
-          <Group align="flex-start">
-            <Text fw={600} w={120}>Lore</Text>
-            <Text style={{ flex: 1, whiteSpace: "pre-wrap" }} lineClamp={10}>{world.lore || <Text span c="dimmed">-</Text>}</Text>
-          </Group>
         </Stack>
       </Paper>
 

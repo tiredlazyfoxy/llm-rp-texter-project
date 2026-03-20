@@ -18,13 +18,13 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **users**: id, username, pwdhash, salt, role (admin/editor/player), jwt_signing_key, last_login, last_key_update
 
-**worlds**: id, name, description, lore, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline (JSON), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at
+**worlds**: id, name, description, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline (JSON), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts.)
 
 **world_locations**: id, world_id, name, content (markdown), exits (JSON array of location IDs or None), created_at, modified_at
 
 **world_npcs**: id, world_id, name, content (markdown), created_at, modified_at
 
-**world_lore_facts**: id, world_id, content (markdown), created_at, modified_at
+**world_lore_facts**: id, world_id, content (markdown), is_injected (bool), weight (int), created_at, modified_at. Injected facts (sorted by weight) are always included in system prompts; non-injected are available only via search tools.
 
 **npc_location_links**: id, npc_id, location_id, link_type (present/excluded). No links = roaming NPC.
 

@@ -427,7 +427,6 @@ export function WorldEditPage() {
             />
           </Group>
           <Textarea label="Description" value={description} onChange={e => setDescription(e.currentTarget.value)} minRows={2} />
-          <Textarea label="Lore" value={lore} onChange={e => setLore(e.currentTarget.value)} minRows={4} autosize maxRows={12} />
           <Textarea label="System Prompt" value={systemPrompt} onChange={e => setSystemPrompt(e.currentTarget.value)} minRows={4} autosize maxRows={12} />
           <Textarea label="Character Template" value={characterTemplate} onChange={e => setCharacterTemplate(e.currentTarget.value)} minRows={4} autosize maxRows={12} placeholder="Use {PLACEHOLDER} tokens" />
           <Textarea label="Initial Message" value={initialMessage} onChange={e => setInitialMessage(e.currentTarget.value)} minRows={3} autosize maxRows={8} placeholder="Supports {character_name}, {location_name}, {location_summary}" />
