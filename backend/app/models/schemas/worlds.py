@@ -81,6 +81,8 @@ class DocumentResponse(BaseModel):
     exits: list[str] | None = None
     links: list[NpcLinkInfo] | None = None
     linked_npcs: list[LinkedNpcInfo] | None = None
+    is_injected: bool = False
+    weight: int = 0
 
 
 class DocumentSaveResponse(DocumentResponse):
@@ -102,6 +104,8 @@ class UpdateDocumentRequest(BaseModel):
     name: str | None = None
     content: str | None = None
     exits: list[str] | None = None
+    is_injected: bool | None = None
+    weight: int | None = None
 
 
 # ── Stats ─────────────────────────────────────────────────────────

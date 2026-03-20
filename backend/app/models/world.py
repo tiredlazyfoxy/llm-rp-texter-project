@@ -73,6 +73,8 @@ class WorldLoreFact(SQLModel, table=True):
     id: int = Field(primary_key=True)
     world_id: int = Field(foreign_key="worlds.id", index=True)
     content: str = Field(default="")
+    is_injected: bool = Field(default=False)
+    weight: int = Field(default=0)
     created_at: datetime | None = Field(default=None)
     modified_at: datetime | None = Field(default=None)
 

@@ -112,6 +112,7 @@ export function WorldsListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -145,31 +146,46 @@ export function WorldsListPage() {
       ) : worlds.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No worlds yet. Create one to get started.</Text>
       ) : (
-        <Table striped highlightOnHover>
+        <Table>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Name</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th>Modified</Table.Th>
+              <Table.Th style={{ width: 90 }}>Status</Table.Th>
+              <Table.Th style={{ width: 110 }}>Modified</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {worlds.map(world => (
-              <Table.Tr
-                key={world.id}
-                style={{ cursor: "pointer" }}
-                onClick={() => { window.location.href = `/admin/worlds/${world.id}`; }}
-              >
-                <Table.Td>
-                  <Text fw={500}>{world.name}</Text>
+            {worlds.map(world => {
+              const hovered = hoveredId === world.id;
+              const rowProps = {
+                style: { cursor: "pointer", backgroundColor: hovered ? "var(--mantine-color-default-hover)" : undefined },
+                onMouseEnter: () => setHoveredId(world.id),
+                onMouseLeave: () => setHoveredId(null),
+                onClick: () => { window.location.href = `/admin/worlds/${world.id}`; },
+              };
+              return (
+                <>
+                  <Table.Tr key={world.id} {...rowProps}>
+                    <Table.Td pb={world.description ? 2 : undefined}>
+                      <Text fw={500}>{world.name}</Text>
+                    </Table.Td>
+                    <Table.Td pb={world.description ? 2 : undefined} style={{ width: 90 }}>
+                      <Badge color={statusColor(world.status)} variant="light">{world.status}</Badge>
+                    </Table.Td>
+                    <Table.Td pb={world.description ? 2 : undefined} style={{ width: 110 }}>
+                      <Text size="sm" c="dimmed">{formatDate(world.modified_at)}</Text>
+                    </Table.Td>
+                  </Table.Tr>
                   {world.description && (
-                    <Text size="xs" c="dimmed" lineClamp={1}>{world.description}</Text>
+                    <Table.Tr key={world.id + "_desc"} {...rowProps}>
+                      <Table.Td colSpan={3} pt={0} pb="xs">
+                        <Text size="xs" c="dimmed" lineClamp={1}>{world.description}</Text>
+                      </Table.Td>
+                    </Table.Tr>
                   )}
-                </Table.Td>
-                <Table.Td><Badge color={statusColor(world.status)}>{world.status}</Badge></Table.Td>
-                <Table.Td><Text size="sm" c="dimmed">{formatDate(world.modified_at)}</Text></Table.Td>
-              </Table.Tr>
-            ))}
+                </>
+              );
+            })}
           </Table.Tbody>
         </Table>
       )}

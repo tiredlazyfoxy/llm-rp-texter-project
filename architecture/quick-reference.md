@@ -18,13 +18,13 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **users**: id, username, pwdhash, salt, role (admin/editor/player), jwt_signing_key, last_login, last_key_update
 
-**worlds**: id, name, description, lore, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline (JSON), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at
+**worlds**: id, name, description, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline (JSON), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts.)
 
 **world_locations**: id, world_id, name, content (markdown), exits (JSON array of location IDs or None), created_at, modified_at
 
 **world_npcs**: id, world_id, name, content (markdown), created_at, modified_at
 
-**world_lore_facts**: id, world_id, content (markdown), created_at, modified_at
+**world_lore_facts**: id, world_id, content (markdown), is_injected (bool), weight (int), created_at, modified_at. Injected facts (sorted by weight) are always included in system prompts; non-injected are available only via search tools.
 
 **npc_location_links**: id, npc_id, location_id, link_type (present/excluded). No links = roaming NPC.
 
@@ -122,14 +122,45 @@ Used for chat message generation and regeneration.
 
 Typical order: `thinking*` -> `thinking_done` -> `tool_call_start` -> `tool_call_result` -> `token*` -> `stat_update?` -> `done`
 
-## Agent Tools (stage2_step2)
+> **Tools + Streaming**: As of llm-client 0.1.3, `chat_with_tools` supports `stream=True` + `on_delta` callback, so `token` events stream in real-time even in tools mode.
 
-All tools are internal async functions (DB queries only, no external HTTP).
+## Admin LLM Tools (stage1_step7)
 
-- **get_location_info**(location_id) — Full location details + linked NPCs
-- **get_npc_info**(npc_id) — Full NPC details + location links
-- **search**(query, source_type?) — LanceDB vector search across world knowledge
-- **google_search**(query) — Stub, returns "not implemented" message
+Available only during admin document editing (`enable_tools: true` in `LlmChatRequest`). Not available to players.
+
+- **search(query, source_type?)** — Semantic search across world docs. Returns full text of top-5 deduplicated documents joined by `---`. `source_type` filters to `"location"`, `"npc"`, or `"lore_fact"`.
+- **get_lore(query)** — Semantic search scoped to `lore_fact` only. Returns single best-matching lore document.
+- **web_search(query)** — Google Custom Search API. Requires env vars `SEARCH_CSE_KEY` and `SEARCH_CSE_ID`. Returns 5 results (title, URL, snippet).
+
+Implemented in `backend/app/services/admin_tools.py`. Tool schemas via `pydantic_to_openai_tool()`. LLM has up to 15 tool call rounds.
+
+**Lore context with tools enabled:** `is_injected=True` lore facts are always in the system prompt (see Lore Injection below). Non-injected facts are excluded from context — the LLM fetches them via `search`/`get_lore`. Injected fact IDs are filtered out of tool search results to avoid duplication.
+
+## Lore Injection (stage1_step7b)
+
+`WorldLoreFact` has two fields that control context injection:
+
+| Field          | Type | Default | Meaning                                |
+| -------------- | ---- | ------- | -------------------------------------- |
+| `is_injected`  | bool | false   | Always include in system prompt        |
+| `weight`       | int  | 0       | Sort order (ascending); lower = first  |
+
+**Injection rules:**
+
+- `is_injected=True` facts → always appear in `## World Context` section of the system prompt, sorted by weight. This happens **regardless** of `enable_tools`.
+- `is_injected=False` facts → only in context when `enable_tools=False` (full lore dump); with tools they must be fetched actively via `search`/`get_lore`.
+- Injected fact IDs are excluded from `search` and `get_lore` tool results (already in context, no need to repeat).
+
+`World.lore` (legacy text blob on the world record) is deprecated — hidden from UI, no longer shown in prompts. Field kept in DB for backward compatibility.
+
+**Admin UI:** Lore fact list shows `is_injected=True` facts pinned at top (sorted by weight, pin icon), then regular facts below with a divider. Edit page has "Always inject" toggle and "Injection order" number input.
+
+## Stage 2 Agent Tools (stage2_step2, planned)
+
+Player-facing in-game context tools (DB queries only, no external HTTP):
+
+- **get_location_info(location_id)** — Full location details + linked NPCs
+- **get_npc_info(npc_id)** — Full NPC details + location links
 
 Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel` params.
 
@@ -171,5 +202,8 @@ Tool schemas generated via `pydantic_to_openai_tool()` from Pydantic `BaseModel`
 - Stage 1 Step 1: Login, User Model, DB Bootstrap — done
 - Stage 1 Step 2: World models, vector storage, import/export — done
 - Stage 1 Step 3: LLM Servers CRUD + embedding server designation — done
+- Stage 1 Step 4: World editor (admin CRUD UI for locations, NPCs, lore facts, rules) — done
+- Stage 1 Step 5: LLM-assisted world editing (document editor chat panel, thinking mode, apply/append) — done
 - Stage 1 Step 6: DB Management admin page — done
+- Stage 1 Step 7: Admin LLM tools (search, get_lore, web_search), SSE streaming for tools, per-message regenerate — done
 - DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export)

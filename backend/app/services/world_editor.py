@@ -302,6 +302,7 @@ async def clone_world(world_id: int, owner_id: int | None = None) -> World:
     for fact in src_facts:
         new_fact = WorldLoreFact(
             id=generate_id(), world_id=new_wid, content=fact.content,
+            is_injected=fact.is_injected, weight=fact.weight,
             created_at=now, modified_at=now,
         )
         await lore_facts.create(new_fact)
@@ -470,6 +471,10 @@ async def update_document(world_id: int, doc_id: int, req: UpdateDocumentRequest
         await npcs.update(obj)
     else:  # lore_fact
         assert isinstance(obj, WorldLoreFact)
+        if req.is_injected is not None:
+            obj.is_injected = req.is_injected
+        if req.weight is not None:
+            obj.weight = req.weight
         obj.modified_at = _now()
         await lore_facts.update(obj)
 

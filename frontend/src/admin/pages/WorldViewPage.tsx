@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { formatDate } from "../../utils/formatDate";
 import {
   Alert,
@@ -20,6 +21,7 @@ import {
   IconDots,
   IconDownload,
   IconEdit,
+  IconPin,
   IconPlus,
   IconRefresh,
   IconTrash,
@@ -106,6 +108,38 @@ function docDisplayName(doc: DocumentItem): string {
 }
 
 // ---------------------------------------------------------------------------
+// Collapsible preformatted text block
+// ---------------------------------------------------------------------------
+
+const COLLAPSED_HEIGHT = 220;
+
+function CollapsibleText({ text, mono = false }: { text: string; mono?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const innerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (innerRef.current) {
+      setOverflows(innerRef.current.scrollHeight > COLLAPSED_HEIGHT);
+    }
+  }, [text]);
+
+  return (
+    <div
+      style={{ position: "relative", overflow: "hidden", maxHeight: expanded ? undefined : COLLAPSED_HEIGHT, background: "var(--mantine-color-default)", borderRadius: 4, cursor: overflows ? "pointer" : undefined }}
+      onClick={() => overflows && setExpanded(e => !e)}
+    >
+      <div ref={innerRef} className="md-body" style={{ padding: "8px 10px", fontSize: "var(--mantine-font-size-sm)", fontFamily: mono ? "monospace" : undefined }}>
+        <ReactMarkdown>{text}</ReactMarkdown>
+      </div>
+      {!expanded && overflows && (
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 48, background: "linear-gradient(transparent, var(--mantine-color-default))" }} />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Info tab content
 // ---------------------------------------------------------------------------
 
@@ -124,14 +158,28 @@ function InfoTab({ world, worldId }: { world: WorldDetail; worldId: string }) {
             <Text fw={600} w={120}>Status</Text>
             <Badge color={statusColor(world.status)}>{world.status}</Badge>
           </Group>
-          <Group align="flex-start">
-            <Text fw={600} w={120}>Description</Text>
-            <Text style={{ flex: 1 }}>{world.description || <Text span c="dimmed">-</Text>}</Text>
-          </Group>
-          <Group align="flex-start">
-            <Text fw={600} w={120}>Lore</Text>
-            <Text style={{ flex: 1, whiteSpace: "pre-wrap" }} lineClamp={10}>{world.lore || <Text span c="dimmed">-</Text>}</Text>
-          </Group>
+          <Stack gap={4}>
+            <Text fw={600}>Description</Text>
+            {world.description ? (
+              <div className="md-body" style={{ background: "var(--mantine-color-default)", borderRadius: 4, padding: "8px 10px", fontSize: "var(--mantine-font-size-sm)" }}>
+                <ReactMarkdown>{world.description}</ReactMarkdown>
+              </div>
+            ) : (
+              <Text size="sm" c="dimmed">-</Text>
+            )}
+          </Stack>
+          {world.system_prompt && (
+            <Stack gap={4}>
+              <Text fw={600}>System Prompt</Text>
+              <CollapsibleText text={world.system_prompt} mono />
+            </Stack>
+          )}
+          {world.initial_message && (
+            <Stack gap={4}>
+              <Text fw={600}>Initial Message</Text>
+              <CollapsibleText text={world.initial_message} />
+            </Stack>
+          )}
         </Stack>
       </Paper>
 
@@ -344,63 +392,73 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
         <Group justify="center" py="xl"><Loader /></Group>
       ) : docs.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No documents yet.</Text>
-      ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Name</Table.Th>
-              {!docTypeFilter && <Table.Th>Type</Table.Th>}
-              <Table.Th>Modified</Table.Th>
-              <Table.Th w={60} />
+      ) : (() => {
+        const isLoreTab = docTypeFilter === "lore_fact";
+        const injected = isLoreTab ? [...docs].filter(d => d.is_injected).sort((a, b) => a.weight - b.weight) : [];
+        const regular = isLoreTab ? docs.filter(d => !d.is_injected) : docs;
+
+        const renderRow = (doc: DocumentItem) => {
+          const editHref = `/admin/worlds/${worldId}/documents/${doc.id}/edit`;
+          return (
+            <Table.Tr
+              key={doc.id}
+              style={{ cursor: "pointer" }}
+              onClick={() => { window.location.href = editHref; }}
+            >
+              <Table.Td>
+                <Group gap={6} wrap="nowrap">
+                  {doc.is_injected && <IconPin size={13} color="var(--mantine-color-orange-5)" style={{ flexShrink: 0 }} />}
+                  <Text size="sm" fw={500} lineClamp={1}>{docDisplayName(doc)}</Text>
+                </Group>
+              </Table.Td>
+              {!docTypeFilter && (
+                <Table.Td>
+                  <Badge size="sm" color={docTypeBadgeColor(doc.doc_type)}>
+                    {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
+                  </Badge>
+                </Table.Td>
+              )}
+              <Table.Td><Text size="sm" c="dimmed">{formatDate(doc.modified_at)}</Text></Table.Td>
+              <Table.Td>
+                <Menu position="bottom-end" withArrow>
+                  <Menu.Target>
+                    <Button variant="subtle" size="compact-sm" px={4} onClick={e => e.stopPropagation()}><IconDots size={16} /></Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => { window.location.href = editHref; }}>Edit</Menu.Item>
+                    <Menu.Item leftSection={<IconDownload size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDownload(doc); }}>Download</Menu.Item>
+                    <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDelete(doc); }}>Delete</Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              </Table.Td>
             </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {docs.map(doc => {
-              const editHref = `/admin/worlds/${worldId}/documents/${doc.id}/edit`;
-              return (
-                <Table.Tr
-                  key={doc.id}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => { window.location.href = editHref; }}
-                >
-                  <Table.Td>
-                    <Text size="sm" fw={500} lineClamp={1}>{docDisplayName(doc)}</Text>
-                  </Table.Td>
-                  {!docTypeFilter && (
-                    <Table.Td>
-                      <Badge size="sm" color={docTypeBadgeColor(doc.doc_type)}>
-                        {DOC_TYPE_LABELS[doc.doc_type] || doc.doc_type}
-                      </Badge>
-                    </Table.Td>
-                  )}
-                  <Table.Td><Text size="sm" c="dimmed">{formatDate(doc.modified_at)}</Text></Table.Td>
-                  <Table.Td>
-                    <Menu position="bottom-end" withArrow>
-                      <Menu.Target>
-                        <Button variant="subtle" size="compact-sm" px={4} onClick={e => e.stopPropagation()}><IconDots size={16} /></Button>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        <Menu.Item
-                          leftSection={<IconEdit size={14} />}
-                          onClick={() => { window.location.href = editHref; }}
-                        >
-                          Edit
-                        </Menu.Item>
-                        <Menu.Item leftSection={<IconDownload size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDownload(doc); }}>
-                          Download
-                        </Menu.Item>
-                        <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDelete(doc); }}>
-                          Delete
-                        </Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
+          );
+        };
+
+        return (
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                {!docTypeFilter && <Table.Th>Type</Table.Th>}
+                <Table.Th>Modified</Table.Th>
+                <Table.Th w={60} />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {injected.length > 0 && injected.map(renderRow)}
+              {injected.length > 0 && regular.length > 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={3} py={4}>
+                    <Text size="xs" c="dimmed" fs="italic">— search-only lore —</Text>
                   </Table.Td>
                 </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
-      )}
+              )}
+              {regular.map(renderRow)}
+            </Table.Tbody>
+          </Table>
+        );
+      })()}
 
     </Stack>
   );

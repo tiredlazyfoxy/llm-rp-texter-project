@@ -27,6 +27,7 @@ import {
   IconCopy,
   IconEdit,
   IconPlus,
+  IconSparkles,
   IconTrash,
 } from "@tabler/icons-react";
 import { getCurrentUser } from "../../auth";
@@ -254,6 +255,30 @@ export function WorldEditPage() {
   const [pipeline, setPipeline] = useState("{}");
   const [worldStatus, setWorldStatus] = useState("draft");
 
+  // Resizable textarea heights (persisted to localStorage)
+  const LS_HEIGHT = "llmrp_world_editor_height_";
+  const DEFAULT_HEIGHTS: Record<string, number> = {
+    description: 100, system_prompt: 240, character_template: 240,
+    initial_message: 160, pipeline: 80,
+  };
+  const [heights, setHeights] = useState<Record<string, number>>(() => {
+    const h: Record<string, number> = {};
+    for (const [k, def] of Object.entries(DEFAULT_HEIGHTS)) {
+      const stored = localStorage.getItem(LS_HEIGHT + k);
+      h[k] = stored ? parseInt(stored) : def;
+    }
+    return h;
+  });
+  const onResized = (field: string) => (e: React.MouseEvent<HTMLTextAreaElement>) => {
+    const px = e.currentTarget.offsetHeight;
+    setHeights(prev => ({ ...prev, [field]: px }));
+    localStorage.setItem(LS_HEIGHT + field, String(px));
+  };
+  const resizable = (field: string) => ({
+    styles: { input: { height: heights[field], resize: "vertical" as const, overflow: "auto" } },
+    onMouseUp: onResized(field),
+  });
+
   // Stats & rules
   const [stats, setStats] = useState<StatDefinitionItem[]>([]);
   const [rules, setRules] = useState<RuleItem[]>([]);
@@ -426,12 +451,23 @@ export function WorldEditPage() {
               onChange={v => setWorldStatus(v || "draft")}
             />
           </Group>
-          <Textarea label="Description" value={description} onChange={e => setDescription(e.currentTarget.value)} minRows={2} />
-          <Textarea label="Lore" value={lore} onChange={e => setLore(e.currentTarget.value)} minRows={4} autosize maxRows={12} />
-          <Textarea label="System Prompt" value={systemPrompt} onChange={e => setSystemPrompt(e.currentTarget.value)} minRows={4} autosize maxRows={12} />
-          <Textarea label="Character Template" value={characterTemplate} onChange={e => setCharacterTemplate(e.currentTarget.value)} minRows={4} autosize maxRows={12} placeholder="Use {PLACEHOLDER} tokens" />
-          <Textarea label="Initial Message" value={initialMessage} onChange={e => setInitialMessage(e.currentTarget.value)} minRows={3} autosize maxRows={8} placeholder="Supports {character_name}, {location_name}, {location_summary}" />
-          <Textarea label="Pipeline (JSON)" value={pipeline} onChange={e => setPipeline(e.currentTarget.value)} minRows={2} autosize maxRows={6} styles={{ input: { fontFamily: "monospace" } }} />
+          <Textarea
+            label={<Group gap={4} wrap="nowrap">Description<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/description`}><IconSparkles size={12} /></ActionIcon></Group>}
+            value={description} onChange={e => setDescription(e.currentTarget.value)}
+            {...resizable("description")}
+          />
+          <Textarea
+            label={<Group gap={4} wrap="nowrap">System Prompt<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/system_prompt`}><IconSparkles size={12} /></ActionIcon></Group>}
+            value={systemPrompt} onChange={e => setSystemPrompt(e.currentTarget.value)}
+            {...resizable("system_prompt")}
+          />
+          <Textarea label="Character Template" value={characterTemplate} onChange={e => setCharacterTemplate(e.currentTarget.value)} placeholder="Use {PLACEHOLDER} tokens" {...resizable("character_template")} />
+          <Textarea
+            label={<Group gap={4} wrap="nowrap">Initial Message<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/initial_message`}><IconSparkles size={12} /></ActionIcon></Group>}
+            value={initialMessage} onChange={e => setInitialMessage(e.currentTarget.value)} placeholder="Supports {character_name}, {location_name}, {location_summary}"
+            {...resizable("initial_message")}
+          />
+          <Textarea label="Pipeline (JSON)" value={pipeline} onChange={e => setPipeline(e.currentTarget.value)} styles={{ input: { fontFamily: "monospace", height: heights.pipeline, resize: "vertical", overflow: "auto" } }} onMouseUp={onResized("pipeline")} />
         </Stack>
       </Paper>
 

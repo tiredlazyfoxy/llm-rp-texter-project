@@ -102,6 +102,7 @@ async def search_impl(
     world_id: int,
     query: str,
     source_type: str | None = None,
+    injected_ids: set[int] | None = None,
 ) -> str:
     """Vector search → fetch full documents → combine with delimiter."""
     from app.db import lore_facts, locations, npcs
@@ -111,11 +112,14 @@ async def search_impl(
     if not chunks:
         return "No results found."
 
-    # Deduplicate by source_id, preserving relevance order
+    # Deduplicate by source_id, preserving relevance order.
+    # Skip lore facts that are already injected into context.
     seen: set[int] = set()
     unique: list[tuple[str, int]] = []
     for chunk in chunks:
         if chunk.source_id not in seen:
+            if chunk.source_type == "lore_fact" and injected_ids and chunk.source_id in injected_ids:
+                continue
             seen.add(chunk.source_id)
             unique.append((chunk.source_type, chunk.source_id))
 
@@ -141,21 +145,25 @@ async def search_impl(
     return _DOCUMENT_DELIMITER.join(parts)
 
 
-async def get_lore_impl(world_id: int, query: str) -> str:
-    """Vector search scoped to lore_fact, returns single full document."""
+async def get_lore_impl(world_id: int, query: str, injected_ids: set[int] | None = None) -> str:
+    """Vector search scoped to lore_fact, returns single full document (non-injected only)."""
     from app.db import lore_facts
     from app.services import vector_storage
 
-    chunks = await vector_storage.search(world_id, query, source_type="lore_fact", limit=1)
+    # Fetch a few candidates so we can skip injected ones
+    chunks = await vector_storage.search(world_id, query, source_type="lore_fact", limit=5)
     if not chunks:
         return "No lore found."
 
-    doc = await lore_facts.get_by_id(chunks[0].source_id)
-    if doc is None or not doc.content:
-        return "No lore found."
+    for chunk in chunks:
+        if injected_ids and chunk.source_id in injected_ids:
+            continue
+        doc = await lore_facts.get_by_id(chunk.source_id)
+        if doc is not None and doc.content:
+            logger.debug("get_lore_impl: found lore fact %d for world %d", doc.id, world_id)
+            return doc.content
 
-    logger.debug("get_lore_impl: found lore fact %d for world %d", doc.id, world_id)
-    return doc.content
+    return "No lore found."
 
 
 async def web_search_impl(query: str) -> str:
@@ -198,10 +206,25 @@ async def web_search_impl(query: str) -> str:
 # Factory
 # ---------------------------------------------------------------------------
 
+async def _get_injected_ids(world_id: int) -> set[int]:
+    """Return IDs of lore facts that are always injected into context."""
+    from app.db import lore_facts
+    facts = await lore_facts.list_injected_by_world(world_id)
+    return {f.id for f in facts}
+
+
 def get_admin_tools(world_id: int) -> dict[str, Callable]:
     """Return {tool_name: async_callable} bound to the given world_id."""
+    async def search_bound(query: str, source_type: str | None = None) -> str:
+        injected_ids = await _get_injected_ids(world_id)
+        return await search_impl(world_id, query, source_type, injected_ids)
+
+    async def get_lore_bound(query: str) -> str:
+        injected_ids = await _get_injected_ids(world_id)
+        return await get_lore_impl(world_id, query, injected_ids)
+
     return {
-        "search": lambda query, source_type=None: search_impl(world_id, query, source_type),
-        "get_lore": lambda query: get_lore_impl(world_id, query),
+        "search": search_bound,
+        "get_lore": get_lore_bound,
         "web_search": web_search_impl,
     }

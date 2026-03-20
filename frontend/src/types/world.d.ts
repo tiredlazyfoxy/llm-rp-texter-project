@@ -71,6 +71,8 @@ export interface DocumentItem {
   exits: string[] | null;
   links: NpcLinkInfo[] | null;
   linked_npcs: LinkedNpcInfo[] | null;
+  is_injected: boolean;
+  weight: number;
 }
 
 export interface DocumentSaveResponse extends DocumentItem {
@@ -92,6 +94,8 @@ export interface UpdateDocumentRequest {
   name?: string;
   content?: string;
   exits?: string[];
+  is_injected?: boolean;
+  weight?: number;
 }
 
 // ── Stats ───────────────────────────────────────────────────────

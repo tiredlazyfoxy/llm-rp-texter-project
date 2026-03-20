@@ -135,11 +135,15 @@ def _doc_to_response(
             for lnk in location_links_list
         ]
 
+    is_injected = getattr(obj, "is_injected", False)
+    weight = getattr(obj, "weight", 0)
+
     return DocumentResponse(
         id=str(obj.id), doc_type=doc_type, world_id=str(obj.world_id),
         name=name, content=obj.content,
         created_at=obj.created_at, modified_at=obj.modified_at,
         exits=exits, links=links, linked_npcs=linked_npcs,
+        is_injected=is_injected, weight=weight,
     )
 
 
