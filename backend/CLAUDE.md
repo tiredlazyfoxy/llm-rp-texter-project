@@ -82,7 +82,7 @@ backend/
 | `worlds` | stage1_step2 | name, system_prompt, character_template, pipeline, status |
 | `world_locations` | stage1_step2 | world_id, name, content, exits |
 | `world_npcs` | stage1_step2 | world_id, name, content |
-| `world_lore_facts` | stage1_step2 | world_id, content |
+| `world_lore_facts` | stage1_step2/step7b | world_id, content, is_injected (bool), weight (int) |
 | `npc_location_links` | stage1_step2 | npc_id, location_id, link_type (present/excluded) |
 | `world_stat_definitions` | stage1_step2 | world_id, name, scope, stat_type, constraints |
 | `world_rules` | stage1_step2 | world_id, rule_text, order |
