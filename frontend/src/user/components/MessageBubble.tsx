@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ActionIcon, Collapse, Group, Stack, Text, Tooltip, UnstyledButton } from "@mantine/core";
 import { IconChevronDown, IconChevronRight, IconCornerUpLeft } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
+import ReactMarkdown from "react-markdown";
 import { ToolCallTrace } from "./ToolCallTrace";
 import { chatStore } from "../stores/ChatStore";
 
@@ -30,8 +31,10 @@ export const MessageBubble = observer(function MessageBubble({
 
   if (isSystem) {
     return (
-      <Text size="sm" c="dimmed" fs="italic" ta="center" py="xs">
-        {content}
+      <Text size="sm" c="dimmed" fs="italic" ta="left" py="xs" component="div">
+        <div className="md-body">
+          <ReactMarkdown>{content}</ReactMarkdown>
+        </div>
       </Text>
     );
   }
@@ -64,7 +67,9 @@ export const MessageBubble = observer(function MessageBubble({
           </>
         )}
 
-        <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{content}</Text>
+        <div className="md-body" style={{ fontSize: "var(--mantine-font-size-sm)" }}>
+          <ReactMarkdown>{content}</ReactMarkdown>
+        </div>
 
         {!isStreaming && message.tool_calls && message.tool_calls.length > 0 && (
           <ToolCallTrace toolCalls={message.tool_calls} />
