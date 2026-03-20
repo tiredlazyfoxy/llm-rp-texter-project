@@ -132,7 +132,28 @@ Available only during admin document editing (`enable_tools: true` in `LlmChatRe
 - **get_lore(query)** — Semantic search scoped to `lore_fact` only. Returns single best-matching lore document.
 - **web_search(query)** — Google Custom Search API. Requires env vars `SEARCH_CSE_KEY` and `SEARCH_CSE_ID`. Returns 5 results (title, URL, snippet).
 
-Implemented in `backend/app/services/admin_tools.py`. Tool schemas via `pydantic_to_openai_tool()`. LLM has up to 15 tool call rounds. When `enable_tools=true`, world lore is **not** injected into the system prompt — LLM fetches it actively via tools.
+Implemented in `backend/app/services/admin_tools.py`. Tool schemas via `pydantic_to_openai_tool()`. LLM has up to 15 tool call rounds.
+
+**Lore context with tools enabled:** `is_injected=True` lore facts are always in the system prompt (see Lore Injection below). Non-injected facts are excluded from context — the LLM fetches them via `search`/`get_lore`. Injected fact IDs are filtered out of tool search results to avoid duplication.
+
+## Lore Injection (stage1_step7b)
+
+`WorldLoreFact` has two fields that control context injection:
+
+| Field          | Type | Default | Meaning                                |
+| -------------- | ---- | ------- | -------------------------------------- |
+| `is_injected`  | bool | false   | Always include in system prompt        |
+| `weight`       | int  | 0       | Sort order (ascending); lower = first  |
+
+**Injection rules:**
+
+- `is_injected=True` facts → always appear in `## World Context` section of the system prompt, sorted by weight. This happens **regardless** of `enable_tools`.
+- `is_injected=False` facts → only in context when `enable_tools=False` (full lore dump); with tools they must be fetched actively via `search`/`get_lore`.
+- Injected fact IDs are excluded from `search` and `get_lore` tool results (already in context, no need to repeat).
+
+`World.lore` (legacy text blob on the world record) is deprecated — hidden from UI, no longer shown in prompts. Field kept in DB for backward compatibility.
+
+**Admin UI:** Lore fact list shows `is_injected=True` facts pinned at top (sorted by weight, pin icon), then regular facts below with a divider. Edit page has "Always inject" toggle and "Injection order" number input.
 
 ## Stage 2 Agent Tools (stage2_step2, planned)
 
