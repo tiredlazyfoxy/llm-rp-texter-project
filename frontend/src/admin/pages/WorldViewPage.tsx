@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import { formatDate } from "../../utils/formatDate";
 import {
   Alert,
@@ -128,8 +129,8 @@ function CollapsibleText({ text, mono = false }: { text: string; mono?: boolean 
       style={{ position: "relative", overflow: "hidden", maxHeight: expanded ? undefined : COLLAPSED_HEIGHT, background: "var(--mantine-color-default)", borderRadius: 4, cursor: overflows ? "pointer" : undefined }}
       onClick={() => overflows && setExpanded(e => !e)}
     >
-      <div ref={innerRef} style={{ padding: "8px 10px" }}>
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", fontFamily: mono ? "monospace" : undefined }}>{text}</Text>
+      <div ref={innerRef} className="md-body" style={{ padding: "8px 10px", fontSize: "var(--mantine-font-size-sm)", fontFamily: mono ? "monospace" : undefined }}>
+        <ReactMarkdown>{text}</ReactMarkdown>
       </div>
       {!expanded && overflows && (
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 48, background: "linear-gradient(transparent, var(--mantine-color-default))" }} />
@@ -160,8 +161,8 @@ function InfoTab({ world, worldId }: { world: WorldDetail; worldId: string }) {
           <Stack gap={4}>
             <Text fw={600}>Description</Text>
             {world.description ? (
-              <div style={{ background: "var(--mantine-color-default)", borderRadius: 4, padding: "8px 10px" }}>
-                <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{world.description}</Text>
+              <div className="md-body" style={{ background: "var(--mantine-color-default)", borderRadius: 4, padding: "8px 10px", fontSize: "var(--mantine-font-size-sm)" }}>
+                <ReactMarkdown>{world.description}</ReactMarkdown>
               </div>
             ) : (
               <Text size="sm" c="dimmed">-</Text>
