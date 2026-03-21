@@ -70,6 +70,7 @@ def _world_to_response(w: World) -> WorldResponse:
         id=str(w.id), name=w.name, description=w.description, lore=w.lore,
         system_prompt=w.system_prompt, character_template=w.character_template,
         initial_message=w.initial_message, pipeline=w.pipeline,
+        generation_mode=w.generation_mode, agent_config=w.agent_config,
         status=w.status.value, owner_id=str(w.owner_id) if w.owner_id else None,
         created_at=w.created_at, modified_at=w.modified_at,
     )
@@ -86,7 +87,7 @@ def _stat_to_response(s: WorldStatDefinition) -> StatDefinitionResponse:
         id=str(s.id), world_id=str(s.world_id), name=s.name,
         description=s.description, scope=s.scope.value, stat_type=s.stat_type.value,
         default_value=s.default_value, min_value=s.min_value, max_value=s.max_value,
-        enum_values=enum_vals,
+        enum_values=enum_vals, hidden=s.hidden,
     )
 
 
@@ -196,6 +197,7 @@ async def get_world(world_id: int, caller: User = Depends(_require_editor)):
         id=str(w.id), name=w.name, description=w.description, lore=w.lore,
         system_prompt=w.system_prompt, character_template=w.character_template,
         initial_message=w.initial_message, pipeline=w.pipeline,
+        generation_mode=w.generation_mode, agent_config=w.agent_config,
         status=w.status.value, owner_id=str(w.owner_id) if w.owner_id else None,
         created_at=w.created_at, modified_at=w.modified_at,
         stats=[_stat_to_response(s) for s in detail["stats"]],

@@ -9,6 +9,8 @@ export interface WorldItem {
   character_template: string;
   initial_message: string;
   pipeline: string;
+  generation_mode: string;
+  agent_config: string;
   status: string;
   owner_id: string | null;
   created_at: string | null;
@@ -41,7 +43,21 @@ export interface UpdateWorldRequest {
   character_template?: string;
   initial_message?: string;
   pipeline?: string;
+  generation_mode?: string;
+  agent_config?: string;
   status?: string;
+}
+
+// ── Pipeline ───────────────────────────────────────────────────
+
+export interface PipelineStage {
+  step_type: string;
+  prompt: string;
+  max_agent_steps: number | null;
+}
+
+export interface PipelineConfig {
+  stages: PipelineStage[];
 }
 
 // ── Documents ───────────────────────────────────────────────────
@@ -111,6 +127,7 @@ export interface StatDefinitionItem {
   min_value: number | null;
   max_value: number | null;
   enum_values: string[] | null;
+  hidden: boolean;
 }
 
 export interface CreateStatRequest {
@@ -122,6 +139,7 @@ export interface CreateStatRequest {
   min_value?: number;
   max_value?: number;
   enum_values?: string[];
+  hidden?: boolean;
 }
 
 export interface UpdateStatRequest {
@@ -133,6 +151,7 @@ export interface UpdateStatRequest {
   min_value?: number | null;
   max_value?: number | null;
   enum_values?: string[] | null;
+  hidden?: boolean | null;
 }
 
 // ── Rules ───────────────────────────────────────────────────────

@@ -14,6 +14,8 @@ class WorldResponse(BaseModel):
     character_template: str
     initial_message: str
     pipeline: str
+    generation_mode: str
+    agent_config: str
     status: str
     owner_id: str | None
     created_at: datetime | None
@@ -40,6 +42,8 @@ class CreateWorldRequest(BaseModel):
     character_template: str = ""
     initial_message: str = ""
     pipeline: str = "{}"
+    generation_mode: str = "simple"
+    agent_config: str = "{}"
     status: str = "draft"
 
 
@@ -51,6 +55,8 @@ class UpdateWorldRequest(BaseModel):
     character_template: str | None = None
     initial_message: str | None = None
     pipeline: str | None = None
+    generation_mode: str | None = None
+    agent_config: str | None = None
     status: str | None = None
 
 
@@ -121,6 +127,7 @@ class StatDefinitionResponse(BaseModel):
     min_value: int | None
     max_value: int | None
     enum_values: list[str] | None
+    hidden: bool
 
 
 class CreateStatRequest(BaseModel):
@@ -132,6 +139,7 @@ class CreateStatRequest(BaseModel):
     min_value: int | None = None
     max_value: int | None = None
     enum_values: list[str] | None = None
+    hidden: bool = False
 
 
 class UpdateStatRequest(BaseModel):
@@ -143,6 +151,7 @@ class UpdateStatRequest(BaseModel):
     min_value: int | None = None
     max_value: int | None = None
     enum_values: list[str] | None = None
+    hidden: bool | None = None
 
 
 # ── Rules ─────────────────────────────────────────────────────────

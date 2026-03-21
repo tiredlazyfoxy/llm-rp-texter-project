@@ -92,6 +92,8 @@ def _world_to_dict(w: World) -> dict:
         "character_template": w.character_template,
         "initial_message": w.initial_message,
         "pipeline": w.pipeline,
+        "generation_mode": w.generation_mode,
+        "agent_config": w.agent_config,
         "status": w.status.value,
         "owner_id": w.owner_id,
         "created_at": _serialize_datetime(w.created_at),
@@ -109,6 +111,8 @@ def _dict_to_world(d: dict) -> World:
         character_template=d.get("character_template", ""),
         initial_message=d.get("initial_message", ""),
         pipeline=d.get("pipeline", "{}"),
+        generation_mode=d.get("generation_mode", "simple"),
+        agent_config=d.get("agent_config", "{}"),
         status=WorldStatus(d["status"]),
         owner_id=d.get("owner_id"),
         created_at=_parse_datetime(d.get("created_at")),
@@ -241,6 +245,7 @@ def _stat_def_to_dict(sd: WorldStatDefinition) -> dict:
         "min_value": sd.min_value,
         "max_value": sd.max_value,
         "enum_values": sd.enum_values,
+        "hidden": sd.hidden,
     }
 
 
@@ -256,6 +261,7 @@ def _dict_to_stat_def(d: dict) -> WorldStatDefinition:
         min_value=d.get("min_value"),
         max_value=d.get("max_value"),
         enum_values=d.get("enum_values"),
+        hidden=d.get("hidden", False),
     )
 
 

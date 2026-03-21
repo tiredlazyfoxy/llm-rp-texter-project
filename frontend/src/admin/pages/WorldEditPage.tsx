@@ -31,7 +31,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { getCurrentUser } from "../../auth";
-import type { RuleItem, StatDefinitionItem, WorldDetail } from "../../types/world";
+import type { PipelineConfig, PipelineStage, RuleItem, StatDefinitionItem, WorldDetail } from "../../types/world";
 import {
   cloneWorld,
   createRule,
@@ -77,6 +77,7 @@ function StatFormModal({ opened, stat, worldId, onClose, onSaved }: StatFormModa
   const [minValue, setMinValue] = useState<number | string>("");
   const [maxValue, setMaxValue] = useState<number | string>("");
   const [enumValues, setEnumValues] = useState<string[]>([]);
+  const [hidden, setHidden] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +91,7 @@ function StatFormModal({ opened, stat, worldId, onClose, onSaved }: StatFormModa
       setMinValue(stat.min_value ?? "");
       setMaxValue(stat.max_value ?? "");
       setEnumValues(stat.enum_values ?? []);
+      setHidden(stat.hidden ?? false);
     } else if (opened) {
       setName("");
       setDescription("");
@@ -99,6 +101,7 @@ function StatFormModal({ opened, stat, worldId, onClose, onSaved }: StatFormModa
       setMinValue("");
       setMaxValue("");
       setEnumValues([]);
+      setHidden(false);
     }
     setError(null);
   }, [opened, stat]);
@@ -117,6 +120,7 @@ function StatFormModal({ opened, stat, worldId, onClose, onSaved }: StatFormModa
         min_value: statType === "int" && minValue !== "" ? Number(minValue) : undefined,
         max_value: statType === "int" && maxValue !== "" ? Number(maxValue) : undefined,
         enum_values: (statType === "enum" || statType === "set") && enumValues.length > 0 ? enumValues : undefined,
+        hidden,
       };
       if (isEdit) {
         await updateStat(worldId, stat.id, data);
@@ -164,6 +168,7 @@ function StatFormModal({ opened, stat, worldId, onClose, onSaved }: StatFormModa
         {(statType === "enum" || statType === "set") && (
           <TagsInput label="Values" value={enumValues} onChange={setEnumValues} placeholder="Type and press Enter" />
         )}
+        <Checkbox label="Hidden from players" checked={hidden} onChange={e => setHidden(e.currentTarget.checked)} />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button onClick={handleSubmit} loading={loading}>{isEdit ? "Save" : "Create"}</Button>
@@ -253,13 +258,15 @@ export function WorldEditPage() {
   const [characterTemplate, setCharacterTemplate] = useState("");
   const [initialMessage, setInitialMessage] = useState("");
   const [pipeline, setPipeline] = useState("{}");
+  const [generationMode, setGenerationMode] = useState("simple");
+  const [pipelineConfig, setPipelineConfig] = useState<PipelineConfig>({ stages: [] });
   const [worldStatus, setWorldStatus] = useState("draft");
 
   // Resizable textarea heights (persisted to localStorage)
   const LS_HEIGHT = "llmrp_world_editor_height_";
   const DEFAULT_HEIGHTS: Record<string, number> = {
     description: 100, system_prompt: 240, character_template: 240,
-    initial_message: 160, pipeline: 80,
+    initial_message: 160,
   };
   const [heights, setHeights] = useState<Record<string, number>>(() => {
     const h: Record<string, number> = {};
@@ -301,6 +308,13 @@ export function WorldEditPage() {
       setCharacterTemplate(detail.character_template);
       setInitialMessage(detail.initial_message);
       setPipeline(detail.pipeline);
+      setGenerationMode(detail.generation_mode || "simple");
+      try {
+        const parsed = JSON.parse(detail.pipeline || "{}");
+        setPipelineConfig({ stages: parsed.stages || [] });
+      } catch {
+        setPipelineConfig({ stages: [] });
+      }
       setWorldStatus(detail.status);
       setStats(detail.stats);
       setRules(detail.rules);
@@ -321,10 +335,14 @@ export function WorldEditPage() {
     setError(null);
     setSuccess(null);
     try {
+      const serializedPipeline = generationMode === "chain"
+        ? JSON.stringify(pipelineConfig)
+        : pipeline;
       await updateWorld(worldId, {
         name, description, lore, system_prompt: systemPrompt,
         character_template: characterTemplate, initial_message: initialMessage,
-        pipeline, status: worldStatus,
+        pipeline: serializedPipeline, generation_mode: generationMode,
+        status: worldStatus,
       });
       setSuccess("World saved");
       setTimeout(() => setSuccess(null), 3000);
@@ -456,18 +474,135 @@ export function WorldEditPage() {
             value={description} onChange={e => setDescription(e.currentTarget.value)}
             {...resizable("description")}
           />
-          <Textarea
-            label={<Group gap={4} wrap="nowrap">System Prompt<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/system_prompt`}><IconSparkles size={12} /></ActionIcon></Group>}
-            value={systemPrompt} onChange={e => setSystemPrompt(e.currentTarget.value)}
-            {...resizable("system_prompt")}
-          />
           <Textarea label="Character Template" value={characterTemplate} onChange={e => setCharacterTemplate(e.currentTarget.value)} placeholder="Use {PLACEHOLDER} tokens" {...resizable("character_template")} />
           <Textarea
             label={<Group gap={4} wrap="nowrap">Initial Message<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/initial_message`}><IconSparkles size={12} /></ActionIcon></Group>}
             value={initialMessage} onChange={e => setInitialMessage(e.currentTarget.value)} placeholder="Supports {character_name}, {location_name}, {location_summary}"
             {...resizable("initial_message")}
           />
-          <Textarea label="Pipeline (JSON)" value={pipeline} onChange={e => setPipeline(e.currentTarget.value)} styles={{ input: { fontFamily: "monospace", height: heights.pipeline, resize: "vertical", overflow: "auto" } }} onMouseUp={onResized("pipeline")} />
+        </Stack>
+      </Paper>
+
+      {/* Generation Mode section */}
+      <Paper p="md" mb="md" withBorder>
+        <Stack>
+          <Select
+            label="Generation Mode"
+            data={[
+              { value: "simple", label: "Simple" },
+              { value: "chain", label: "Chain Pipeline" },
+              { value: "agentic", label: "Agentic (coming soon)", disabled: true },
+            ]}
+            value={generationMode}
+            onChange={v => {
+              const mode = v || "simple";
+              setGenerationMode(mode);
+              if (mode === "chain" && pipelineConfig.stages.length === 0) {
+                setPipelineConfig({
+                  stages: [
+                    { step_type: "planning", prompt: "", max_agent_steps: 10 },
+                    { step_type: "writing", prompt: "", max_agent_steps: null },
+                  ],
+                });
+              }
+            }}
+          />
+          {generationMode === "simple" && (
+            <Textarea
+              label={<Group gap={4} wrap="nowrap">System Prompt<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/system_prompt`}><IconSparkles size={12} /></ActionIcon></Group>}
+              value={systemPrompt} onChange={e => setSystemPrompt(e.currentTarget.value)}
+              {...resizable("system_prompt")}
+            />
+          )}
+          {generationMode === "chain" && (
+            <Stack gap="xs">
+              <Group justify="space-between">
+                <Text fw={500} size="sm">Pipeline Stages</Text>
+                <Select
+                  size="xs"
+                  placeholder="Add stage..."
+                  data={[
+                    { value: "planning", label: "Planning" },
+                    { value: "writing", label: "Writing" },
+                  ]}
+                  value={null}
+                  onChange={v => {
+                    if (!v) return;
+                    const newStage: PipelineStage = {
+                      step_type: v,
+                      prompt: "",
+                      max_agent_steps: v === "planning" ? 10 : null,
+                    };
+                    setPipelineConfig(prev => ({ stages: [...prev.stages, newStage] }));
+                  }}
+                  clearable
+                  w={160}
+                />
+              </Group>
+              {pipelineConfig.stages.length === 0 ? (
+                <Text c="dimmed" size="sm">No stages defined.</Text>
+              ) : (
+                pipelineConfig.stages.map((stage, idx) => (
+                  <Paper key={idx} p="xs" withBorder>
+                    <Group justify="space-between" wrap="nowrap">
+                      <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                        <Badge size="sm" variant="light" circle>{idx + 1}</Badge>
+                        <Badge size="sm" variant="outline">{stage.step_type}</Badge>
+                        {stage.step_type === "planning" && (
+                          <NumberInput
+                            size="xs"
+                            label="Max steps"
+                            value={stage.max_agent_steps ?? 10}
+                            onChange={v => {
+                              const stages = [...pipelineConfig.stages];
+                              stages[idx] = { ...stages[idx], max_agent_steps: typeof v === "number" ? v : 10 };
+                              setPipelineConfig({ stages });
+                            }}
+                            min={1}
+                            max={50}
+                            w={100}
+                          />
+                        )}
+                        <Text size="xs" c="dimmed" lineClamp={1} style={{ flex: 1, minWidth: 0 }}>
+                          {stage.prompt ? stage.prompt.slice(0, 80) + (stage.prompt.length > 80 ? "..." : "") : "(no prompt)"}
+                        </Text>
+                      </Group>
+                      <Group gap={4} wrap="nowrap">
+                        <ActionIcon variant="subtle" size="sm" disabled={idx === 0} onClick={() => {
+                          const stages = [...pipelineConfig.stages];
+                          [stages[idx - 1], stages[idx]] = [stages[idx], stages[idx - 1]];
+                          setPipelineConfig({ stages });
+                        }}>
+                          <IconArrowUp size={14} />
+                        </ActionIcon>
+                        <ActionIcon variant="subtle" size="sm" disabled={idx === pipelineConfig.stages.length - 1} onClick={() => {
+                          const stages = [...pipelineConfig.stages];
+                          [stages[idx], stages[idx + 1]] = [stages[idx + 1], stages[idx]];
+                          setPipelineConfig({ stages });
+                        }}>
+                          <IconArrowDown size={14} />
+                        </ActionIcon>
+                        <ActionIcon variant="subtle" size="sm" title="Edit Prompt" onClick={() => {
+                          window.location.href = `/admin/worlds/${worldId}/pipeline/${idx}`;
+                        }}>
+                          <IconSparkles size={14} />
+                        </ActionIcon>
+                        <ActionIcon variant="subtle" size="sm" color="red" onClick={() => {
+                          const stages = pipelineConfig.stages.filter((_, i) => i !== idx);
+                          setPipelineConfig({ stages });
+                        }}>
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Group>
+                    </Group>
+                  </Paper>
+                ))
+              )}
+            </Stack>
+          )}
+          {generationMode === "agentic" && (
+            <Alert color="blue">Agent configuration coming soon</Alert>
+          )}
         </Stack>
       </Paper>
 

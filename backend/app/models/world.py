@@ -38,6 +38,8 @@ class World(SQLModel, table=True):
     character_template: str = Field(default="")
     initial_message: str = Field(default="")
     pipeline: str = Field(default="{}")
+    generation_mode: str = Field(default="simple")  # "simple" | "chain" | "agentic"
+    agent_config: str = Field(default="{}")  # future: used when generation_mode = "agentic"
     status: WorldStatus = Field(default=WorldStatus.draft)
     owner_id: int | None = Field(default=None, index=True)
     created_at: datetime | None = Field(default=None)
@@ -101,6 +103,7 @@ class WorldStatDefinition(SQLModel, table=True):
     min_value: int | None = Field(default=None)
     max_value: int | None = Field(default=None)
     enum_values: str | None = Field(default=None)
+    hidden: bool = Field(default=False)
 
 
 class WorldRule(SQLModel, table=True):

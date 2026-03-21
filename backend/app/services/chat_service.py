@@ -229,6 +229,7 @@ async def list_public_worlds(caller_id: int) -> list[WorldInfoResponse]:
                     min_value=d.min_value,
                     max_value=d.max_value,
                     enum_values=json.loads(d.enum_values) if d.enum_values else None,
+                    hidden=d.hidden,
                 )
                 for d in stat_defs
             ],

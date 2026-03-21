@@ -13,6 +13,7 @@ import { LlmServersPage } from "./pages/LlmServersPage";
 import { UsersPage } from "./pages/UsersPage";
 import { WorldEditPage } from "./pages/WorldEditPage";
 import { WorldsListPage } from "./pages/WorldsListPage";
+import { PipelineStageEditPage } from "./pages/PipelineStageEditPage";
 import { WorldViewPage } from "./pages/WorldViewPage";
 
 const NAV_ITEMS: NavItem[] = [
@@ -32,6 +33,7 @@ function AdminContent() {
   }
   if (path.startsWith("/admin/worlds")) {
     if (/\/admin\/worlds\/\d+\/documents\/\d+\/edit/.test(path)) return <DocumentEditPage />;
+    if (/\/admin\/worlds\/\d+\/pipeline\/\d+/.test(path)) return <PipelineStageEditPage />;
     if (/\/admin\/worlds\/\d+\/field\/\w+/.test(path)) return <WorldFieldEditPage />;
     if (/\/admin\/worlds\/\d+\/edit/.test(path)) return <WorldEditPage />;
     if (/\/admin\/worlds\/\d+/.test(path)) return <WorldViewPage />;

@@ -116,6 +116,7 @@ class StatDefinitionResponse(BaseModel):
     min_value: int | None
     max_value: int | None
     enum_values: list[str] | None
+    hidden: bool
 
 
 class WorldInfoResponse(BaseModel):
