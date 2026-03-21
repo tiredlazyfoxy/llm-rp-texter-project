@@ -119,6 +119,7 @@ def _create_filtered_thinking_callback(
     queue: asyncio.Queue,
     content_parts: list[str],
     caller_role: str,
+    thinking_parts: list[str] | None = None,
 ) -> Callable:
     """Thinking callback that filters thinking events for non-editor users."""
     state = {"in_thinking": False}
@@ -132,15 +133,21 @@ def _create_filtered_thinking_callback(
             if before:
                 content_parts.append(before)
             state["in_thinking"] = True
-            if after and caller_role != "player":
-                await queue.put(sse("thinking", {"content": after}))
+            if after:
+                if thinking_parts is not None:
+                    thinking_parts.append(after)
+                if caller_role != "player":
+                    await queue.put(sse("thinking", {"content": after}))
             return
         if state["in_thinking"] and "</think>" in text:
             idx = text.index("</think>")
             before = text[:idx]
             after = text[idx + 8:]
-            if before and caller_role != "player":
-                await queue.put(sse("thinking", {"content": before}))
+            if before:
+                if thinking_parts is not None:
+                    thinking_parts.append(before)
+                if caller_role != "player":
+                    await queue.put(sse("thinking", {"content": before}))
             if caller_role != "player":
                 await queue.put(sse("thinking_done", {}))
             state["in_thinking"] = False
@@ -148,6 +155,8 @@ def _create_filtered_thinking_callback(
                 content_parts.append(after)
             return
         if state["in_thinking"]:
+            if thinking_parts is not None:
+                thinking_parts.append(text)
             if caller_role != "player":
                 await queue.put(sse("thinking", {"content": text}))
         else:
@@ -231,6 +240,8 @@ async def _run_chain_generation(
         # ---------------------------------------------------------------
         plan: GenerationPlanOutput | None = None
         tool_call_records: list[dict[str, Any]] = []
+        thinking_parts: list[str] = []
+        writing_thinking_parts: list[str] = []
 
         if planning_stage:
             await queue.put(sse("phase", {"phase": "planning"}))
@@ -269,10 +280,10 @@ async def _run_chain_generation(
                 for name, fn in tool_callables.items()
             }
 
-            # Planning stage streaming — collect raw content
+            # Planning stage streaming — collect raw content and thinking
             planning_parts: list[str] = []
             planning_callback = _create_filtered_thinking_callback(
-                queue, planning_parts, caller_role,
+                queue, planning_parts, caller_role, thinking_parts,
             )
 
             # LLM options
@@ -410,7 +421,8 @@ async def _run_chain_generation(
 
             # Writing stage streaming with thinking tag detection
             writing_parts: list[str] = []
-            writing_callback = create_thinking_callback(queue, writing_parts)
+            writing_thinking_parts: list[str] = []
+            writing_callback = create_thinking_callback(queue, writing_parts, writing_thinking_parts)
 
             writing_options: dict = {
                 "temperature": chat.text_temperature,
@@ -440,6 +452,10 @@ async def _run_chain_generation(
         # FINALIZE
         # ---------------------------------------------------------------
 
+        # Combine thinking from both stages
+        all_thinking = thinking_parts + writing_thinking_parts
+        thinking_text = "".join(all_thinking) if all_thinking else None
+
         # Save assistant message
         msg_id = snowflake_svc.generate_id()
         msg_now = now()
@@ -452,6 +468,7 @@ async def _run_chain_generation(
             turn_number=turn,
             tool_calls=json.dumps(tool_call_records) if tool_call_records else None,
             generation_plan=plan_json,
+            thinking_content=thinking_text,
             is_active_variant=True,
             created_at=msg_now,
         )
@@ -503,6 +520,7 @@ async def _run_chain_generation(
             created_at=msg_now,
             tool_calls=tool_call_records if tool_call_records else None,
             generation_plan=plan_json,
+            thinking_content=thinking_text,
         )
         await queue.put(sse("done", {"message": msg_resp}))
 

@@ -133,7 +133,8 @@ async def _run_generation(
 
         # Prepare streaming
         content_parts: list[str] = []
-        on_delta = create_thinking_callback(queue, content_parts)
+        thinking_parts: list[str] = []
+        on_delta = create_thinking_callback(queue, content_parts, thinking_parts)
 
         # LLM options — strip enable_thinking (not supported by chat_with_tools)
         options: dict = {
@@ -169,6 +170,7 @@ async def _run_generation(
         # Save assistant message
         msg_id = snowflake_svc.generate_id()
         msg_now = now()
+        thinking_text = "".join(thinking_parts) if thinking_parts else None
         asst_msg = ChatMessage(
             id=msg_id,
             session_id=session_id,
@@ -176,6 +178,7 @@ async def _run_generation(
             content=full_content,
             turn_number=turn,
             tool_calls=json.dumps(tool_call_records) if tool_call_records else None,
+            thinking_content=thinking_text,
             is_active_variant=True,
             created_at=msg_now,
         )
@@ -230,6 +233,7 @@ async def _run_generation(
             turn_number=turn,
             created_at=msg_now,
             tool_calls=tool_call_records if tool_call_records else None,
+            thinking_content=thinking_text,
         )
         await queue.put(sse("done", {"message": msg_resp}))
 

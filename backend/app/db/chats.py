@@ -210,6 +210,40 @@ async def update_message(msg: ChatMessage) -> None:
         await session.commit()
 
 
+async def update_message_content(message_id: int, content: str) -> None:
+    """Update only the content field of a message."""
+    session = await get_standalone_session()
+    async with session:
+        msg = (await session.exec(
+            select(ChatMessage).where(ChatMessage.id == message_id)
+        )).one_or_none()
+        if msg:
+            msg.content = content
+            await session.merge(msg)
+            await session.commit()
+
+
+async def delete_messages_at_and_after_turn(
+    session_id: int,
+    turn_number: int,
+    exclude_role: str | None = None,
+) -> None:
+    """Delete messages at turn_number and after. Optionally exclude a role at the target turn."""
+    session = await get_standalone_session()
+    async with session:
+        rows = (await session.exec(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .where(ChatMessage.turn_number >= turn_number)
+        )).all()
+        for r in rows:
+            # At the target turn, skip messages matching excluded role
+            if r.turn_number == turn_number and exclude_role and r.role == exclude_role:
+                continue
+            await session.delete(r)
+        await session.commit()
+
+
 # ---------------------------------------------------------------------------
 # ChatStateSnapshot
 # ---------------------------------------------------------------------------

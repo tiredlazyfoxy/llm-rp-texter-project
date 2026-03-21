@@ -83,6 +83,7 @@ class ChatMessageResponse(BaseModel):
     turn_number: int
     tool_calls: list[ToolCallInfo] | None
     generation_plan: str | None = None
+    thinking_content: str | None = None
     is_active_variant: bool
     created_at: str
 
@@ -126,6 +127,7 @@ class WorldInfoResponse(BaseModel):
     description: str
     lore: str
     character_template: str
+    generation_mode: str
     locations: list[LocationBrief]
     stat_definitions: list[StatDefinitionResponse]
 
@@ -138,6 +140,14 @@ class ChatSummaryResponse(BaseModel):
     end_turn: int
     content: str
     created_at: str
+
+
+class EditMessageRequest(BaseModel):
+    content: str
+
+
+class RegenerateRequest(BaseModel):
+    turn_number: int | None = None
 
 
 class CompactRequest(BaseModel):

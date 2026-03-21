@@ -78,6 +78,7 @@ def _msg_to_response(m: ChatMessage) -> ChatMessageResponse:
         turn_number=m.turn_number,
         tool_calls=tool_calls,
         generation_plan=m.generation_plan,
+        thinking_content=m.thinking_content,
         is_active_variant=m.is_active_variant,
         created_at=m.created_at.isoformat(),
     )
@@ -219,6 +220,7 @@ async def list_public_worlds(caller_id: int) -> list[WorldInfoResponse]:
             description=w.description,
             lore=w.lore,
             character_template=w.character_template,
+            generation_mode=w.generation_mode or "simple",
             locations=[LocationBrief(id=str(loc.id), name=loc.name) for loc in locs],
             stat_definitions=[
                 StatDefinitionResponse(
@@ -509,3 +511,115 @@ async def delete_memory(session_id: int, memory_id: int, user_id: int) -> None:
     deleted = await chats_db.delete_summary(memory_id, session_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found")
+
+
+# ---------------------------------------------------------------------------
+# Public API: edit / delete message
+# ---------------------------------------------------------------------------
+
+async def edit_message(
+    session_id: int, message_id: int, new_content: str, user_id: int,
+) -> ChatDetailResponse:
+    """Edit user message content and delete all subsequent messages/snapshots."""
+    chat = await chats_db.get_session_by_id(session_id)
+    if chat is None or chat.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+
+    msg = await chats_db.get_message_by_id(message_id)
+    if msg is None or msg.session_id != session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    if msg.role != "user":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only edit user messages")
+    if msg.summary_id is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot edit summarized messages")
+
+    turn = msg.turn_number
+
+    # Update content
+    await chats_db.update_message_content(message_id, new_content)
+
+    # Delete assistant messages at this turn + all messages after
+    await chats_db.delete_messages_at_and_after_turn(session_id, turn, exclude_role="user")
+
+    # Delete snapshots and summaries after previous turn
+    await chats_db.delete_snapshots_after_turn(session_id, turn - 1)
+    await chats_db.delete_summaries_after_turn(session_id, turn - 1)
+
+    # Restore session state from snapshot at turn - 1
+    snap = await chats_db.get_snapshot_at_turn(session_id, turn - 1)
+    if snap:
+        chat.character_stats = snap.character_stats
+        chat.world_stats = snap.world_stats
+        chat.current_location_id = snap.location_id
+
+    chat.current_turn = turn - 1
+    chat.modified_at = _now()
+    await chats_db.update_session(chat)
+
+    return await _build_detail_response(chat)
+
+
+async def delete_message(
+    session_id: int, message_id: int, user_id: int,
+) -> ChatDetailResponse:
+    """Delete a non-summarized message and adjust session state."""
+    chat = await chats_db.get_session_by_id(session_id)
+    if chat is None or chat.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+
+    msg = await chats_db.get_message_by_id(message_id)
+    if msg is None or msg.session_id != session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+    if msg.role == "system":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete system messages")
+    if msg.summary_id is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete summarized messages")
+
+    turn = msg.turn_number
+
+    if turn < chat.current_turn:
+        # Past turn: rewind to turn - 1 (deletes everything from that turn onward)
+        return await rewind_chat(session_id, user_id, turn - 1)
+
+    # Current turn
+    if msg.role == "user":
+        # Delete entire turn: all messages at this turn + snapshot
+        await chats_db.delete_messages_at_and_after_turn(session_id, turn)
+        await chats_db.delete_snapshots_after_turn(session_id, turn - 1)
+        await chats_db.delete_summaries_after_turn(session_id, turn - 1)
+
+        # Restore state from previous snapshot
+        snap = await chats_db.get_snapshot_at_turn(session_id, turn - 1)
+        if snap:
+            chat.character_stats = snap.character_stats
+            chat.world_stats = snap.world_stats
+            chat.current_location_id = snap.location_id
+
+        chat.current_turn = turn - 1
+        chat.modified_at = _now()
+        await chats_db.update_session(chat)
+    else:
+        # Assistant message at current turn: mark inactive
+        await chats_db.set_message_inactive(msg.id)
+
+        # Check if any active assistant variants remain
+        variants = await chats_db.list_variants_for_turn(session_id, turn)
+        has_active = any(v.is_active_variant for v in variants)
+
+        if not has_active:
+            # No active variants — delete entire turn
+            await chats_db.delete_messages_at_and_after_turn(session_id, turn)
+            await chats_db.delete_snapshots_after_turn(session_id, turn - 1)
+            await chats_db.delete_summaries_after_turn(session_id, turn - 1)
+
+            snap = await chats_db.get_snapshot_at_turn(session_id, turn - 1)
+            if snap:
+                chat.character_stats = snap.character_stats
+                chat.world_stats = snap.world_stats
+                chat.current_location_id = snap.location_id
+
+            chat.current_turn = turn - 1
+            chat.modified_at = _now()
+            await chats_db.update_session(chat)
+
+    return await _build_detail_response(chat)

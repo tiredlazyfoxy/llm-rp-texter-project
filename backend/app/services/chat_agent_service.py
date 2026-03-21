@@ -61,6 +61,7 @@ def build_message_response(
     created_at: datetime,
     tool_calls: list[dict] | None = None,
     generation_plan: str | None = None,
+    thinking_content: str | None = None,
 ) -> dict:
     """Build a ChatMessageResponse dict for the done SSE event."""
     from app.models.schemas.chat import ToolCallInfo
@@ -83,6 +84,7 @@ def build_message_response(
         turn_number=turn_number,
         tool_calls=tc_list,
         generation_plan=generation_plan,
+        thinking_content=thinking_content,
         is_active_variant=True,
         created_at=created_at.isoformat(),
     )
@@ -116,6 +118,7 @@ async def build_llm_messages(session_id: int) -> list[dict[str, str]]:
 def create_thinking_callback(
     queue: asyncio.Queue,
     content_parts: list[str],
+    thinking_parts: list[str] | None = None,
 ) -> Callable:
     """Factory for on_delta callback with <think>/<\/think> tag detection.
 
@@ -125,6 +128,7 @@ def create_thinking_callback(
     - Emits 'thinking_done' when reasoning ends
     - Emits 'token' SSE events for narrative content
     - Accumulates non-thinking content in content_parts
+    - Accumulates thinking content in thinking_parts (if provided)
     """
     state = {"in_thinking": False}
 
@@ -139,6 +143,8 @@ def create_thinking_callback(
                 await queue.put(sse("token", {"content": before}))
             state["in_thinking"] = True
             if after:
+                if thinking_parts is not None:
+                    thinking_parts.append(after)
                 await queue.put(sse("thinking", {"content": after}))
             return
         if state["in_thinking"] and "</think>" in text:
@@ -146,6 +152,8 @@ def create_thinking_callback(
             before = text[:idx]
             after = text[idx + 8:]
             if before:
+                if thinking_parts is not None:
+                    thinking_parts.append(before)
                 await queue.put(sse("thinking", {"content": before}))
             await queue.put(sse("thinking_done", {}))
             state["in_thinking"] = False
@@ -154,6 +162,8 @@ def create_thinking_callback(
                 await queue.put(sse("token", {"content": after}))
             return
         if state["in_thinking"]:
+            if thinking_parts is not None:
+                thinking_parts.append(text)
             await queue.put(sse("thinking", {"content": text}))
         else:
             content_parts.append(text)
@@ -210,13 +220,26 @@ async def regenerate_response(
     session_id: int,
     user_id: int,
     caller_role: str = "player",
+    turn_number: int | None = None,
 ) -> AsyncGenerator[str, None]:
-    """Dispatch to mode-specific regeneration service."""
+    """Dispatch to mode-specific regeneration service.
+
+    If turn_number is specified and < current_turn, rewinds first.
+    """
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None or chat.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
     if chat.status != "active" or chat.current_turn == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot regenerate")
+
+    # If turn_number specified and < current_turn, rewind first
+    if turn_number is not None and turn_number < chat.current_turn:
+        from app.services import chat_service
+        await chat_service.rewind_chat(session_id, user_id, turn_number)
+        # Reload chat after rewind
+        chat = await chats_db.get_session_by_id(session_id)
+        if chat is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
 
     world = await worlds_db.get_by_id(chat.world_id)
     if world is None:

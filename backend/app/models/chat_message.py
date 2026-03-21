@@ -13,6 +13,7 @@ class ChatMessage(SQLModel, table=True):
     turn_number: int = Field(index=True)
     tool_calls: str | None = None
     generation_plan: str | None = Field(default=None)
+    thinking_content: str | None = Field(default=None)
     summary_id: int | None = Field(default=None, foreign_key="chat_summaries.id", index=True)
     is_active_variant: bool = Field(default=True)
     created_at: datetime

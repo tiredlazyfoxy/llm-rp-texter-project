@@ -17,6 +17,8 @@ from app.models.schemas.chat import (
     CompactResponse,
     ContinueRequest,
     CreateChatRequest,
+    EditMessageRequest,
+    RegenerateRequest,
     RewindRequest,
     SendMessageRequest,
     UpdateChatSettingsRequest,
@@ -113,12 +115,38 @@ async def send_message(
 @router.post("/{chat_id}/regenerate")
 async def regenerate(
     chat_id: str,
+    req: RegenerateRequest | None = None,
     caller: User = Depends(_require_player),
 ) -> StreamingResponse:
+    turn = req.turn_number if req else None
     generator = await chat_agent_service.regenerate_response(
         int(chat_id), caller.id, caller_role=caller.role.value,
+        turn_number=turn,
     )
     return StreamingResponse(generator, media_type="text/event-stream")
+
+
+@router.put("/{chat_id}/messages/{message_id}", response_model=ChatDetailResponse)
+async def edit_message(
+    chat_id: str,
+    message_id: str,
+    req: EditMessageRequest,
+    caller: User = Depends(_require_player),
+) -> ChatDetailResponse:
+    return await chat_service.edit_message(
+        int(chat_id), int(message_id), req.content, caller.id,
+    )
+
+
+@router.delete("/{chat_id}/messages/{message_id}", response_model=ChatDetailResponse)
+async def delete_message(
+    chat_id: str,
+    message_id: str,
+    caller: User = Depends(_require_player),
+) -> ChatDetailResponse:
+    return await chat_service.delete_message(
+        int(chat_id), int(message_id), caller.id,
+    )
 
 
 @router.post("/{chat_id}/continue", response_model=dict)
