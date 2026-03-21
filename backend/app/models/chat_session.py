@@ -16,7 +16,6 @@ class ChatSession(SQLModel, table=True):
     world_stats: str = Field(default="{}")
     current_turn: int = Field(default=0)
     status: str = Field(default="active")
-    llm_server_id: int | None = Field(default=None, foreign_key="llm_servers.id")
     tool_model_id: str | None = None
     tool_temperature: float = Field(default=0.7)
     tool_repeat_penalty: float = Field(default=1.0)

@@ -104,7 +104,9 @@ async def send_message(
     req: SendMessageRequest,
     caller: User = Depends(_require_player),
 ) -> StreamingResponse:
-    generator = await chat_agent_service.generate_response(int(chat_id), caller.id, req.content)
+    generator = await chat_agent_service.generate_response(
+        int(chat_id), caller.id, req.content, caller_role=caller.role.value,
+    )
     return StreamingResponse(generator, media_type="text/event-stream")
 
 
@@ -113,7 +115,9 @@ async def regenerate(
     chat_id: str,
     caller: User = Depends(_require_player),
 ) -> StreamingResponse:
-    generator = await chat_agent_service.regenerate_response(int(chat_id), caller.id)
+    generator = await chat_agent_service.regenerate_response(
+        int(chat_id), caller.id, caller_role=caller.role.value,
+    )
     return StreamingResponse(generator, media_type="text/event-stream")
 
 

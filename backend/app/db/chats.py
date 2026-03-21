@@ -10,6 +10,7 @@ from app.db.engine import get_standalone_session
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.chat_state_snapshot import ChatStateSnapshot
+from app.models.chat_memory import ChatMemory
 from app.models.chat_summary import ChatSummary
 
 logger = logging.getLogger(__name__)
@@ -367,6 +368,30 @@ async def set_summary_id_on_messages(message_ids: list[int], summary_id: int) ->
             await session.merge(m)
         await session.commit()
         return len(msgs)
+
+
+# ---------------------------------------------------------------------------
+# ChatMemory
+# ---------------------------------------------------------------------------
+
+async def list_memories(session_id: int) -> list[ChatMemory]:
+    """All memories for a session, ordered by snowflake ID (creation order)."""
+    session = await get_standalone_session()
+    async with session:
+        return list((await session.exec(
+            select(ChatMemory)
+            .where(ChatMemory.session_id == session_id)
+            .order_by(ChatMemory.id.asc())  # type: ignore[arg-type]
+        )).all())
+
+
+async def create_memory(memory: ChatMemory) -> ChatMemory:
+    session = await get_standalone_session()
+    async with session:
+        session.add(memory)
+        await session.commit()
+        await session.refresh(memory)
+        return memory
 
 
 # ---------------------------------------------------------------------------

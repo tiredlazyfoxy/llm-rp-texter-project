@@ -6,11 +6,13 @@ from app.services.prompts.chat_summarization_prompt import (
     SUMMARIZE_SYSTEM_PROMPT,
     SUMMARIZE_USER_PROMPT_TEMPLATE,
 )
+from app.services.prompts.chat_system_prompt import build_rich_chat_system_prompt
 from app.services.prompts.planning_system_prompt import build_planning_system_prompt
 from app.services.prompts.writing_system_prompt import build_writing_system_prompt
 from app.services.prompts.writing_plan_message import build_writing_plan_message
 
 __all__ = [
+    "build_rich_chat_system_prompt",
     "build_document_editor_system",
     "build_world_field_editor_system",
     "SUMMARIZE_SYSTEM_PROMPT",
