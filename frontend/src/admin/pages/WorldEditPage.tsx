@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   ActionIcon,
   Alert,
@@ -286,6 +287,8 @@ export function WorldEditPage() {
     onMouseUp: onResized(field),
   });
 
+  const [expandedStages, setExpandedStages] = useState<Set<number>>(new Set());
+
   // Stats & rules
   const [stats, setStats] = useState<StatDefinitionItem[]>([]);
   const [rules, setRules] = useState<RuleItem[]>([]);
@@ -544,8 +547,9 @@ export function WorldEditPage() {
               ) : (
                 pipelineConfig.stages.map((stage, idx) => (
                   <Paper key={idx} p="xs" withBorder>
+                    <Stack gap={4}>
                     <Group justify="space-between" wrap="nowrap">
-                      <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                      <Group gap="xs" wrap="nowrap">
                         <Badge size="sm" variant="light" circle>{idx + 1}</Badge>
                         <Badge size="sm" variant="outline">{stage.step_type}</Badge>
                         {stage.step_type === "planning" && (
@@ -563,9 +567,6 @@ export function WorldEditPage() {
                             w={100}
                           />
                         )}
-                        <Text size="xs" c="dimmed" lineClamp={1} style={{ flex: 1, minWidth: 0 }}>
-                          {stage.prompt ? stage.prompt.slice(0, 80) + (stage.prompt.length > 80 ? "..." : "") : "(no prompt)"}
-                        </Text>
                       </Group>
                       <Group gap={4} wrap="nowrap">
                         <ActionIcon variant="subtle" size="sm" disabled={idx === 0} onClick={() => {
@@ -595,6 +596,28 @@ export function WorldEditPage() {
                         </ActionIcon>
                       </Group>
                     </Group>
+                    {stage.prompt ? (
+                      <div
+                        style={{
+                          cursor: "pointer",
+                          overflow: "hidden",
+                          maxHeight: expandedStages.has(idx) ? undefined : "7.5em",
+                          position: "relative",
+                          fontSize: "var(--mantine-font-size-sm)",
+                          color: "var(--mantine-color-dimmed)",
+                        }}
+                        onClick={() => setExpandedStages(prev => {
+                          const next = new Set(prev);
+                          next.has(idx) ? next.delete(idx) : next.add(idx);
+                          return next;
+                        })}
+                      >
+                        <ReactMarkdown>{stage.prompt}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <Text size="sm" c="dimmed">(no prompt)</Text>
+                    )}
+                    </Stack>
                   </Paper>
                 ))
               )}

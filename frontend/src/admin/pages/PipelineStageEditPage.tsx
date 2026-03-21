@@ -134,8 +134,8 @@ export function PipelineStageEditPage() {
           value={content}
           onChange={(e) => setContent(e.currentTarget.value)}
           autosize
-          minRows={4}
-          maxRows={30}
+          minRows={12}
+          maxRows={40}
           styles={{ input: { fontFamily: "monospace" } }}
         />
 
