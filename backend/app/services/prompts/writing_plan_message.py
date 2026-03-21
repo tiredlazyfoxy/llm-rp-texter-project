@@ -19,12 +19,37 @@ DESIGN RATIONALE
 
 CHANGELOG
     stage3_step1 — Skeleton created (returns empty string)
+    stage3_step2b — Full template implementation
 """
 
 
 def build_writing_plan_message(
     collected_data: str,
     decisions: list[str],
+    location_name: str = "",
+    present_npcs: str = "",
+    current_stats: str = "",
 ) -> str:
-    """Placeholder — returns empty string until step 2."""
-    return ""
+    """Format planning output as a user message for the writing LLM."""
+    parts = ["## Generation Plan"]
+
+    # Structural scene context — always present, not dependent on LLM output
+    scene_parts = []
+    if location_name:
+        scene_parts.append(f"**Location:** {location_name}")
+    if present_npcs:
+        scene_parts.append(f"**NPCs present:**\n{present_npcs}")
+    if current_stats:
+        scene_parts.append(f"**Stats:**\n{current_stats}")
+    if scene_parts:
+        parts.append("### Current Scene\n\n" + "\n\n".join(scene_parts))
+
+    # Plan context from planning agent
+    if collected_data:
+        parts.append(f"### Context\n\n{collected_data}")
+
+    # Decisions
+    decision_list = "\n".join(f"- {d}" for d in decisions) if decisions else "- (no specific decisions)"
+    parts.append(f"### What Happens This Turn\n\n{decision_list}")
+
+    return "\n\n".join(parts)

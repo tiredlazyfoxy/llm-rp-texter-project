@@ -60,6 +60,7 @@ def build_message_response(
     turn_number: int,
     created_at: datetime,
     tool_calls: list[dict] | None = None,
+    generation_plan: str | None = None,
 ) -> dict:
     """Build a ChatMessageResponse dict for the done SSE event."""
     from app.models.schemas.chat import ToolCallInfo
@@ -81,6 +82,7 @@ def build_message_response(
         content=content,
         turn_number=turn_number,
         tool_calls=tc_list,
+        generation_plan=generation_plan,
         is_active_variant=True,
         created_at=created_at.isoformat(),
     )
@@ -184,9 +186,9 @@ async def generate_response(
     mode = world.generation_mode or "simple"
 
     if mode == "chain":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Chain mode not yet implemented",
+        from app.services import chain_generation_service
+        return chain_generation_service.generate_chain_response(
+            session_id, user_id, user_message, caller_role,
         )
     elif mode == "agentic":
         raise HTTPException(
@@ -223,9 +225,9 @@ async def regenerate_response(
     mode = world.generation_mode or "simple"
 
     if mode == "chain":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Chain mode not yet implemented",
+        from app.services import chain_generation_service
+        return chain_generation_service.regenerate_chain_response(
+            session_id, user_id, caller_role,
         )
     elif mode == "agentic":
         raise HTTPException(

@@ -122,6 +122,26 @@ def build_rich_chat_system_prompt(
     if memories:
         parts.append(f"## Memories\n\n{memories}")
 
+    # Memory management instructions
+    parts.append(
+        "## Memory Management\n\n"
+        "You MUST use `add_memory` to save facts that matter for the ongoing story. "
+        "Save memories after significant events, not before or during.\n\n"
+        "**What to save:**\n"
+        "- Promises, deals, or commitments made by the player or NPCs\n"
+        "- Important NPC reactions or relationship changes (trust gained/lost, offended, allied)\n"
+        "- Key plot developments, secrets revealed, or quests accepted/completed\n"
+        "- Consequences of player choices that should persist\n"
+        "- Items acquired, lost, or given away\n\n"
+        "**How to write memories:**\n"
+        "- Keep each memory to 1-2 short sentences — fact, not narrative\n"
+        "- State what happened, not how it was described\n"
+        "- Example: \"Traded the silver ring to Mira for passage across the river\"\n"
+        "- Example: \"Captain Voss suspects the player of stealing the map\"\n\n"
+        "**Do NOT save:** routine actions, location descriptions, combat blow-by-blow, "
+        "or anything already covered by stats or location tracking."
+    )
+
     return "\n\n".join(parts)
 
 

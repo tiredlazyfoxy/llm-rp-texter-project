@@ -82,6 +82,7 @@ class ChatMessageResponse(BaseModel):
     content: str
     turn_number: int
     tool_calls: list[ToolCallInfo] | None
+    generation_plan: str | None = None
     is_active_variant: bool
     created_at: str
 

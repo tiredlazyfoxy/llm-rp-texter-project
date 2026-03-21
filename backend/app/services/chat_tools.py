@@ -375,3 +375,19 @@ def get_chat_tools(
     }
 
     return CHAT_TOOL_DEFINITIONS, callables
+
+
+# Read-only tools available to the writing stage (no state mutations)
+_WRITER_TOOL_NAMES = {"get_location_info", "get_npc_info", "search", "get_lore", "get_memory"}
+
+
+def get_writer_tools(
+    world_id: int, session_id: int,
+) -> tuple[list[dict[str, Any]], dict[str, Callable]]:
+    """Return read-only tools for the writing stage (no add_memory, move_to_location, web_search)."""
+    all_defs, all_callables = get_chat_tools(world_id, session_id)
+
+    writer_defs = [d for d in all_defs if d["function"]["name"] in _WRITER_TOOL_NAMES]
+    writer_callables = {k: v for k, v in all_callables.items() if k in _WRITER_TOOL_NAMES}
+
+    return writer_defs, writer_callables

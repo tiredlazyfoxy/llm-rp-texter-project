@@ -77,6 +77,7 @@ def _msg_to_response(m: ChatMessage) -> ChatMessageResponse:
         content=m.content,
         turn_number=m.turn_number,
         tool_calls=tool_calls,
+        generation_plan=m.generation_plan,
         is_active_variant=m.is_active_variant,
         created_at=m.created_at.isoformat(),
     )
