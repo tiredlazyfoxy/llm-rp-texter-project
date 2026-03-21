@@ -18,7 +18,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **users**: id, username, pwdhash, salt, role (admin/editor/player), jwt_signing_key, last_login, last_key_update
 
-**worlds**: id, name, description, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline (JSON), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts.)
+**worlds**: id, name, description, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), generation_mode (str: "simple"/"chain"/"agentic", default "simple"), pipeline (JSON — PipelineConfig for chain mode), agent_config (JSON — future agentic mode config), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts.)
 
 **world_locations**: id, world_id, name, content (markdown), exits (JSON array of location IDs or None), created_at, modified_at
 
@@ -28,7 +28,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **npc_location_links**: id, npc_id, location_id, link_type (present/excluded). No links = roaming NPC.
 
-**world_stat_definitions**: id, world_id, name, description, scope (character/world), stat_type (int/enum/set), default_value (JSON), min_value, max_value, enum_values (JSON array)
+**world_stat_definitions**: id, world_id, name, description, scope (character/world), stat_type (int/enum/set), default_value (JSON), min_value, max_value, enum_values (JSON array), hidden (bool, default false — hidden stats not shown to players but included in LLM prompts)
 
 **world_rules**: id, world_id, rule_text (natural language), order
 
@@ -38,7 +38,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **chat_sessions**: id, user_id, world_id, current_location_id, character_name, character_description, character_stats (JSON), world_stats (JSON), current_turn, status (active/archived), llm_server_id, llm_model_id, temperature, user_instructions, created_at, modified_at
 
-**chat_messages**: id, session_id, role (user/assistant/system), content, turn_number, tool_calls (JSON array), summary_id (FK to summaries, null if not summarized), is_active_variant, created_at
+**chat_messages**: id, session_id, role (user/assistant/system), content, turn_number, tool_calls (JSON array), generation_plan (JSON, nullable — GenerationPlanOutput from chain mode), thinking_content (text, nullable — stored reasoning for debug), summary_id (FK to summaries, null if not summarized), is_active_variant, created_at
 
 **chat_state_snapshots**: id, session_id, turn_number, location_id, character_stats (JSON), world_stats (JSON), created_at
 
@@ -99,11 +99,12 @@ CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All requi
 | GET | `/api/chats` | List user's chat sessions |
 | GET | `/api/chats/:id` | Get chat detail (messages, snapshots, variants) |
 | POST | `/api/chats/:id/message` | Send message, SSE stream response |
-| POST | `/api/chats/:id/regenerate` | Regenerate last assistant message (SSE) |
+| POST | `/api/chats/:id/regenerate` | Regenerate assistant message (SSE). Optional `turn_number` for past turns |
 | POST | `/api/chats/:id/continue` | Pick variant, delete others |
 | POST | `/api/chats/:id/rewind` | Rewind to target turn |
-| PUT | `/api/chats/:id/model` | Change LLM model |
-| PUT | `/api/chats/:id/settings` | Update temperature, user_instructions |
+| PUT | `/api/chats/:id/messages/:msg_id` | Edit user message content (deletes forward, triggers re-send) |
+| DELETE | `/api/chats/:id/messages/:msg_id` | Delete non-summarized message |
+| PUT | `/api/chats/:id/settings` | Update model config, user_instructions |
 | PUT | `/api/chats/:id/archive` | Archive chat (read-only) |
 | DELETE | `/api/chats/:id` | Delete chat and all related data |
 
@@ -111,18 +112,24 @@ CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All requi
 
 Used for chat message generation and regeneration.
 
-| Event | Data | When |
-| ----- | ---- | ---- |
-| `thinking` | `{"content": "...delta..."}` | Reasoning token delta |
-| `thinking_done` | `{}` | End of thinking |
-| `tool_call_start` | `{"tool_name": "...", "arguments": {...}}` | Tool invocation begins |
-| `tool_call_result` | `{"tool_name": "...", "result": "..."}` | Tool returned |
-| `token` | `{"content": "...delta..."}` | Content token delta |
-| `stat_update` | `{"stats": {"name": value, ...}}` | Stats changed |
-| `done` | `{"message": ChatMessageResponse}` | Final message |
-| `error` | `{"detail": "..."}` | Error |
+| Event | Data | When | Visibility |
+| ----- | ---- | ---- | ---------- |
+| `phase` | `{"phase": "planning" \| "writing"}` | Stage transition (chain mode) | All |
+| `status` | `{"text": "..."}` | Human-readable status | All |
+| `thinking` | `{"content": "...delta..."}` | Reasoning token delta | Editor+ only |
+| `thinking_done` | `{}` | End of thinking | Editor+ only |
+| `tool_call_start` | `{"tool_name": "...", "arguments": {...}}` | Tool invocation begins | Editor+ only |
+| `tool_call_result` | `{"tool_name": "...", "result": "..."}` | Tool returned | Editor+ only |
+| `token` | `{"content": "...delta..."}` | Content token delta | All |
+| `stat_update` | `{"stats": {"name": value, ...}}` | Stats changed | All |
+| `done` | `{"message": ChatMessageResponse}` | Final message | All |
+| `error` | `{"detail": "..."}` | Error | All |
 
-Typical order: `thinking*` -> `thinking_done` -> `tool_call_start` -> `tool_call_result` -> `token*` -> `stat_update?` -> `done`
+Simple mode order: `status*` -> `thinking*` -> `tool_call_start` -> `tool_call_result` -> `token*` -> `stat_update?` -> `done`
+
+Chain mode order: `phase("planning")` -> `status*` -> `tool_call*` -> `stat_update` -> `phase("writing")` -> `status` -> `token*` -> `done`
+
+**Visibility filtering**: Backend filters events by `caller_role`. Players receive only All-visibility events. Editors+ receive everything. Frontend debug toggle controls whether editor-only events are displayed or hidden in the UI.
 
 > **Tools + Streaming**: As of llm-client 0.1.3, `chat_with_tools` supports `stream=True` + `on_delta` callback, so `token` events stream in real-time even in tools mode.
 
@@ -157,9 +164,9 @@ Implemented in `backend/app/services/admin_tools.py`. Tool schemas via `pydantic
 
 **Admin UI:** Lore fact list shows `is_injected=True` facts pinned at top (sorted by weight, pin icon), then regular facts below with a divider. Edit page has "Always inject" toggle and "Injection order" number input.
 
-## Stage 2 Agent Tools (stage2_step2, planned)
+## Chat Tools (stage3_step2)
 
-Player-facing in-game tools. Implemented in `backend/app/services/chat_tools.py`. Separate from admin tools — no shared code.
+Player-facing in-game tools. Implemented in `backend/app/services/chat_tools.py`. Used by all generation modes (simple, chain). Reuses `admin_tools.search_impl()`, `admin_tools.get_lore_impl()`, `admin_tools.web_search_impl()` for search/lore/web tools.
 
 All document-lookup tools use **free text → vector search → full document** (no ID lookup).
 
@@ -197,9 +204,33 @@ Tool registration: `get_chat_tools(db, world_id, session_id)` → `(tool_definit
 - Context build order: system prompt -> summaries (by start_turn ASC) -> raw non-summarized active messages
 - Lazy-loaded, triggered when context exceeds threshold
 
+## Generation Modes (stage3)
+
+`World.generation_mode` controls which generation flow is used:
+
+- **`"simple"`** (default) — Single LLM call with tools available, rich system prompt, stat validation. Admin prompt: `World.system_prompt`. Service: `simple_generation_service.py`
+- **`"chain"`** — Pipeline stages defined in `World.pipeline` (PipelineConfig JSON). Default: planning stage (tools + structured JSON output) → writing stage (prose). Each stage has an admin-editable prompt. Service: `chain_generation_service.py`
+- **`"agentic"`** (future) — Sub-agent orchestration, config in `World.agent_config`. Service: `agent_generation_service.py`. Not yet implemented.
+
+Dispatch: `chat_agent_service.py` routes to the appropriate service based on `generation_mode`.
+
+### Pipeline Config (`World.pipeline` JSON)
+
+```
+PipelineConfig:
+  stages: list[PipelineStage]
+    step_type: "planning" | "writing"
+    prompt: str (admin-editable free text)
+    max_agent_steps: int | null (for tool-calling stages)
+```
+
+### Debug Mode
+
+Editor+ toggle in user settings. Controls UI visibility of tool call details, thinking content, generation plan, hidden stats. Backend filtering is by `caller_role` (players never receive editor-only SSE events regardless of toggle).
+
 ## Key Patterns
 
-- **Prompts**: All in `backend/app/services/prompts/` — one documented file per prompt, re-exported via `__init__.py`
+- **Prompts**: All pre-coded prompt parts in `backend/app/services/prompts/` — one documented file per prompt (stage-4 docstring: PURPOSE, USAGE, VARIABLES, DESIGN RATIONALE, CHANGELOG), re-exported via `__init__.py`. Admin-editable parts injected as variables. No hardcoded prompt text in service files.
 - **LLM client**: PythonLLMClient, `pydantic_to_openai_tool()` for tool schemas
 - **Auth**: Per-user HS256 JWT signing key (no global secret), key rotation on login (30-day interval)
 - **Password**: App-level salt + bcrypt (direct `bcrypt` library, not passlib)
@@ -219,3 +250,11 @@ Tool registration: `get_chat_tools(db, world_id, session_id)` → `(tool_definit
 - Stage 1 Step 7: Admin LLM tools (search, get_lore, web_search), SSE streaming for tools, per-message regenerate — done
 - DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export)
 - Stage 2 Step 1: Chat DB models (chat_sessions, chat_messages, chat_state_snapshots, chat_summaries, chat_memories) + import/export — done
+- Stage 2 Step 2: Chat tools & prompts — done
+- Stage 2 Step 3: Chat API, UI, memories, dual model config — done
+- Stage 2 Step 4: Summarization API and UI — done
+- Stage 3 Step 1: Pipeline config model + admin UI (generation_mode, PipelineConfig, hidden stats, prompt skeletons) — planned
+- Stage 3 Step 2a: Simple mode backend (tools, rich prompt, stat validation, shared infrastructure) — planned
+- Stage 3 Step 2b: Chain mode backend (planning → writing pipeline, generation_plan) — planned
+- Stage 3 Step 3: User UI (debug mode, message edit/delete, flexible summarization, SSE phase/status) — planned
+- Stage 4 Step 2: Agent mode (sub-agent orchestration design doc) — planned

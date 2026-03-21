@@ -216,3 +216,40 @@ FastAPI app
 ```
 
 Each sub-API is a separate FastAPI `APIRouter` mounted on the main app.
+
+## Generation Modes
+
+`World.generation_mode` controls which chat generation flow is used:
+
+| Mode | Service File | Config Field | Description |
+|------|-------------|-------------|-------------|
+| `"simple"` | `simple_generation_service.py` | `World.system_prompt` | Single LLM call with tools, rich prompt, stat validation |
+| `"chain"` | `chain_generation_service.py` | `World.pipeline` (JSON) | Pipeline stages: planning (tools + JSON) → writing (prose) |
+| `"agentic"` | `agent_generation_service.py` | `World.agent_config` (JSON) | Sub-agent orchestration (future, not yet implemented) |
+
+**Dispatch**: `chat_agent_service.py` is a thin dispatcher — loads the world, checks `generation_mode`, delegates to the appropriate service. Same dispatch for both `generate_response()` and `regenerate_response()`.
+
+**Shared infrastructure** (used by all modes):
+
+- `chat_tools.py` — 7 player-facing tools (get_location_info, get_npc_info, search, get_lore, web_search, get_memory, add_memory)
+- `chat_context.py` — Loads location, NPCs, rules, stats, lore, memories; formats into prompt-ready strings
+- `stat_validation.py` — Validates stat updates against definitions (int range, enum membership, set membership)
+- `prompts/chat_system_prompt.py` — Rich system prompt builder with full world context
+
+## Prompt Architecture
+
+All pre-coded prompt parts live in `backend/app/services/prompts/`. No hardcoded prompt text in service files.
+
+Each prompt file follows the **stage-4 documentation convention**:
+
+- **PURPOSE** — what this prompt does
+- **USAGE** — which service/stage calls it
+- **VARIABLES** — all template parameters with descriptions
+- **DESIGN RATIONALE** — why it's structured this way
+- **CHANGELOG** — version history
+
+Prompts combine three layers:
+
+1. **Coded part** — structural instructions, I/O formats, JSON schemas (hardcoded in the prompt file)
+2. **Admin part** — world-specific free text (from `World.system_prompt` or `PipelineStage.prompt`)
+3. **Player part** — `session.user_instructions` (player's recommendations/feedback, always included when non-empty)
