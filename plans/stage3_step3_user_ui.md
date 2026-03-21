@@ -340,8 +340,8 @@ New/updated types:
 generation_plan: string | null;       // JSON string of GenerationPlanOutput (chain mode)
 thinking_content: string | null;      // stored thinking/reasoning content
 
-// Add to ChatSession
-generation_mode: string;              // "simple" | "chain" | "agentic"
+// Add to WorldInfo (generation_mode is on World, not session)
+generation_mode: "simple" | "chain" | "agentic";
 
 // New SSE event interfaces
 interface SSEPhaseEvent {
@@ -411,11 +411,9 @@ class RegenerateRequest(BaseModel):
     turn_number: int | None = None
 ```
 
-Update `ChatSessionResponse` — add `generation_mode: str` (joined from world, not a session column).
-
 Update `ChatMessageResponse` — add `generation_plan: str | None`, `thinking_content: str | None`.
 
-Update `WorldInfoResponse` — add `generation_mode: str` (frontend needs this to know which UI to show for world selection / chat creation).
+Update `WorldInfoResponse` — add `generation_mode: str` (frontend needs this to know which UI to show; `generation_mode` lives on World, not on ChatSession).
 
 ### 5c. Service Functions — `backend/app/services/chat_service.py`
 
@@ -466,8 +464,8 @@ Also save `thinking_content` on the assistant message after generation completes
 | File | Change |
 | ---- | ---- |
 | `backend/app/routes/chat.py` | New PUT/DELETE message endpoints, optional turn_number on regenerate |
-| `backend/app/models/schemas/chat.py` | EditMessageRequest, RegenerateRequest, generation_mode on session, generation_plan + thinking_content on message |
-| `backend/app/services/chat_service.py` | `edit_message()`, `delete_message()`, add generation_mode to session response |
+| `backend/app/models/schemas/chat.py` | EditMessageRequest, RegenerateRequest, generation_plan + thinking_content on message |
+| `backend/app/services/chat_service.py` | `edit_message()`, `delete_message()` |
 | `backend/app/db/chats.py` | `update_message_content()` |
 | `backend/app/models/chat_message.py` | Add `thinking_content` column |
 | `backend/app/services/db_import_export.py` | Add `thinking_content` to ChatMessage |
@@ -479,7 +477,7 @@ Also save `thinking_content` on the assistant message after generation completes
 
 | File | Change |
 | ---- | ---- |
-| `frontend/src/types/chat.d.ts` | generation_plan, thinking_content, generation_mode, hidden, SSE phase/status types, EditMessageRequest, RegenerateRequest |
+| `frontend/src/types/chat.d.ts` | generation_plan, thinking_content on ChatMessage; generation_mode on WorldInfo; hidden on StatDefinition; SSE phase/status types; EditMessageRequest, RegenerateRequest |
 | `frontend/src/api/chat.ts` | editMessage(), deleteMessage(), onPhase/onStatus SSE handlers, regenerate with turn_number |
 | `frontend/src/user/stores/ChatStore.ts` | debugMode, currentPhase, currentStatus, toggleDebugMode, editMessage, deleteMessage, regenerateAtTurn |
 | `frontend/src/user/components/ChatInput.tsx` | Status indicator with animated text during generation |
