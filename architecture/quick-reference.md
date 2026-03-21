@@ -36,7 +36,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 ### Stage 2 — Chat System
 
-**chat_sessions**: id, user_id, world_id, current_location_id, character_name, character_description, character_stats (JSON), world_stats (JSON), current_turn, status (active/archived), llm_server_id, llm_model_id, temperature, user_instructions, created_at, modified_at
+**chat_sessions**: id, user_id, world_id, current_location_id, character_name, character_description, character_stats (JSON), world_stats (JSON), current_turn, status (active/archived), tool_model_id, tool_temperature, tool_repeat_penalty, tool_top_p, text_model_id, text_temperature, text_repeat_penalty, text_top_p, user_instructions, created_at, modified_at
 
 **chat_messages**: id, session_id, role (user/assistant/system), content, turn_number, tool_calls (JSON array), generation_plan (JSON, nullable — GenerationPlanOutput from chain mode), thinking_content (text, nullable — stored reasoning for debug), summary_id (FK to summaries, null if not summarized), is_active_variant, created_at
 
@@ -176,9 +176,10 @@ All document-lookup tools use **free text → vector search → full document** 
 - **search(query, source_type?)** — Vector search across all types, returns top 10 chunks with metadata. `source_type` filters to `"location"`, `"npc"`, or `"lore_fact"`.
 - **web_search(query)** — Google Custom Search API. Requires `SEARCH_CSE_KEY` and `SEARCH_CSE_ID`. Returns 5 results (title, URL, snippet). (Same env vars and logic as admin `web_search` — separate implementation.)
 - **get_memory()** — Returns all `ChatMemory` rows for the session concatenated with `\n---\n`.
-- **add_memory(content)** — Appends a new `ChatMemory` row for the session.
+- **add_memory(content)** — Appends a new `ChatMemory` row for the session. LLM is instructed to save story-significant facts (promises, relationship changes, plot developments) as 1-2 short factual sentences.
+- **move_to_location(location_name)** — Resolves location name via vector search, updates `session.current_location_id`, returns new location info (description, exits, NPCs).
 
-Tool registration: `get_chat_tools(db, world_id, session_id)` → `(tool_definitions, callables)`.
+Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions, callables)` — all 8 tools for planning/simple modes. `get_writer_tools(world_id, session_id)` → read-only subset (5 tools: get_location_info, get_npc_info, search, get_lore, get_memory) for chain writing stage.
 
 **Lore injection filter:** `get_lore` skips lore facts already injected into the system prompt (same logic as admin `get_lore` — avoids duplicating context).
 
@@ -187,7 +188,9 @@ Tool registration: `get_chat_tools(db, world_id, session_id)` → `(tool_definit
 - **Defined per world** via `world_stat_definitions` (schema/template)
 - **Valued per chat session** in `character_stats` / `world_stats` JSON fields
 - **Types**: int (min/max range), enum (single from list), set (multiple from list)
-- **Updates**: LLM outputs `[STAT_UPDATE]...[/STAT_UPDATE]` block, parsed and validated server-side
+- **Updates (simple mode)**: LLM outputs `[STAT_UPDATE]...[/STAT_UPDATE]` block, parsed and validated server-side via `stat_validation.validate_and_apply_stat_updates()`
+- **Updates (chain mode)**: Planning agent includes `stat_updates` in GenerationPlanOutput JSON, validated server-side
+- **Validation**: int values clamped to `[min, max]` range; enum values checked against allowed list; set elements filtered to valid values; unknown stats logged and skipped
 - **Snapshots**: `chat_state_snapshots` records stats at each turn for rewind
 
 ## Regeneration & Variants
@@ -253,8 +256,8 @@ Editor+ toggle in user settings. Controls UI visibility of tool call details, th
 - Stage 2 Step 2: Chat tools & prompts — done
 - Stage 2 Step 3: Chat API, UI, memories, dual model config — done
 - Stage 2 Step 4: Summarization API and UI — done
-- Stage 3 Step 1: Pipeline config model + admin UI (generation_mode, PipelineConfig, hidden stats, prompt skeletons) — planned
-- Stage 3 Step 2a: Simple mode backend (tools, rich prompt, stat validation, shared infrastructure) — planned
-- Stage 3 Step 2b: Chain mode backend (planning → writing pipeline, generation_plan) — planned
+- Stage 3 Step 1: Pipeline config model + admin UI (generation_mode, PipelineConfig, hidden stats, prompt skeletons) — done
+- Stage 3 Step 2a: Simple mode backend (chat tools, rich prompt, stat validation, shared infrastructure, move_to_location) — done
+- Stage 3 Step 2b: Chain mode backend (planning → writing pipeline, generation_plan, writer tools, memory enforcement) — done
 - Stage 3 Step 3: User UI (debug mode, message edit/delete, flexible summarization, SSE phase/status) — planned
 - Stage 4 Step 2: Agent mode (sub-agent orchestration design doc) — planned

@@ -231,10 +231,10 @@ Each sub-API is a separate FastAPI `APIRouter` mounted on the main app.
 
 **Shared infrastructure** (used by all modes):
 
-- `chat_tools.py` — 7 player-facing tools (get_location_info, get_npc_info, search, get_lore, web_search, get_memory, add_memory)
+- `chat_tools.py` — 8 player-facing tools (get_location_info, get_npc_info, search, get_lore, web_search, get_memory, add_memory, move_to_location). `get_chat_tools()` returns all 8; `get_writer_tools()` returns read-only subset (5) for chain writing stage
 - `chat_context.py` — Loads location, NPCs, rules, stats, lore, memories; formats into prompt-ready strings
-- `stat_validation.py` — Validates stat updates against definitions (int range, enum membership, set membership)
-- `prompts/chat_system_prompt.py` — Rich system prompt builder with full world context
+- `stat_validation.py` — Validates stat updates against definitions (int range clamping, enum membership, set filtering)
+- `prompts/chat_system_prompt.py` — Rich system prompt builder with full world context and memory management instructions
 
 ## Prompt Architecture
 
