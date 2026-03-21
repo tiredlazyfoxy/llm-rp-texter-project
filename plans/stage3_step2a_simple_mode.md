@@ -272,6 +272,8 @@ generator = await chat_agent_service.generate_response(
 | `backend/app/services/prompts/__init__.py` | Re-export `build_rich_chat_system_prompt` |
 | `backend/app/routes/chat.py` | Pass caller_role to generation |
 | `backend/app/db/chats.py` | Add memory CRUD functions |
+| `backend/app/models/chat_session.py` | Remove unused `llm_server_id` column (legacy, replaced by dual model system) |
+| `backend/app/services/db_import_export.py` | Remove `llm_server_id` from ChatSession export/import (ignore on import for backward compat) |
 
 ---
 

@@ -411,9 +411,11 @@ class RegenerateRequest(BaseModel):
     turn_number: int | None = None
 ```
 
-Update `ChatSessionResponse` — add `generation_mode: str`.
+Update `ChatSessionResponse` — add `generation_mode: str` (joined from world, not a session column).
 
 Update `ChatMessageResponse` — add `generation_plan: str | None`, `thinking_content: str | None`.
+
+Update `WorldInfoResponse` — add `generation_mode: str` (frontend needs this to know which UI to show for world selection / chat creation).
 
 ### 5c. Service Functions — `backend/app/services/chat_service.py`
 
