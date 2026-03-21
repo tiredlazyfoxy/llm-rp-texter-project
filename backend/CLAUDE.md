@@ -38,7 +38,7 @@ backend/
       chat_tools.py         — Chat tool implementations (8 tools) + factory + writer tools subset
       chat_context.py       — Context builder for rich system prompts
       stat_validation.py    — Stat update validation against definitions
-      chat_service.py       — Chat CRUD (sessions, messages, memories, rewind)
+      chat_service.py       — Chat CRUD (sessions, messages, memories, rewind, edit/delete messages)
       chat_agent_service.py — Generation dispatcher (routes to mode-specific services)
       simple_generation_service.py  — Simple mode: single LLM call with tools
       chain_generation_service.py   — Chain mode: planning → writing pipeline
@@ -106,7 +106,7 @@ Dispatch in `chat_agent_service.py` routes to the appropriate service. Shared in
 | `world_rules` | world_id, rule_text, order |
 | `llm_servers` | name, backend_type, base_url, enabled_models, is_embedding, embedding_model |
 | `chat_sessions` | user_id, world_id, current_location_id, tool_model_id, text_model_id, character_stats, world_stats, current_turn |
-| `chat_messages` | session_id, role, content, turn_number, tool_calls, generation_plan, is_active_variant |
+| `chat_messages` | session_id, role, content, turn_number, tool_calls, generation_plan, thinking_content, is_active_variant |
 | `chat_state_snapshots` | session_id, turn_number, location_id, character_stats, world_stats |
 | `chat_summaries` | session_id, start/end turn, content |
 | `chat_memories` | session_id, content |
