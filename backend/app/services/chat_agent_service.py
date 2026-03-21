@@ -235,7 +235,7 @@ async def regenerate_response(
     # If turn_number specified and < current_turn, rewind first
     if turn_number is not None and turn_number < chat.current_turn:
         from app.services import chat_service
-        await chat_service.rewind_chat(session_id, user_id, turn_number)
+        await chat_service.rewind_chat(session_id, user_id, turn_number, caller_role)
         # Reload chat after rewind
         chat = await chats_db.get_session_by_id(session_id)
         if chat is None:

@@ -38,6 +38,22 @@ logger = logging.getLogger(__name__)
 # Conversion helpers
 # ---------------------------------------------------------------------------
 
+async def _get_hidden_stat_names(world_id: int) -> set[str]:
+    """Return set of stat names marked as hidden for a world."""
+    defs = await stat_defs_db.list_by_world(world_id)
+    return {d.name for d in defs if d.hidden}
+
+
+def _filter_stats(
+    stats: dict[str, int | str | list[str]],
+    hidden_names: set[str],
+) -> dict[str, int | str | list[str]]:
+    """Remove hidden stat keys from a stats dict."""
+    if not hidden_names:
+        return stats
+    return {k: v for k, v in stats.items() if k not in hidden_names}
+
+
 def _model_config_from_session_tool(s: ChatSession) -> ModelConfig:
     return ModelConfig(
         model_id=s.tool_model_id,
@@ -87,31 +103,48 @@ def _msg_to_response(m: ChatMessage) -> ChatMessageResponse:
 def _snap_to_response(
     snap: ChatStateSnapshot,
     location_name: str | None,
+    hidden_names: set[str] | None = None,
 ) -> ChatStateSnapshotResponse:
+    char_stats = chats_db.parse_stats(snap.character_stats)
+    world_stats = chats_db.parse_stats(snap.world_stats)
+    if hidden_names:
+        char_stats = _filter_stats(char_stats, hidden_names)
+        world_stats = _filter_stats(world_stats, hidden_names)
     return ChatStateSnapshotResponse(
         turn_number=snap.turn_number,
         location_id=str(snap.location_id) if snap.location_id else None,
         location_name=location_name,
-        character_stats=chats_db.parse_stats(snap.character_stats),
-        world_stats=chats_db.parse_stats(snap.world_stats),
+        character_stats=char_stats,
+        world_stats=world_stats,
     )
 
 
-async def _build_session_response(session: ChatSession) -> ChatSessionResponse:
+async def _build_session_response(
+    session: ChatSession,
+    caller_role: str = "player",
+) -> ChatSessionResponse:
     world = await worlds_db.get_by_id(session.world_id)
     world_name = world.name if world else ""
     location_name: str | None = None
     if session.current_location_id:
         loc = await locations_db.get_by_id(session.current_location_id)
         location_name = loc.name if loc else None
+
+    char_stats = chats_db.parse_stats(session.character_stats)
+    world_stats = chats_db.parse_stats(session.world_stats)
+    if caller_role == "player":
+        hidden = await _get_hidden_stat_names(session.world_id)
+        char_stats = _filter_stats(char_stats, hidden)
+        world_stats = _filter_stats(world_stats, hidden)
+
     return ChatSessionResponse(
         id=str(session.id),
         world_id=str(session.world_id),
         world_name=world_name,
         character_name=session.character_name,
         character_description=session.character_description,
-        character_stats=chats_db.parse_stats(session.character_stats),
-        world_stats=chats_db.parse_stats(session.world_stats),
+        character_stats=char_stats,
+        world_stats=world_stats,
         current_location_id=str(session.current_location_id) if session.current_location_id else None,
         current_location_name=location_name,
         current_turn=session.current_turn,
@@ -124,10 +157,18 @@ async def _build_session_response(session: ChatSession) -> ChatSessionResponse:
     )
 
 
-async def _build_detail_response(session: ChatSession) -> ChatDetailResponse:
-    session_resp = await _build_session_response(session)
+async def _build_detail_response(
+    session: ChatSession,
+    caller_role: str = "player",
+) -> ChatDetailResponse:
+    session_resp = await _build_session_response(session, caller_role)
     messages = await chats_db.list_active_messages(session.id)
     snapshots = await chats_db.list_snapshots(session.id)
+
+    # Get hidden stat names for filtering (players only)
+    hidden_names: set[str] | None = None
+    if caller_role == "player":
+        hidden_names = await _get_hidden_stat_names(session.world_id)
 
     # Build location name cache for snapshots
     location_cache: dict[int, str] = {}
@@ -139,7 +180,7 @@ async def _build_detail_response(session: ChatSession) -> ChatDetailResponse:
                 loc = await locations_db.get_by_id(snap.location_id)
                 location_cache[snap.location_id] = loc.name if loc else ""
             loc_name = location_cache[snap.location_id]
-        snap_responses.append(_snap_to_response(snap, loc_name))
+        snap_responses.append(_snap_to_response(snap, loc_name, hidden_names))
 
     variants: list[ChatMessageResponse] = []
     if session.current_turn > 0:
@@ -373,11 +414,13 @@ async def list_user_sessions(user_id: int) -> list[ChatSessionListItem]:
 # Public API: get chat detail
 # ---------------------------------------------------------------------------
 
-async def get_chat_detail(session_id: int, user_id: int) -> ChatDetailResponse:
+async def get_chat_detail(
+    session_id: int, user_id: int, caller_role: str = "player",
+) -> ChatDetailResponse:
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None or chat.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
-    return await _build_detail_response(chat)
+    return await _build_detail_response(chat, caller_role)
 
 
 # ---------------------------------------------------------------------------
@@ -444,7 +487,9 @@ async def continue_chat(session_id: int, user_id: int, selected_variant_id: int)
     await chats_db.delete_non_selected_variants(session_id, variant.turn_number, selected_variant_id)
 
 
-async def rewind_chat(session_id: int, user_id: int, target_turn: int) -> ChatDetailResponse:
+async def rewind_chat(
+    session_id: int, user_id: int, target_turn: int, caller_role: str = "player",
+) -> ChatDetailResponse:
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None or chat.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
@@ -464,7 +509,7 @@ async def rewind_chat(session_id: int, user_id: int, target_turn: int) -> ChatDe
     chat.modified_at = _now()
     await chats_db.update_session(chat)
 
-    return await _build_detail_response(chat)
+    return await _build_detail_response(chat, caller_role)
 
 
 # ---------------------------------------------------------------------------
@@ -519,6 +564,7 @@ async def delete_memory(session_id: int, memory_id: int, user_id: int) -> None:
 
 async def edit_message(
     session_id: int, message_id: int, new_content: str, user_id: int,
+    caller_role: str = "player",
 ) -> ChatDetailResponse:
     """Edit user message content and delete all subsequent messages/snapshots."""
     chat = await chats_db.get_session_by_id(session_id)
@@ -556,11 +602,12 @@ async def edit_message(
     chat.modified_at = _now()
     await chats_db.update_session(chat)
 
-    return await _build_detail_response(chat)
+    return await _build_detail_response(chat, caller_role)
 
 
 async def delete_message(
     session_id: int, message_id: int, user_id: int,
+    caller_role: str = "player",
 ) -> ChatDetailResponse:
     """Delete a non-summarized message and adjust session state."""
     chat = await chats_db.get_session_by_id(session_id)
@@ -579,7 +626,7 @@ async def delete_message(
 
     if turn < chat.current_turn:
         # Past turn: rewind to turn - 1 (deletes everything from that turn onward)
-        return await rewind_chat(session_id, user_id, turn - 1)
+        return await rewind_chat(session_id, user_id, turn - 1, caller_role)
 
     # Current turn
     if msg.role == "user":
@@ -622,4 +669,4 @@ async def delete_message(
             chat.modified_at = _now()
             await chats_db.update_session(chat)
 
-    return await _build_detail_response(chat)
+    return await _build_detail_response(chat, caller_role)

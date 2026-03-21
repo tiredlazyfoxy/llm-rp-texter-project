@@ -93,7 +93,7 @@ async def get_chat(
     chat_id: str,
     caller: User = Depends(_require_player),
 ) -> ChatDetailResponse:
-    return await chat_service.get_chat_detail(int(chat_id), caller.id)
+    return await chat_service.get_chat_detail(int(chat_id), caller.id, caller.role.value)
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +134,7 @@ async def edit_message(
     caller: User = Depends(_require_player),
 ) -> ChatDetailResponse:
     return await chat_service.edit_message(
-        int(chat_id), int(message_id), req.content, caller.id,
+        int(chat_id), int(message_id), req.content, caller.id, caller.role.value,
     )
 
 
@@ -145,7 +145,7 @@ async def delete_message(
     caller: User = Depends(_require_player),
 ) -> ChatDetailResponse:
     return await chat_service.delete_message(
-        int(chat_id), int(message_id), caller.id,
+        int(chat_id), int(message_id), caller.id, caller.role.value,
     )
 
 
@@ -165,7 +165,7 @@ async def rewind_chat(
     req: RewindRequest,
     caller: User = Depends(_require_player),
 ) -> ChatDetailResponse:
-    return await chat_service.rewind_chat(int(chat_id), caller.id, req.target_turn)
+    return await chat_service.rewind_chat(int(chat_id), caller.id, req.target_turn, caller.role.value)
 
 
 # ---------------------------------------------------------------------------
