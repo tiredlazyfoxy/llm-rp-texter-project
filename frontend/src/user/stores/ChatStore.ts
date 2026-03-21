@@ -22,10 +22,21 @@ class ChatStore {
   streamingToolCalls: Array<{ tool_name: string; arguments: Record<string, string>; result?: string }> = [];
   isThinking = false;
 
+  // Debug & pipeline state
+  debugMode = false;
+  currentPhase: "planning" | "writing" | null = null;
+  currentStatus: string | null = null;
+
   private _abortController: AbortController | null = null;
 
   constructor() {
     makeAutoObservable(this);
+    this.debugMode = localStorage.getItem("chatDebugMode") === "true";
+  }
+
+  toggleDebugMode(): void {
+    this.debugMode = !this.debugMode;
+    localStorage.setItem("chatDebugMode", String(this.debugMode));
   }
 
   get activeMessages(): ChatMessage[] {
@@ -118,6 +129,8 @@ class ChatStore {
       this.streamingThinking = "";
       this.streamingToolCalls = [];
       this.isThinking = false;
+      this.currentPhase = null;
+      this.currentStatus = null;
     });
 
     await new Promise<void>((resolve) => {
@@ -137,6 +150,8 @@ class ChatStore {
               const tc = this.streamingToolCalls.find((t) => t.tool_name === name && !t.result);
               if (tc) tc.result = result;
             }),
+          onPhase: (phase) => runInAction(() => { this.currentPhase = phase; }),
+          onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
           onStatUpdate: (stats) => runInAction(() => {
             if (this.currentChat) {
               const snap = this.currentSnapshot;
@@ -152,6 +167,8 @@ class ChatStore {
               }
               this.streamingContent = "";
               this.isSending = false;
+              this.currentPhase = null;
+              this.currentStatus = null;
             });
             resolve();
           },
@@ -160,6 +177,8 @@ class ChatStore {
               this.error = detail;
               this.isSending = false;
               this.streamingContent = "";
+              this.currentPhase = null;
+              this.currentStatus = null;
             });
             resolve();
           },
@@ -176,6 +195,8 @@ class ChatStore {
       this.streamingContent = "";
       this.streamingThinking = "";
       this.streamingToolCalls = [];
+      this.currentPhase = null;
+      this.currentStatus = null;
     });
 
     await new Promise<void>((resolve) => {
@@ -192,6 +213,8 @@ class ChatStore {
             const tc = this.streamingToolCalls.find((t) => t.tool_name === name && !t.result);
             if (tc) tc.result = result;
           }),
+        onPhase: (phase) => runInAction(() => { this.currentPhase = phase; }),
+        onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
         onStatUpdate: () => {},
         onDone: (message) => {
           runInAction(() => {
@@ -200,6 +223,8 @@ class ChatStore {
             }
             this.streamingContent = "";
             this.isSending = false;
+            this.currentPhase = null;
+            this.currentStatus = null;
           });
           resolve();
         },
@@ -208,6 +233,8 @@ class ChatStore {
             this.error = detail;
             this.isSending = false;
             this.streamingContent = "";
+            this.currentPhase = null;
+            this.currentStatus = null;
           });
           resolve();
         },
@@ -333,6 +360,93 @@ class ChatStore {
 
   collapseSummary(summaryId: string): void {
     this.expandedSummaryMessages.delete(summaryId);
+  }
+
+  // ------- Message management actions -------
+
+  async editMessage(messageId: string, newContent: string): Promise<void> {
+    if (!this.currentChat) return;
+    const chatId = this.currentChat.session.id;
+    try {
+      const detail = await chatApi.editMessage(chatId, messageId, newContent);
+      runInAction(() => {
+        this.currentChat = detail;
+        this.summaries = detail.summaries ?? [];
+        this.expandedSummaryMessages.clear();
+      });
+      // Re-generate with the edited content
+      await this.sendMessage(newContent);
+    } catch (e) {
+      runInAction(() => { this.error = String(e); });
+    }
+  }
+
+  async deleteMessage(messageId: string): Promise<void> {
+    if (!this.currentChat) return;
+    const chatId = this.currentChat.session.id;
+    try {
+      const detail = await chatApi.deleteMessage(chatId, messageId);
+      runInAction(() => {
+        this.currentChat = detail;
+        this.summaries = detail.summaries ?? [];
+        this.expandedSummaryMessages.clear();
+      });
+    } catch (e) {
+      runInAction(() => { this.error = String(e); });
+    }
+  }
+
+  async regenerateAtTurn(turnNumber: number): Promise<void> {
+    if (!this.currentChat || this.isSending) return;
+    const chatId = this.currentChat.session.id;
+    runInAction(() => {
+      this.isSending = true;
+      this.streamingContent = "";
+      this.streamingThinking = "";
+      this.streamingToolCalls = [];
+      this.currentPhase = null;
+      this.currentStatus = null;
+    });
+
+    await new Promise<void>((resolve) => {
+      this._abortController = chatApi.regenerateMessage(chatId, {
+        onToken: (t) => runInAction(() => { this.streamingContent += t; }),
+        onThinking: (t) => runInAction(() => { this.streamingThinking += t; }),
+        onThinkingDone: () => runInAction(() => { this.isThinking = false; }),
+        onToolCallStart: (name, args) =>
+          runInAction(() => {
+            this.streamingToolCalls.push({ tool_name: name, arguments: args });
+          }),
+        onToolCallResult: (name, result) =>
+          runInAction(() => {
+            const tc = this.streamingToolCalls.find((t) => t.tool_name === name && !t.result);
+            if (tc) tc.result = result;
+          }),
+        onPhase: (phase) => runInAction(() => { this.currentPhase = phase; }),
+        onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
+        onStatUpdate: () => {},
+        onDone: (message) => {
+          // Reload full detail since rewind may have changed state
+          this.loadChatDetail(chatId).then(() => resolve());
+          runInAction(() => {
+            this.streamingContent = "";
+            this.isSending = false;
+            this.currentPhase = null;
+            this.currentStatus = null;
+          });
+        },
+        onError: (detail) => {
+          runInAction(() => {
+            this.error = detail;
+            this.isSending = false;
+            this.streamingContent = "";
+            this.currentPhase = null;
+            this.currentStatus = null;
+          });
+          resolve();
+        },
+      }, turnNumber);
+    });
   }
 }
 

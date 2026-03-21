@@ -6,6 +6,8 @@ export interface ChatSSEHandlers {
   onThinkingDone?: () => void;
   onToolCallStart?: (toolName: string, args: Record<string, string>) => void;
   onToolCallResult?: (toolName: string, result: string) => void;
+  onPhase?: (phase: "planning" | "writing") => void;
+  onStatus?: (text: string) => void;
   onStatUpdate?: (stats: Record<string, number | string | string[]>) => void;
   onDone?: (message: ChatMessage) => void;
   onError?: (detail: string) => void;
@@ -151,6 +153,12 @@ function _streamChat(
             case "tool_call_result":
               handlers.onToolCallResult?.(parsed.tool_name as string, parsed.result as string);
               break;
+            case "phase":
+              handlers.onPhase?.(parsed.phase as "planning" | "writing");
+              break;
+            case "status":
+              handlers.onStatus?.(parsed.text as string);
+              break;
             case "stat_update":
               handlers.onStatUpdate?.(parsed.stats as Record<string, number | string | string[]>);
               break;
@@ -181,6 +189,24 @@ export function sendMessage(
   return _streamChat(`/api/chats/${chatId}/message`, req, handlers);
 }
 
-export function regenerateMessage(chatId: string, handlers: ChatSSEHandlers): AbortController {
-  return _streamChat(`/api/chats/${chatId}/regenerate`, {}, handlers);
+export function regenerateMessage(
+  chatId: string,
+  handlers: ChatSSEHandlers,
+  turnNumber?: number,
+): AbortController {
+  const body = turnNumber != null ? { turn_number: turnNumber } : {};
+  return _streamChat(`/api/chats/${chatId}/regenerate`, body, handlers);
+}
+
+export async function editMessage(chatId: string, messageId: string, content: string): Promise<ChatDetail> {
+  return authRequest<ChatDetail>(`/api/chats/${chatId}/messages/${messageId}`, {
+    method: "PUT",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function deleteMessage(chatId: string, messageId: string): Promise<ChatDetail> {
+  return authRequest<ChatDetail>(`/api/chats/${chatId}/messages/${messageId}`, {
+    method: "DELETE",
+  });
 }

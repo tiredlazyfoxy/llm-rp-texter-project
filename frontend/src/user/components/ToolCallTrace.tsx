@@ -4,9 +4,10 @@ import { IconChevronDown, IconChevronRight, IconTool } from "@tabler/icons-react
 
 interface ToolCallTraceProps {
   toolCalls: ToolCallInfo[];
+  debugMode?: boolean;
 }
 
-export function ToolCallTrace({ toolCalls }: ToolCallTraceProps) {
+export function ToolCallTrace({ toolCalls, debugMode }: ToolCallTraceProps) {
   const [open, setOpen] = useState(false);
 
   if (toolCalls.length === 0) return null;
@@ -31,9 +32,17 @@ export function ToolCallTrace({ toolCalls }: ToolCallTraceProps) {
                 {JSON.stringify(tc.arguments, null, 2)}
               </Text>
               {tc.result && (
-                <Text size="xs" c="dimmed" style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
-                  → {tc.result.length > 200 ? tc.result.slice(0, 200) + "…" : tc.result}
-                </Text>
+                debugMode ? (
+                  <div style={{ maxHeight: 300, overflow: "auto" }}>
+                    <Text size="xs" c="dimmed" style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                      {tc.result}
+                    </Text>
+                  </div>
+                ) : (
+                  <Text size="xs" c="dimmed" style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                    {tc.result.length > 200 ? tc.result.slice(0, 200) + "\u2026" : tc.result}
+                  </Text>
+                )
               )}
             </div>
           ))}

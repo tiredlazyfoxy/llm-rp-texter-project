@@ -6,12 +6,14 @@ import {
   Select,
   Slider,
   Stack,
+  Switch,
   Text,
   Textarea,
 } from "@mantine/core";
 import { observer } from "mobx-react-lite";
 import { chatStore } from "../stores/ChatStore";
 import { authRequest } from "../../api/request";
+import { getCurrentUser } from "../../auth";
 import { saveToolModel, saveTextModel } from "../../utils/modelSettings";
 
 interface EnabledModelInfo {
@@ -136,6 +138,18 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, o
           autosize
         />
         <Button onClick={handleSave} loading={saving}>Save</Button>
+
+        {(getCurrentUser()?.role === "editor" || getCurrentUser()?.role === "admin") && (
+          <>
+            <Divider />
+            <Switch
+              label="Debug mode"
+              description="Show tool calls, thinking, generation plans"
+              checked={chatStore.debugMode}
+              onChange={() => chatStore.toggleDebugMode()}
+            />
+          </>
+        )}
       </Stack>
     </Drawer>
   );

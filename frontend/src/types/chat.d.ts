@@ -46,6 +46,8 @@ interface ChatMessage {
   content: string;
   turn_number: number;
   tool_calls: ToolCallInfo[] | null;
+  generation_plan: string | null;
+  thinking_content: string | null;
   is_active_variant: boolean;
   created_at: string;
 }
@@ -78,6 +80,7 @@ interface WorldInfo {
   description: string;
   lore: string;
   character_template: string;
+  generation_mode: "simple" | "chain" | "agentic";
   locations: LocationBrief[];
   stat_definitions: StatDefinition[];
 }
@@ -96,6 +99,15 @@ interface StatDefinition {
   min_value: number | null;
   max_value: number | null;
   enum_values: string[] | null;
+  hidden: boolean;
+}
+
+interface EditMessageRequest {
+  content: string;
+}
+
+interface RegenerateRequest {
+  turn_number?: number;
 }
 
 interface CreateChatRequest {
@@ -171,6 +183,14 @@ interface SSEStatUpdateEvent {
 
 interface SSEDoneEvent {
   message: ChatMessage;
+}
+
+interface SSEPhaseEvent {
+  phase: "planning" | "writing";
+}
+
+interface SSEStatusEvent {
+  text: string;
 }
 
 interface SSEErrorEvent {

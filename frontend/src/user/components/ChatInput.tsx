@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ActionIcon, Group, Textarea, Tooltip } from "@mantine/core";
+import { ActionIcon, Badge, Group, Loader, Text, Textarea, Tooltip } from "@mantine/core";
 import { IconPlayerStop, IconRefresh, IconSend } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import { chatStore } from "../stores/ChatStore";
@@ -30,6 +30,17 @@ export const ChatInput = observer(function ChatInput() {
 
   return (
     <div style={{ padding: "8px 12px", borderTop: "1px solid var(--mantine-color-dark-4)" }}>
+      {chatStore.isSending && chatStore.currentStatus && (
+        <Group gap="xs" mb={4} align="center">
+          <Loader size={12} />
+          {chatStore.currentPhase && (
+            <Badge size="xs" variant="light" color={chatStore.currentPhase === "planning" ? "violet" : "teal"}>
+              {chatStore.currentPhase === "planning" ? "Planning" : "Writing"}
+            </Badge>
+          )}
+          <Text size="xs" c="dimmed">{chatStore.currentStatus}</Text>
+        </Group>
+      )}
       <Group align="flex-end" gap="xs">
         <Textarea
           ref={textareaRef}
