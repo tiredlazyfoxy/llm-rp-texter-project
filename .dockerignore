@@ -1,0 +1,9 @@
+.git
+backend/.venv
+frontend/node_modules
+architecture/
+plans/
+*.md
+docker-compose.dev.yml
+start.ps1
+.claude/
