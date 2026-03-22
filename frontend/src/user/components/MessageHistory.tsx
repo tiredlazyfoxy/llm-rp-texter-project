@@ -85,6 +85,8 @@ export const MessageHistory = observer(function MessageHistory() {
             content: chatStore.streamingContent,
             turn_number: currentTurn + 1,
             tool_calls: null,
+            generation_plan: null,
+            thinking_content: null,
             is_active_variant: true,
             created_at: new Date().toISOString(),
           }}

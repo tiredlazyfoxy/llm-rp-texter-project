@@ -425,7 +425,7 @@ class ChatStore {
         onPhase: (phase) => runInAction(() => { this.currentPhase = phase; }),
         onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
         onStatUpdate: () => {},
-        onDone: (message) => {
+        onDone: (_message) => {
           // Reload full detail since rewind may have changed state
           this.loadChatDetail(chatId).then(() => resolve());
           runInAction(() => {

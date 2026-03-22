@@ -4,7 +4,6 @@ import {
   Container,
   Divider,
   Group,
-  NumberInput,
   Select,
   Slider,
   Stack,

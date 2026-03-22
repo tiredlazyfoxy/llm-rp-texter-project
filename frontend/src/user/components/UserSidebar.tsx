@@ -115,42 +115,6 @@ export function UserSidebar() {
             const visibleChats = showAll ? wChats : wChats.slice(0, 10);
             const remaining = wChats.length - 10;
 
-            const worldRow = (
-              <UnstyledButton
-                key={`world-${world.id}`}
-                p={8}
-                style={{
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  borderRadius: "var(--mantine-radius-sm)",
-                }}
-                onClick={() => {
-                  if (collapsed) return;
-                  toggleWorld(world.id);
-                }}
-                onAuxClick={() => setSelectedWorld(world)}
-              >
-                {!collapsed && (
-                  isExpanded
-                    ? <IconChevronDown size={14} color="var(--mantine-color-dimmed)" style={{ flexShrink: 0 }} />
-                    : <IconChevronRight size={14} color="var(--mantine-color-dimmed)" style={{ flexShrink: 0 }} />
-                )}
-                <IconWorld size={18} color="var(--mantine-color-steel-5)" style={{ flexShrink: 0 }} />
-                {!collapsed && (
-                  <Text
-                    size="sm"
-                    c="dimmed"
-                    style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}
-                    title={world.name}
-                  >
-                    {world.name}
-                  </Text>
-                )}
-              </UnstyledButton>
-            );
-
             return (
               <div key={world.id}>
                 {collapsed ? (
