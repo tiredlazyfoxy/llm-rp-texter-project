@@ -1,13 +1,27 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ActionIcon, Badge, Group, Loader, Text, Textarea, Tooltip } from "@mantine/core";
-import { IconPlayerStop, IconRefresh, IconSend } from "@tabler/icons-react";
+import { IconArrowBackUp, IconLanguage, IconPlayerStop, IconRefresh, IconSend } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
+import { translateTextChat } from "../../api/chat";
+import { useTranslation } from "../../hooks/useTranslation";
 import { chatStore } from "../stores/ChatStore";
 
 export const ChatInput = observer(function ChatInput() {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const disabled = chatStore.currentChat?.session.status !== "active";
+
+  const getModelId = useCallback(
+    () => chatStore.currentChat?.session.tool_model.model_id ?? null,
+    [],
+  );
+  const getValue = useCallback(() => value, [value]);
+  const { isTranslating, canRevert, handleTranslate, handleRevert, onInputChange } = useTranslation({
+    getValue,
+    setValue,
+    getModelId,
+    translateFn: translateTextChat,
+  });
 
   async function handleSend() {
     const text = value.trim();
@@ -47,13 +61,33 @@ export const ChatInput = observer(function ChatInput() {
           style={{ flex: 1 }}
           placeholder={disabled ? "Chat archived" : "Type your message… (Enter to send, Shift+Enter for newline)"}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => { setValue(e.target.value); onInputChange(e.target.value); }}
           onKeyDown={handleKeyDown}
           minRows={1}
           maxRows={6}
           autosize
           disabled={disabled || chatStore.isSending}
         />
+
+        <Tooltip label="Translate to English">
+          <ActionIcon
+            variant="subtle"
+            size="lg"
+            onClick={handleTranslate}
+            disabled={!value.trim() || disabled || chatStore.isSending || isTranslating}
+            loading={isTranslating}
+          >
+            <IconLanguage size={18} />
+          </ActionIcon>
+        </Tooltip>
+
+        {canRevert && (
+          <Tooltip label="Revert to original">
+            <ActionIcon variant="subtle" size="lg" color="orange" onClick={handleRevert}>
+              <IconArrowBackUp size={18} />
+            </ActionIcon>
+          </Tooltip>
+        )}
 
         {chatStore.isSending ? (
           <Tooltip label="Stop generation">

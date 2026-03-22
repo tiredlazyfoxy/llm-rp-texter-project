@@ -6,6 +6,7 @@ import os
 
 from fastapi import HTTPException, status
 from llm import LLMClient, LlamaSwapAPIClient, OpenAIAPIClient
+from llm.message import LLMMessage
 
 from app.db import llm_servers as db
 
@@ -56,3 +57,23 @@ async def get_llm_client_for_model(model_id: str) -> LLMClient:
         status_code=status.HTTP_404_NOT_FOUND,
         detail=f"No active server has model '{model_id}' enabled",
     )
+
+
+_TRANSLATE_SYSTEM = (
+    "You are a translator. Translate the user's message into English. "
+    "Output ONLY the translated text, nothing else. "
+    "If the text is already in English, return it unchanged."
+)
+
+
+async def translate_to_english(text: str, model_id: str) -> str:
+    """Translate text to English using the specified LLM model."""
+    client = await get_llm_client_for_model(model_id)
+    messages: list[LLMMessage] = [{"role": "user", "content": text}]
+    async with client:
+        response = await client.chat(
+            messages,
+            system=_TRANSLATE_SYSTEM,
+            options={"temperature": 0.1},
+        )
+    return response.strip()

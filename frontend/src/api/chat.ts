@@ -1,3 +1,4 @@
+import type { TranslateRequest, TranslateResponse } from "../types/llmChat";
 import { authHeaders, authRequest } from "./request";
 
 export interface ChatSSEHandlers {
@@ -11,6 +12,13 @@ export interface ChatSSEHandlers {
   onStatUpdate?: (stats: Record<string, number | string | string[]>) => void;
   onDone?: (message: ChatMessage) => void;
   onError?: (detail: string) => void;
+}
+
+export async function translateTextChat(req: TranslateRequest): Promise<TranslateResponse> {
+  return authRequest<TranslateResponse>("/api/chats/translate", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
 }
 
 export async function listPublicWorlds(): Promise<WorldInfo[]> {

@@ -21,3 +21,12 @@ class LlmChatRequest(BaseModel):
     doc_id: str = ""
     doc_type: str = ""   # "location" | "npc" | "lore_fact"
     field_type: str = "" # "description" | "system_prompt" | "initial_message"
+
+
+class TranslateRequest(BaseModel):
+    text: str
+    model_id: str
+
+
+class TranslateResponse(BaseModel):
+    translated_text: str

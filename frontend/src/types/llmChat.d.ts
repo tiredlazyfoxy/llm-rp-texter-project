@@ -43,6 +43,15 @@ export interface ChatMessage {
   isStreaming?: boolean;
 }
 
+export interface TranslateRequest {
+  text: string;
+  model_id: string;
+}
+
+export interface TranslateResponse {
+  translated_text: string;
+}
+
 export interface EditorLlmParams {
   temperature: number;
   top_p: number;

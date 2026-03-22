@@ -1,4 +1,4 @@
-import type { LlmChatRequest, SSEHandlers } from "../types/llmChat";
+import type { LlmChatRequest, SSEHandlers, TranslateRequest, TranslateResponse } from "../types/llmChat";
 import type { EnabledModelInfo, EnabledModelsListResponse } from "../types/llmServer";
 import { authRequest } from "./request";
 import { streamPost } from "./sse";
@@ -13,4 +13,11 @@ export function streamChat(
 export async function fetchEnabledModels(): Promise<EnabledModelInfo[]> {
   const res = await authRequest<EnabledModelsListResponse>("/api/llm/models");
   return res.models;
+}
+
+export async function translateTextAdmin(req: TranslateRequest): Promise<TranslateResponse> {
+  return authRequest<TranslateResponse>("/api/llm/translate", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
 }

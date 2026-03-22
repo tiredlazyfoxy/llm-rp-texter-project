@@ -24,9 +24,11 @@ from app.models.schemas.chat import (
     UpdateChatSettingsRequest,
     WorldInfoResponse,
 )
+from app.models.schemas.llm_chat import TranslateRequest, TranslateResponse
 from app.models.user import User, UserRole
 from app.services import chat_service
 from app.services import chat_agent_service
+from app.services import llm_chat as llm_chat_service
 from app.services import summarization_service
 from app.services.auth import require_role
 
@@ -47,6 +49,15 @@ async def list_chat_models(
 ) -> EnabledModelsListResponse:
     models = await llm_service.get_all_enabled_models()
     return EnabledModelsListResponse(models=models)
+
+
+@router.post("/translate", response_model=TranslateResponse)
+async def translate_chat_text(
+    req: TranslateRequest,
+    _caller: User = Depends(_require_player),
+) -> TranslateResponse:
+    translated = await llm_chat_service.translate_to_english(req.text, req.model_id)
+    return TranslateResponse(translated_text=translated)
 
 
 # ---------------------------------------------------------------------------

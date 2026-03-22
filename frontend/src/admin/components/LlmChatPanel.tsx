@@ -15,9 +15,11 @@ import {
   Title,
 } from "@mantine/core";
 import {
+  IconArrowBackUp,
   IconCheck,
   IconChevronDown,
   IconChevronRight,
+  IconLanguage,
   IconPlayerStop,
   IconPlus,
   IconRefresh,
@@ -33,7 +35,8 @@ import type {
   ToolCallEntry,
 } from "../../types/llmChat";
 import type { EnabledModelInfo } from "../../types/llmServer";
-import { fetchEnabledModels, streamChat } from "../../api/llmChat";
+import { fetchEnabledModels, streamChat, translateTextAdmin } from "../../api/llmChat";
+import { useTranslation } from "../../hooks/useTranslation";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -107,6 +110,16 @@ export function LlmChatPanel({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const streamMsgRef = useRef<ChatMessage | null>(null);
   const isAtBottom = useRef(true);
+
+  // Translation
+  const getInputValue = useCallback(() => input, [input]);
+  const getModelId = useCallback(() => selectedModel, [selectedModel]);
+  const { isTranslating, canRevert, handleTranslate, handleRevert, onInputChange } = useTranslation({
+    getValue: getInputValue,
+    setValue: setInput,
+    getModelId,
+    translateFn: translateTextAdmin,
+  });
 
   // ---- Load models on mount ------------------------------------------------
 
@@ -487,7 +500,7 @@ export function LlmChatPanel({
           <Textarea
             placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
             value={input}
-            onChange={(e) => setInput(e.currentTarget.value)}
+            onChange={(e) => { setInput(e.currentTarget.value); onInputChange(e.currentTarget.value); }}
             onKeyDown={handleKeyDown}
             autosize
             minRows={1}
@@ -495,6 +508,27 @@ export function LlmChatPanel({
             style={{ flex: 1 }}
             disabled={isStreaming}
           />
+          <ActionIcon
+            variant="subtle"
+            size="lg"
+            onClick={handleTranslate}
+            disabled={!input.trim() || isStreaming || !selectedModel || isTranslating}
+            loading={isTranslating}
+            title="Translate to English"
+          >
+            <IconLanguage size={18} />
+          </ActionIcon>
+          {canRevert && (
+            <ActionIcon
+              variant="subtle"
+              size="lg"
+              color="orange"
+              onClick={handleRevert}
+              title="Revert to original"
+            >
+              <IconArrowBackUp size={18} />
+            </ActionIcon>
+          )}
           {isStreaming ? (
             <ActionIcon
               color="red"
