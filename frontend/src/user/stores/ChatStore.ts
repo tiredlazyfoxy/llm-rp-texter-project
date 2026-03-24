@@ -130,10 +130,8 @@ class ChatStore {
     if (!this.currentChat || this.isSending) return;
     const chatId = this.currentChat.session.id;
 
-    // Auto-commit viewed variant before sending (if viewing a non-current variant)
-    if (this.hasMultipleVariants && this.viewingVariantIndex !== null) {
-      await this.continueWithVariant(this.viewingVariantIndex);
-    }
+    // Capture variant selection for atomic send
+    const variantIdx = this.viewingVariantIndex;
 
     runInAction(() => {
       this.isSending = true;
@@ -145,12 +143,16 @@ class ChatStore {
       this.isThinking = false;
       this.currentPhase = null;
       this.currentStatus = null;
+      this.viewingVariantIndex = null;
     });
+
+    const req: SendMessageRequest = { content };
+    if (variantIdx !== null) req.variant_index = variantIdx;
 
     await new Promise<void>((resolve) => {
       this._abortController = chatApi.sendMessage(
         chatId,
-        { content },
+        req,
         {
           onToken: (t) => runInAction(() => { this.streamingContent += t; }),
           onThinking: (t) => runInAction(() => { this.streamingThinking += t; }),
@@ -201,7 +203,7 @@ class ChatStore {
             runInAction(() => {
               if (this.currentChat) {
                 this.currentChat.messages.push(message);
-                this.currentChat.variants = [message];
+                this.currentChat.variants = [];
                 this.currentChat.session.current_turn = message.turn_number;
               }
               this.pendingInput = "";
@@ -251,12 +253,8 @@ class ChatStore {
       this.streamingToolCalls = [];
       this.currentPhase = null;
       this.currentStatus = null;
-      // Remove old assistant message immediately so streaming bubble takes its place
-      // (server already moved it to generation_variants)
-      const turn = this.currentChat!.session.current_turn;
-      this.currentChat!.messages = this.currentChat!.messages.filter(
-        (m) => !(m.role === "assistant" && m.turn_number === turn),
-      );
+      // Don't remove old message — server moves it to variants.
+      // On done we reload detail; on error the message stays visible.
     });
 
     await new Promise<void>((resolve) => {
@@ -277,11 +275,19 @@ class ChatStore {
         onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
         onStatUpdate: () => {},
         onDone: (message) => {
-          // Reload chat detail to get server-side variants
           const reloadId = this.currentChat?.session.id;
           runInAction(() => {
             if (this.currentChat) {
-              this.currentChat.messages.push(message);
+              // Replace old assistant message at this turn with the new one
+              const msgs = this.currentChat.messages;
+              const oldIdx = msgs.findLastIndex(
+                (m) => m.role === "assistant" && m.turn_number === message.turn_number,
+              );
+              if (oldIdx >= 0) {
+                msgs[oldIdx] = message;
+              } else {
+                msgs.push(message);
+              }
               this.currentChat.session.current_turn = message.turn_number;
             }
             this.streamingContent = "";

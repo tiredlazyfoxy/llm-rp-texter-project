@@ -23,6 +23,7 @@ class CreateChatRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str
+    variant_index: int | None = None
 
 
 class ContinueRequest(BaseModel):

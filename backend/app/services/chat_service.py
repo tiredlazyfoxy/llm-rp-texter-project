@@ -131,8 +131,12 @@ def _load_variants(session: ChatSession) -> list[GenerationVariant]:
     """Parse generation_variants JSON from session."""
     try:
         raw = json.loads(session.generation_variants)
-        return [GenerationVariant.model_validate(v) for v in raw]
+        result = [GenerationVariant.model_validate(v) for v in raw]
+        if result:
+            logger.debug("Loaded %d variants for session %d", len(result), session.id)
+        return result
     except Exception:
+        logger.exception("Failed to parse generation_variants for session %d", session.id)
         return []
 
 
@@ -141,6 +145,7 @@ def _save_variants(session: ChatSession, variants: list[GenerationVariant]) -> N
     session.generation_variants = json.dumps(
         [v.model_dump() for v in variants]
     )
+    logger.debug("Saved %d variants for session %d (%d chars)", len(variants), session.id, len(session.generation_variants))
 
 
 def _snap_to_response(

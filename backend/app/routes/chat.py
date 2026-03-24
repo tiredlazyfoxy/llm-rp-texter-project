@@ -128,6 +128,7 @@ async def send_message(
 ) -> StreamingResponse:
     generator = await chat_agent_service.generate_response(
         int(chat_id), caller.id, req.content, caller_role=caller.role.value,
+        variant_index=req.variant_index,
     )
     return StreamingResponse(generator, media_type="text/event-stream")
 

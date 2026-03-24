@@ -546,6 +546,7 @@ def generate_chain_response(
     user_id: int,
     user_message: str,
     caller_role: str,
+    variant_index: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """Chain mode generation: planning → writing pipeline."""
 
@@ -559,9 +560,17 @@ def generate_chain_response(
         turn = chat.current_turn + 1
         logger.debug("[s:%d] Starting chain generation, current_turn=%d", session_id, chat.current_turn)
 
-        # Clear generation variants on new message
-        if chat.generation_variants != "[]":
-            chat.generation_variants = "[]"
+        # Handle variant selection + clear variants atomically
+        from app.services.chat_service import _load_variants, _save_variants
+        variants = _load_variants(chat)
+        if variant_index is not None and 0 <= variant_index < len(variants):
+            # Swap chosen variant back as active assistant message
+            from app.services.chat_service import continue_chat
+            await continue_chat(session_id, chat.user_id, variant_index)
+            chat = await chats_db.get_session_by_id(session_id)  # reload after swap
+        elif variants:
+            # No specific variant chosen — clear variants (auto-commit current)
+            _save_variants(chat, [])
             await chats_db.update_session(chat)
 
         # Reuse existing user message at this turn (e.g. after edit) or create new
@@ -640,6 +649,7 @@ def regenerate_chain_response(
             variants.append(_msg_to_variant(current_asst))
             _save_variants(chat, variants)
             await chats_db.delete_message_by_id(current_asst.id)
+            logger.debug("[s:%d] Moved assistant msg %d to variants (now %d variants)", session_id, current_asst.id, len(variants))
 
         # Reload user message for this turn
         user_msg = await chats_db.get_user_message_at_turn(session_id, turn)

@@ -279,6 +279,7 @@ def generate_simple_response(
     session_id: int,
     user_id: int,
     user_message: str,
+    variant_index: int | None = None,
 ) -> AsyncGenerator[str, None]:
     """Simple mode generation: single LLM call with tools and rich context."""
 
@@ -292,9 +293,15 @@ def generate_simple_response(
         turn = chat.current_turn + 1
         logger.debug("[s:%d] Starting simple generation, current_turn=%d", session_id, chat.current_turn)
 
-        # Clear generation variants on new message
-        if chat.generation_variants != "[]":
-            chat.generation_variants = "[]"
+        # Handle variant selection + clear variants atomically
+        from app.services.chat_service import _load_variants, _save_variants
+        variants = _load_variants(chat)
+        if variant_index is not None and 0 <= variant_index < len(variants):
+            from app.services.chat_service import continue_chat
+            await continue_chat(session_id, chat.user_id, variant_index)
+            chat = await chats_db.get_session_by_id(session_id)
+        elif variants:
+            _save_variants(chat, [])
             await chats_db.update_session(chat)
 
         # Reuse existing user message at this turn (e.g. after edit) or create new

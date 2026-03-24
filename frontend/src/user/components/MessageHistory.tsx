@@ -92,6 +92,33 @@ export const MessageHistory = observer(function MessageHistory() {
         );
       })}
 
+      {/* Fallback: if variants exist but no assistant message at current turn (error/deleted), show last variant */}
+      {!isSending && chatStore.hasMultipleVariants && currentTurn > 0
+        && !items.some((it) => !("start_turn" in it) && it.role === "assistant" && it.turn_number === currentTurn)
+        && (() => {
+          const vs = chatStore.latestTurnVariants;
+          const last = vs[vs.length - 1];
+          if (!last) return null;
+          const fallbackMsg: ChatMessage = {
+            id: "__variant_fallback__",
+            role: "assistant",
+            content: last.content,
+            turn_number: currentTurn,
+            tool_calls: last.tool_calls,
+            generation_plan: last.generation_plan ? JSON.stringify(last.generation_plan) : null,
+            thinking_content: last.thinking_content,
+            is_active_variant: false,
+            created_at: last.created_at,
+          };
+          return (
+            <MessageBubble
+              message={fallbackMsg}
+              variants={vs}
+              onSelectVariant={(index: number) => chatStore.continueWithVariant(index)}
+            />
+          );
+        })()}
+
       {(isSending || chatStore.error) && (chatStore.streamingContent || chatStore.streamingToolCalls.length > 0 || chatStore.streamingThinking) && (
         <MessageBubble
           message={{

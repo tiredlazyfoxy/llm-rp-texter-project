@@ -136,6 +136,7 @@ interface CreateChatRequest {
 
 interface SendMessageRequest {
   content: string;
+  variant_index?: number;
 }
 
 interface ContinueRequest {
