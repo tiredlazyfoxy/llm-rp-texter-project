@@ -161,17 +161,21 @@ class ChatStore {
           onUserAck: (ack) =>
             runInAction(() => {
               if (this.currentChat) {
-                this.currentChat.messages.push({
-                  id: ack.id,
-                  role: "user",
-                  content,
-                  turn_number: ack.turn_number,
-                  tool_calls: null,
-                  generation_plan: null,
-                  thinking_content: null,
-                  is_active_variant: true,
-                  created_at: ack.created_at,
-                });
+                // Avoid duplicate if message already exists (e.g. after edit+resend)
+                const exists = this.currentChat.messages.some((m) => m.id === ack.id);
+                if (!exists) {
+                  this.currentChat.messages.push({
+                    id: ack.id,
+                    role: "user",
+                    content,
+                    turn_number: ack.turn_number,
+                    tool_calls: null,
+                    generation_plan: null,
+                    thinking_content: null,
+                    is_active_variant: true,
+                    created_at: ack.created_at,
+                  });
+                }
               }
               this.pendingInput = "";
             }),

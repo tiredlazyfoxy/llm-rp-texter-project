@@ -55,7 +55,6 @@ export const MessageBubble = observer(function MessageBubble({
   const [planOpen, setPlanOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
-  const [hovered, setHovered] = useState(false);
 
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
@@ -114,18 +113,17 @@ export const MessageBubble = observer(function MessageBubble({
     );
   }
 
-  const showActions = !isStreaming && !isSystem && !isSummarized && hovered;
+  const showActions = !isStreaming && !isSystem && !isSummarized;
 
   return (
     <Stack
       gap={4}
       align={isUser ? "flex-end" : "flex-start"}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
       <div
         style={{
           maxWidth: "75%",
+          width: editing ? "75%" : undefined,
           padding: "10px 14px",
           borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
           backgroundColor: isUser
@@ -186,6 +184,14 @@ export const MessageBubble = observer(function MessageBubble({
               maxRows={8}
               autosize
               autoFocus
+              styles={{
+                input: {
+                  fontSize: "var(--mantine-font-size-sm)",
+                  backgroundColor: "transparent",
+                  border: "1px solid var(--mantine-color-dark-3)",
+                  color: "inherit",
+                },
+              }}
             />
             <Group gap="xs">
               <Button size="xs" onClick={handleSaveAndResend}>Save & Resend</Button>
@@ -251,46 +257,46 @@ export const MessageBubble = observer(function MessageBubble({
             </Collapse>
           </>
         )}
-      </div>
 
-      {/* Action buttons */}
-      {showActions && (
-        <Group gap={4}>
-          {isUser && (
-            <>
-              <Tooltip label="Edit & resend">
-                <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleEdit}>
-                  <IconEdit size={12} />
-                </ActionIcon>
-              </Tooltip>
-              <Tooltip label="Delete message">
-                <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleDelete}>
-                  <IconTrash size={12} />
-                </ActionIcon>
-              </Tooltip>
-            </>
-          )}
-          {!isUser && (
-            <>
-              <Tooltip label={`Rewind to turn ${message.turn_number - 1}`}>
-                <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleRewind}>
-                  <IconCornerUpLeft size={12} />
-                </ActionIcon>
-              </Tooltip>
-              <Tooltip label="Regenerate">
-                <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleRegenerate}>
-                  <IconRefresh size={12} />
-                </ActionIcon>
-              </Tooltip>
-              <Tooltip label="Delete message">
-                <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleDelete}>
-                  <IconTrash size={12} />
-                </ActionIcon>
-              </Tooltip>
-            </>
-          )}
-        </Group>
-      )}
+        {/* Action buttons */}
+        {showActions && (
+          <Group gap={4} mt={4}>
+            {isUser && (
+              <>
+                <Tooltip label="Edit & resend">
+                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleEdit}>
+                    <IconEdit size={12} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label="Delete message">
+                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleDelete}>
+                    <IconTrash size={12} />
+                  </ActionIcon>
+                </Tooltip>
+              </>
+            )}
+            {!isUser && (
+              <>
+                <Tooltip label={`Rewind to turn ${message.turn_number - 1}`}>
+                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleRewind}>
+                    <IconCornerUpLeft size={12} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label="Regenerate">
+                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleRegenerate}>
+                    <IconRefresh size={12} />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label="Delete message">
+                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleDelete}>
+                    <IconTrash size={12} />
+                  </ActionIcon>
+                </Tooltip>
+              </>
+            )}
+          </Group>
+        )}
+      </div>
     </Stack>
   );
 });

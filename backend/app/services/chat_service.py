@@ -614,7 +614,7 @@ async def delete_message(
     session_id: int, message_id: int, user_id: int,
     caller_role: str = "player",
 ) -> ChatDetailResponse:
-    """Delete a non-summarized message and adjust session state."""
+    """Delete a message and all messages after it, then adjust session state."""
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None or chat.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
@@ -628,50 +628,47 @@ async def delete_message(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete summarized messages")
 
     turn = msg.turn_number
+    import logging
+    log = logging.getLogger(__name__)
 
-    if turn < chat.current_turn:
-        # Past turn: rewind to turn - 1 (deletes everything from that turn onward)
-        return await rewind_chat(session_id, user_id, turn - 1, caller_role)
-
-    # Current turn
     if msg.role == "user":
-        # Delete entire turn: all messages at this turn + snapshot
-        await chats_db.delete_messages_at_and_after_turn(session_id, turn)
-        await chats_db.delete_snapshots_after_turn(session_id, turn - 1)
-        await chats_db.delete_summaries_after_turn(session_id, turn - 1)
-
-        # Restore state from previous snapshot
-        snap = await chats_db.get_snapshot_at_turn(session_id, turn - 1)
-        if snap:
-            chat.character_stats = snap.character_stats
-            chat.world_stats = snap.world_stats
-            chat.current_location_id = snap.location_id
-
-        chat.current_turn = turn - 1
-        chat.modified_at = _now()
-        await chats_db.update_session(chat)
+        # Delete this specific user message + all messages at turns strictly after
+        log.info("delete_message: user msg id=%d at turn %d", msg.id, turn)
+        await chats_db.delete_message_by_id(msg.id)
+        await chats_db.delete_messages_at_and_after_turn(session_id, turn + 1)
+        # Also delete assistant messages at this turn (they depend on this user message)
+        await chats_db.delete_messages_at_and_after_turn(
+            session_id, turn, exclude_role="user",
+        )
+        rewind_to = turn - 1
     else:
-        # Assistant message at current turn: mark inactive
-        await chats_db.set_message_inactive(msg.id)
-
-        # Check if any active assistant variants remain
+        # Delete this specific assistant + all messages at turns strictly after
+        # Keep user message(s) at this turn
+        log.info("delete_message: assistant msg id=%d at turn %d", msg.id, turn)
+        await chats_db.delete_messages_at_and_after_turn(session_id, turn + 1)
+        # Mark all assistant variants at this turn inactive
         variants = await chats_db.list_variants_for_turn(session_id, turn)
-        has_active = any(v.is_active_variant for v in variants)
+        for v in variants:
+            if v.is_active_variant:
+                await chats_db.set_message_inactive(v.id)
+        rewind_to = turn - 1
 
-        if not has_active:
-            # No active variants — delete entire turn
-            await chats_db.delete_messages_at_and_after_turn(session_id, turn)
-            await chats_db.delete_snapshots_after_turn(session_id, turn - 1)
-            await chats_db.delete_summaries_after_turn(session_id, turn - 1)
+    # Clean up snapshots/summaries and restore state
+    log.info("delete_message: rewind_to=%d, cleaning snapshots/summaries after turn %d", rewind_to, rewind_to)
+    await chats_db.delete_snapshots_after_turn(session_id, rewind_to)
+    await chats_db.delete_summaries_after_turn(session_id, rewind_to)
 
-            snap = await chats_db.get_snapshot_at_turn(session_id, turn - 1)
-            if snap:
-                chat.character_stats = snap.character_stats
-                chat.world_stats = snap.world_stats
-                chat.current_location_id = snap.location_id
+    snap = await chats_db.get_snapshot_at_turn(session_id, rewind_to)
+    if snap:
+        chat.character_stats = snap.character_stats
+        chat.world_stats = snap.world_stats
+        chat.current_location_id = snap.location_id
 
-            chat.current_turn = turn - 1
-            chat.modified_at = _now()
-            await chats_db.update_session(chat)
+    chat.current_turn = rewind_to
+    chat.modified_at = _now()
+    await chats_db.update_session(chat)
+
+    remaining = await chats_db.list_active_messages(session_id)
+    log.info("delete_message: done. current_turn=%d, remaining messages=%d", rewind_to, len(remaining))
 
     return await _build_detail_response(chat, caller_role)

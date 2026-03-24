@@ -162,13 +162,12 @@ async def delete_message(chat_id: str, message_id: str, caller=Depends(_require_
 async def delete_message(session_id: int, message_id: int, user_id: int) -> ChatDetailResponse:
 ```
 
-Flow:
+Flow (updated — delete this specific message + everything after):
 1. Load message, validate: belongs to session, is non-summarized, is not system role
-2. **If at current (latest) turn**:
-   - If user message: delete user + all assistant messages at this turn + snapshot at this turn. Decrement `current_turn`. Restore state from previous snapshot.
-   - If assistant message: mark inactive (`is_active_variant = False`). If no other active variants remain at this turn, also delete user message at this turn, decrement `current_turn`, restore state.
-3. **If at a past turn**: rewind to `turn_number - 1` (reuse existing rewind logic — deletes everything from that turn onward)
-4. Return updated `ChatDetailResponse`
+2. **If user message**: delete this specific message by ID, delete assistant messages at this turn, delete all messages at `turn + 1` onward. Other user messages at the same turn (duplicates from stop+resend) are preserved. Rewind to `turn - 1`.
+3. **If assistant message**: mark all assistant variants at this turn inactive. Delete all messages at `turn + 1` onward (keep user messages at this turn). Rewind to `turn - 1`.
+4. Clean up snapshots/summaries after rewind point. Restore state from snapshot.
+5. Return updated `ChatDetailResponse`
 
 ---
 

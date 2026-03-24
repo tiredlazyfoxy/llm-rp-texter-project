@@ -109,6 +109,17 @@ async def get_message_by_id(msg_id: int) -> ChatMessage | None:
         )).one_or_none()
 
 
+async def delete_message_by_id(msg_id: int) -> None:
+    session = await get_standalone_session()
+    async with session:
+        msg = (await session.exec(
+            select(ChatMessage).where(ChatMessage.id == msg_id)
+        )).one_or_none()
+        if msg:
+            await session.delete(msg)
+            await session.commit()
+
+
 async def list_active_messages(session_id: int) -> list[ChatMessage]:
     """Active variant messages with no summary (for display)."""
     session = await get_standalone_session()
@@ -153,7 +164,9 @@ async def get_user_message_at_turn(session_id: int, turn_number: int) -> ChatMes
             .where(ChatMessage.session_id == session_id)
             .where(ChatMessage.turn_number == turn_number)
             .where(ChatMessage.role == "user")
-        )).one_or_none()
+            .where(ChatMessage.is_active_variant == True)  # noqa: E712
+            .order_by(ChatMessage.created_at.desc())
+        )).first()
 
 
 async def set_message_inactive(msg_id: int) -> None:

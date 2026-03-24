@@ -102,8 +102,8 @@ CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All requi
 | POST | `/api/chats/:id/regenerate` | Regenerate assistant message (SSE). Optional `turn_number` for past turns |
 | POST | `/api/chats/:id/continue` | Pick variant, delete others |
 | POST | `/api/chats/:id/rewind` | Rewind to target turn |
-| PUT | `/api/chats/:id/messages/:msg_id` | Edit user message content (deletes forward, triggers re-send) |
-| DELETE | `/api/chats/:id/messages/:msg_id` | Delete non-summarized message |
+| PUT | `/api/chats/:id/messages/:msg_id` | Edit user message content, delete assistant at that turn + all after, rewind to turn-1 |
+| DELETE | `/api/chats/:id/messages/:msg_id` | Delete message + everything after it (user: whole turn+after; assistant: keep user msg, delete turn+1 onward) |
 | PUT | `/api/chats/:id/settings` | Update model config, user_instructions |
 | PUT | `/api/chats/:id/archive` | Archive chat (read-only) |
 | DELETE | `/api/chats/:id` | Delete chat and all related data |
@@ -120,14 +120,15 @@ Used for chat message generation and regeneration.
 | `thinking_done` | `{}` | End of thinking | Editor+ only |
 | `tool_call_start` | `{"tool_name": "...", "arguments": {...}}` | Tool invocation begins | Editor+ only |
 | `tool_call_result` | `{"tool_name": "...", "result": "..."}` | Tool returned | Editor+ only |
+| `user_ack` | `{"id": "...", "turn_number": N, "created_at": "..."}` | User message saved to DB | All |
 | `token` | `{"content": "...delta..."}` | Content token delta | All |
 | `stat_update` | `{"stats": {"name": value, ...}}` | Stats changed | All |
 | `done` | `{"message": ChatMessageResponse}` | Final message | All |
 | `error` | `{"detail": "..."}` | Error | All |
 
-Simple mode order: `status*` -> `thinking*` -> `tool_call_start` -> `tool_call_result` -> `token*` -> `stat_update?` -> `done`
+Simple mode order: `user_ack` -> `status*` -> `thinking*` -> `tool_call_start` -> `tool_call_result` -> `token*` -> `stat_update?` -> `done`
 
-Chain mode order: `phase("planning")` -> `status*` -> `tool_call*` -> `stat_update` -> `phase("writing")` -> `status` -> `token*` -> `done`
+Chain mode order: `user_ack` -> `phase("planning")` -> `status*` -> `tool_call*` -> `stat_update` -> `phase("writing")` -> `status` -> `token*` -> `done`
 
 **Visibility filtering**: Backend filters events by `caller_role`. Players receive only All-visibility events. Editors+ receive everything. Frontend debug toggle controls whether editor-only events are displayed or hidden in the UI.
 

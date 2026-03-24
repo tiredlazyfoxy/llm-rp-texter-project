@@ -552,17 +552,21 @@ def generate_chain_response(
 
         turn = chat.current_turn + 1
 
-        # Save user message
-        user_msg = ChatMessage(
-            id=snowflake_svc.generate_id(),
-            session_id=session_id,
-            role="user",
-            content=user_message,
-            turn_number=turn,
-            is_active_variant=True,
-            created_at=now(),
-        )
-        await chats_db.create_message(user_msg)
+        # Reuse existing user message at this turn (e.g. after edit) or create new
+        existing = await chats_db.get_user_message_at_turn(session_id, turn)
+        if existing and existing.content == user_message:
+            user_msg = existing
+        else:
+            user_msg = ChatMessage(
+                id=snowflake_svc.generate_id(),
+                session_id=session_id,
+                role="user",
+                content=user_message,
+                turn_number=turn,
+                is_active_variant=True,
+                created_at=now(),
+            )
+            await chats_db.create_message(user_msg)
 
         # Acknowledge user message to frontend
         yield sse("user_ack", {
