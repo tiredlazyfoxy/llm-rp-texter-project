@@ -143,6 +143,7 @@ export const MessageBubble = observer(function MessageBubble({
   }
 
   const showActions = !isStreaming && !isSystem && !isSummarized;
+  const actionsDisabled = chatStore.isSending;
 
   return (
     <Stack
@@ -192,6 +193,7 @@ export const MessageBubble = observer(function MessageBubble({
                   variant="light"
                   size="xs"
                   color="green"
+                  disabled={actionsDisabled}
                   onClick={() => onSelectVariant(displayIndex)}
                 >
                   <IconCheck size={12} />
@@ -334,12 +336,12 @@ export const MessageBubble = observer(function MessageBubble({
             {isUser && (
               <>
                 <Tooltip label="Edit & resend">
-                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleEdit}>
+                  <ActionIcon variant="subtle" size="xs" color="gray" disabled={actionsDisabled} onClick={handleEdit}>
                     <IconEdit size={12} />
                   </ActionIcon>
                 </Tooltip>
                 <Tooltip label="Delete message">
-                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleDelete}>
+                  <ActionIcon variant="subtle" size="xs" color="gray" disabled={actionsDisabled} onClick={handleDelete}>
                     <IconTrash size={12} />
                   </ActionIcon>
                 </Tooltip>
@@ -348,17 +350,17 @@ export const MessageBubble = observer(function MessageBubble({
             {!isUser && (
               <>
                 <Tooltip label={`Rewind to turn ${message.turn_number - 1}`}>
-                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleRewind}>
+                  <ActionIcon variant="subtle" size="xs" color="gray" disabled={actionsDisabled} onClick={handleRewind}>
                     <IconCornerUpLeft size={12} />
                   </ActionIcon>
                 </Tooltip>
                 <Tooltip label="Regenerate">
-                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleRegenerate}>
+                  <ActionIcon variant="subtle" size="xs" color="gray" disabled={actionsDisabled} onClick={handleRegenerate}>
                     <IconRefresh size={12} />
                   </ActionIcon>
                 </Tooltip>
                 <Tooltip label="Delete message">
-                  <ActionIcon variant="subtle" size="xs" color="gray" onClick={handleDelete}>
+                  <ActionIcon variant="subtle" size="xs" color="gray" disabled={actionsDisabled} onClick={handleDelete}>
                     <IconTrash size={12} />
                   </ActionIcon>
                 </Tooltip>
