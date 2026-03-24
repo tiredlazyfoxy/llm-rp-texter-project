@@ -144,6 +144,8 @@ class ChatStore {
       this.currentPhase = null;
       this.currentStatus = null;
       this.viewingVariantIndex = null;
+      // Clear variants immediately — server clears them on send
+      if (this.currentChat) this.currentChat.variants = [];
     });
 
     const req: SendMessageRequest = { content };
