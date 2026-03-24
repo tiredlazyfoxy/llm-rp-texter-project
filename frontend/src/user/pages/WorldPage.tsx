@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Container, Group, Skeleton, Text, Title } from "@mantine/core";
+import { Button, Container, Group, Skeleton, Title } from "@mantine/core";
 import ReactMarkdown from "react-markdown";
 import { listPublicWorlds } from "../../api/chat";
 import { getCurrentUser } from "../../auth";

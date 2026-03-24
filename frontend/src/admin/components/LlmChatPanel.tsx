@@ -113,11 +113,9 @@ export function LlmChatPanel({
 
   // Translation
   const getInputValue = useCallback(() => input, [input]);
-  const getModelId = useCallback(() => selectedModel, [selectedModel]);
-  const { isTranslating, canRevert, handleTranslate, handleRevert, onInputChange } = useTranslation({
+  const { isTranslating, canRevert, translateError, handleTranslate, handleRevert, onInputChange, clearTranslateError } = useTranslation({
     getValue: getInputValue,
     setValue: setInput,
-    getModelId,
     translateFn: translateTextAdmin,
   });
 
@@ -496,6 +494,11 @@ export function LlmChatPanel({
         </ScrollArea>
 
         {/* Input area */}
+        {translateError && (
+          <Text size="xs" c="red" onClick={clearTranslateError} style={{ cursor: "pointer" }}>
+            {translateError}
+          </Text>
+        )}
         <Group gap="xs" align="flex-end">
           <Textarea
             placeholder="Type a message… (Enter to send, Shift+Enter for newline)"

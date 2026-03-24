@@ -10,7 +10,7 @@ from starlette.responses import StreamingResponse
 
 from app.db import lore_facts as lore_facts_db
 from app.db import worlds as worlds_db
-from app.models.schemas.llm_chat import LlmChatRequest, TranslateRequest, TranslateResponse
+from app.models.schemas.llm_chat import LlmChatRequest, TranslateRequest
 from app.models.user import User, UserRole
 from llm.message import LLMMessage
 
@@ -217,10 +217,19 @@ async def chat_stream(
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-@router.post("/translate", response_model=TranslateResponse)
+@router.post("/translate")
 async def translate_text(
     req: TranslateRequest,
     _caller: User = Depends(_require_editor),
-) -> TranslateResponse:
-    translated = await llm_chat_service.translate_to_english(req.text, req.model_id)
-    return TranslateResponse(translated_text=translated)
+) -> StreamingResponse:
+    return StreamingResponse(
+        llm_chat_service.translate_to_english_stream(
+            req.text,
+            req.model_id,
+            temperature=req.temperature,
+            top_p=req.top_p,
+            repeat_penalty=req.repeat_penalty,
+            enable_thinking=req.enable_thinking,
+        ),
+        media_type="text/event-stream",
+    )

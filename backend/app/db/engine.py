@@ -12,6 +12,7 @@ import app.models.chat_summary  # noqa: F401
 import app.models.chat_message  # noqa: F401
 import app.models.chat_state_snapshot  # noqa: F401
 import app.models.chat_memory  # noqa: F401
+import app.models.user_settings  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

@@ -24,7 +24,7 @@ from app.models.schemas.chat import (
     UpdateChatSettingsRequest,
     WorldInfoResponse,
 )
-from app.models.schemas.llm_chat import TranslateRequest, TranslateResponse
+from app.models.schemas.llm_chat import TranslateRequest
 from app.models.user import User, UserRole
 from app.services import chat_service
 from app.services import chat_agent_service
@@ -51,13 +51,22 @@ async def list_chat_models(
     return EnabledModelsListResponse(models=models)
 
 
-@router.post("/translate", response_model=TranslateResponse)
+@router.post("/translate")
 async def translate_chat_text(
     req: TranslateRequest,
     _caller: User = Depends(_require_player),
-) -> TranslateResponse:
-    translated = await llm_chat_service.translate_to_english(req.text, req.model_id)
-    return TranslateResponse(translated_text=translated)
+) -> StreamingResponse:
+    return StreamingResponse(
+        llm_chat_service.translate_to_english_stream(
+            req.text,
+            req.model_id,
+            temperature=req.temperature,
+            top_p=req.top_p,
+            repeat_penalty=req.repeat_penalty,
+            enable_thinking=req.enable_thinking,
+        ),
+        media_type="text/event-stream",
+    )
 
 
 # ---------------------------------------------------------------------------

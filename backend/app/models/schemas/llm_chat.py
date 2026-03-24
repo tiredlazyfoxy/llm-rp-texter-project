@@ -26,7 +26,7 @@ class LlmChatRequest(BaseModel):
 class TranslateRequest(BaseModel):
     text: str
     model_id: str
-
-
-class TranslateResponse(BaseModel):
-    translated_text: str
+    temperature: float = 0.1
+    top_p: float = 1.0
+    repeat_penalty: float = 1.0
+    enable_thinking: bool = False

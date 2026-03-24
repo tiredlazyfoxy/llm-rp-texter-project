@@ -3,6 +3,7 @@ import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
 import "../global.css";
 import { theme } from "../theme";
+import { loadTranslationSettings } from "../utils/translationSettings";
 import { AppLayout } from "../components/AppLayout";
 import { UserSidebar } from "./components/UserSidebar";
 import { ChatListPage } from "./pages/ChatListPage";
@@ -26,6 +27,7 @@ export function App() {
       window.location.href = "/login/";
       return;
     }
+    loadTranslationSettings();
     setReady(true);
   }, []);
 

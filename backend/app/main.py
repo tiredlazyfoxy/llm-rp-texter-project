@@ -14,6 +14,7 @@ from app.routes.chat import router as chat_router
 from app.routes.llm_chat import router as llm_chat_router
 from app.routes.llm_models import router as llm_models_router
 from app.routes.llm_servers import router as llm_servers_router
+from app.routes.user_settings import router as user_settings_router
 from app.db import engine as db_engine
 from app.db.engine import DbConfig
 from app.services import vector_storage
@@ -67,6 +68,7 @@ app.include_router(llm_servers_router)
 app.include_router(llm_models_router)
 app.include_router(llm_chat_router)
 app.include_router(worlds_router)
+app.include_router(user_settings_router)
 
 
 @app.get("/api/health")

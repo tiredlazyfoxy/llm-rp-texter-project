@@ -19,6 +19,7 @@ from app.models.chat_state_snapshot import ChatStateSnapshot
 from app.models.chat_summary import ChatSummary
 from app.models.llm_server import LlmServer
 from app.models.user import User, UserRole
+from app.models.user_settings import UserSettings
 from app.models.world import (
     NPCLinkType,
     NPCLocationLink,
@@ -74,6 +75,33 @@ def _dict_to_user(d: dict) -> User:
         jwt_signing_key=d.get("jwt_signing_key"),
         last_login=_parse_datetime(d.get("last_login")),
         last_key_update=_parse_datetime(d.get("last_key_update")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# User Settings
+# ---------------------------------------------------------------------------
+
+
+def _user_settings_to_dict(s: UserSettings) -> dict:
+    return {
+        "user_id": s.user_id,
+        "translate_model_id": s.translate_model_id,
+        "translate_temperature": s.translate_temperature,
+        "translate_top_p": s.translate_top_p,
+        "translate_repeat_penalty": s.translate_repeat_penalty,
+        "translate_think": s.translate_think,
+    }
+
+
+def _dict_to_user_settings(d: dict) -> UserSettings:
+    return UserSettings(
+        user_id=d["user_id"],
+        translate_model_id=d.get("translate_model_id"),
+        translate_temperature=d.get("translate_temperature", 0.1),
+        translate_top_p=d.get("translate_top_p", 1.0),
+        translate_repeat_penalty=d.get("translate_repeat_penalty", 1.0),
+        translate_think=d.get("translate_think", False),
     )
 
 
@@ -509,6 +537,7 @@ def _dict_to_chat_memory(d: dict) -> ChatMemory:
 
 TABLE_REGISTRY = [
     ("users", User, _user_to_dict, _dict_to_user),
+    ("user_settings", UserSettings, _user_settings_to_dict, _dict_to_user_settings),
     ("llm_servers", LlmServer, _llm_server_to_dict, _dict_to_llm_server),
     ("worlds", World, _world_to_dict, _dict_to_world),
     ("world_locations", WorldLocation, _location_to_dict, _dict_to_location),

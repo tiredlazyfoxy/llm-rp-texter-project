@@ -11,15 +11,10 @@ export const ChatInput = observer(function ChatInput() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const disabled = chatStore.currentChat?.session.status !== "active";
 
-  const getModelId = useCallback(
-    () => chatStore.currentChat?.session.tool_model.model_id ?? null,
-    [],
-  );
   const getValue = useCallback(() => value, [value]);
-  const { isTranslating, canRevert, handleTranslate, handleRevert, onInputChange } = useTranslation({
+  const { isTranslating, canRevert, translateError, handleTranslate, handleRevert, onInputChange, clearTranslateError } = useTranslation({
     getValue,
     setValue,
-    getModelId,
     translateFn: translateTextChat,
   });
 
@@ -44,6 +39,11 @@ export const ChatInput = observer(function ChatInput() {
 
   return (
     <div style={{ padding: "8px 12px", borderTop: "1px solid var(--mantine-color-dark-4)" }}>
+      {translateError && (
+        <Text size="xs" c="red" mb={4} onClick={clearTranslateError} style={{ cursor: "pointer" }}>
+          {translateError}
+        </Text>
+      )}
       {chatStore.isSending && chatStore.currentStatus && (
         <Group gap="xs" mb={4} align="center">
           <Loader size={12} />

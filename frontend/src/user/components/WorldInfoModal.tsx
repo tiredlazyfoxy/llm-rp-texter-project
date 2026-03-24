@@ -1,4 +1,4 @@
-import { Button, Group, Modal, ScrollArea, Text, Title } from "@mantine/core";
+import { Button, Group, Modal, ScrollArea, Title } from "@mantine/core";
 import ReactMarkdown from "react-markdown";
 import { getCurrentUser } from "../../auth";
 

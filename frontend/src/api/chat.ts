@@ -1,5 +1,7 @@
-import type { TranslateRequest, TranslateResponse } from "../types/llmChat";
+import type { TranslateRequest } from "../types/llmChat";
+import type { TranslateStreamHandlers } from "../hooks/useTranslation";
 import { authHeaders, authRequest } from "./request";
+import { streamTranslate } from "./translateStream";
 
 export interface ChatSSEHandlers {
   onToken?: (content: string) => void;
@@ -14,11 +16,8 @@ export interface ChatSSEHandlers {
   onError?: (detail: string) => void;
 }
 
-export async function translateTextChat(req: TranslateRequest): Promise<TranslateResponse> {
-  return authRequest<TranslateResponse>("/api/chats/translate", {
-    method: "POST",
-    body: JSON.stringify(req),
-  });
+export function translateTextChat(req: TranslateRequest, handlers: TranslateStreamHandlers): AbortController {
+  return streamTranslate("/api/chats/translate", req, handlers);
 }
 
 export async function listPublicWorlds(): Promise<WorldInfo[]> {

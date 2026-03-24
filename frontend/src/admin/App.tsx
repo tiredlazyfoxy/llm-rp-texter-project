@@ -4,6 +4,7 @@ import { IconDatabase, IconServer, IconUsers, IconWorld } from "@tabler/icons-re
 import "@mantine/core/styles.css";
 import "../global.css";
 import { theme } from "../theme";
+import { loadTranslationSettings } from "../utils/translationSettings";
 import { AppLayout } from "../components/AppLayout";
 import type { NavItem } from "../components/AppSidebar";
 import { DbManagementPage } from "./pages/DbManagementPage";
@@ -50,6 +51,7 @@ export function App() {
       window.location.href = "/login/";
       return;
     }
+    loadTranslationSettings();
     setReady(true);
   }, []);
 

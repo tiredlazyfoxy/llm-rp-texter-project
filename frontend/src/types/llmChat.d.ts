@@ -46,10 +46,10 @@ export interface ChatMessage {
 export interface TranslateRequest {
   text: string;
   model_id: string;
-}
-
-export interface TranslateResponse {
-  translated_text: string;
+  temperature: number;
+  top_p: number;
+  repeat_penalty: number;
+  enable_thinking: boolean;
 }
 
 export interface EditorLlmParams {
