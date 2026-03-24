@@ -174,39 +174,9 @@ export const MessageBubble = observer(function MessageBubble({
           </>
         )}
 
-        {/* Inline edit mode */}
-        {editing ? (
-          <Stack gap="xs">
-            <Textarea
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              minRows={2}
-              maxRows={8}
-              autosize
-              autoFocus
-              styles={{
-                input: {
-                  fontSize: "var(--mantine-font-size-sm)",
-                  backgroundColor: "transparent",
-                  border: "1px solid var(--mantine-color-dark-3)",
-                  color: "inherit",
-                },
-              }}
-            />
-            <Group gap="xs">
-              <Button size="xs" onClick={handleSaveAndResend}>Save & Resend</Button>
-              <Button size="xs" variant="subtle" onClick={() => setEditing(false)}>Cancel</Button>
-            </Group>
-          </Stack>
-        ) : (
-          <div className="md-body" style={{ fontSize: "var(--mantine-font-size-sm)" }}>
-            <ReactMarkdown>{content}</ReactMarkdown>
-          </div>
-        )}
-
-        {/* Tool calls */}
+        {/* Tool calls (above content for completed messages) */}
         {!isStreaming && message.tool_calls && message.tool_calls.length > 0 && (
-          <ToolCallTrace toolCalls={message.tool_calls} debugMode={debug} />
+          <ToolCallTrace toolCalls={message.tool_calls} debugMode={debug} planningCollapsed />
         )}
 
         {/* Generation plan (debug mode, chain mode) */}
@@ -256,6 +226,36 @@ export const MessageBubble = observer(function MessageBubble({
               </Stack>
             </Collapse>
           </>
+        )}
+
+        {/* Inline edit mode */}
+        {editing ? (
+          <Stack gap="xs">
+            <Textarea
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              minRows={2}
+              maxRows={8}
+              autosize
+              autoFocus
+              styles={{
+                input: {
+                  fontSize: "var(--mantine-font-size-sm)",
+                  backgroundColor: "transparent",
+                  border: "1px solid var(--mantine-color-dark-3)",
+                  color: "inherit",
+                },
+              }}
+            />
+            <Group gap="xs">
+              <Button size="xs" onClick={handleSaveAndResend}>Save & Resend</Button>
+              <Button size="xs" variant="subtle" onClick={() => setEditing(false)}>Cancel</Button>
+            </Group>
+          </Stack>
+        ) : (
+          <div className="md-body" style={{ fontSize: "var(--mantine-font-size-sm)" }}>
+            <ReactMarkdown>{content}</ReactMarkdown>
+          </div>
         )}
 
         {/* Action buttons */}
