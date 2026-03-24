@@ -116,7 +116,14 @@ def _parse_generation_plan(raw_json: str | None) -> "GenerationPlanOutput | None
         return None
 
 
-def _msg_to_variant(m: ChatMessage) -> GenerationVariant:
+def _msg_to_variant(
+    m: ChatMessage,
+    *,
+    character_stats: dict[str, int | str | list[str]] | None = None,
+    world_stats: dict[str, int | str | list[str]] | None = None,
+    location_id: str | None = None,
+    location_name: str | None = None,
+) -> GenerationVariant:
     """Serialize a ChatMessage to a GenerationVariant (for session JSON storage)."""
     return GenerationVariant(
         content=m.content,
@@ -124,6 +131,10 @@ def _msg_to_variant(m: ChatMessage) -> GenerationVariant:
         generation_plan=_parse_generation_plan(m.generation_plan),
         thinking_content=m.thinking_content,
         created_at=m.created_at.isoformat(),
+        character_stats=character_stats,
+        world_stats=world_stats,
+        location_id=location_id,
+        location_name=location_name,
     )
 
 
@@ -562,6 +573,19 @@ async def continue_chat(session_id: int, user_id: int, variant_index: int) -> No
             if chosen.created_at else datetime.now(timezone.utc),
     )
     await chats_db.create_message(new_msg)
+
+    # Restore variant's stats/location to session and snapshot
+    if chosen.character_stats is not None:
+        chat.character_stats = chats_db.serialize_stats(chosen.character_stats)
+        chat.world_stats = chats_db.serialize_stats(chosen.world_stats or {})
+        if chosen.location_id:
+            chat.current_location_id = int(chosen.location_id)
+        snap = await chats_db.get_snapshot_at_turn(session_id, chat.current_turn)
+        if snap:
+            snap.character_stats = chat.character_stats
+            snap.world_stats = chat.world_stats
+            snap.location_id = int(chosen.location_id) if chosen.location_id else snap.location_id
+            await chats_db.update_snapshot(snap)
 
     # Clear variants
     _save_variants(chat, [])

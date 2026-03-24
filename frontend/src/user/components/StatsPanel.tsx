@@ -54,7 +54,7 @@ function StatRow({
 export const StatsPanel = observer(function StatsPanel() {
   const [charOpen, setCharOpen] = useState(true);
   const [worldOpen, setWorldOpen] = useState(false);
-  const snap = chatStore.currentSnapshot;
+  const snap = chatStore.displaySnapshot;
   const world = chatStore.publicWorlds.find(
     (w) => w.id === chatStore.currentChat?.session.world_id,
   );

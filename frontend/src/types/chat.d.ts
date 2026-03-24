@@ -71,6 +71,10 @@ interface GenerationVariant {
   generation_plan: GenerationPlanData | null;
   thinking_content: string | null;
   created_at: string;
+  character_stats: Record<string, number | string | string[]> | null;
+  world_stats: Record<string, number | string | string[]> | null;
+  location_id: string | null;
+  location_name: string | null;
 }
 
 interface ChatStateSnapshot {

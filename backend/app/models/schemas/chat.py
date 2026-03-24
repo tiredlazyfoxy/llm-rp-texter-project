@@ -99,6 +99,11 @@ class GenerationVariant(BaseModel):
     generation_plan: GenerationPlanOutput | None = None
     thinking_content: str | None = None
     created_at: str
+    # Per-variant resulting state (captured before stats/location reset on regenerate)
+    character_stats: dict[str, int | str | list[str]] | None = None
+    world_stats: dict[str, int | str | list[str]] | None = None
+    location_id: str | None = None
+    location_name: str | None = None
 
 
 class ChatStateSnapshotResponse(BaseModel):

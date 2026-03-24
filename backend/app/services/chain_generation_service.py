@@ -23,6 +23,7 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from app.db import chats as chats_db
+from app.db import locations as locations_db
 from app.db import worlds as worlds_db
 from app.models.chat_message import ChatMessage
 from app.models.chat_state_snapshot import ChatStateSnapshot
@@ -641,12 +642,27 @@ def regenerate_chain_response(
         turn = chat.current_turn
         logger.debug("[s:%d] Starting chain regeneration, turn=%d", session_id, turn)
 
+        # Capture current stats/location before reset (for variant storage)
+        old_char_stats = chats_db.parse_stats(chat.character_stats)
+        old_world_stats = chats_db.parse_stats(chat.world_stats)
+        old_location_id = str(chat.current_location_id) if chat.current_location_id else None
+        old_location_name: str | None = None
+        if chat.current_location_id:
+            loc = await locations_db.get_by_id(chat.current_location_id)
+            old_location_name = loc.name if loc else None
+
         # Move current assistant message to generation_variants
         from app.services.chat_service import _msg_to_variant, _load_variants, _save_variants
         current_asst = await chats_db.get_active_assistant_at_turn(session_id, turn)
         if current_asst:
             variants = _load_variants(chat)
-            variants.append(_msg_to_variant(current_asst))
+            variants.append(_msg_to_variant(
+                current_asst,
+                character_stats=old_char_stats,
+                world_stats=old_world_stats,
+                location_id=old_location_id,
+                location_name=old_location_name,
+            ))
             _save_variants(chat, variants)
             await chats_db.delete_message_by_id(current_asst.id)
             logger.debug("[s:%d] Moved assistant msg %d to variants (now %d variants)", session_id, current_asst.id, len(variants))
@@ -655,11 +671,12 @@ def regenerate_chain_response(
         user_msg = await chats_db.get_user_message_at_turn(session_id, turn)
         user_content = user_msg.content if user_msg else ""
 
-        # Restore stats from previous snapshot
+        # Restore stats and location from previous snapshot
         prev_snap = await chats_db.get_snapshot_at_turn(session_id, turn - 1)
         if prev_snap:
             chat.character_stats = prev_snap.character_stats
             chat.world_stats = prev_snap.world_stats
+            chat.current_location_id = prev_snap.location_id
         await chats_db.update_session(chat)
 
         # Build message history excluding current turn's assistant

@@ -87,6 +87,24 @@ class ChatStore {
     return snaps.find((s) => s.turn_number === turn) ?? snaps[snaps.length - 1] ?? null;
   }
 
+  /** Snapshot reflecting the currently viewed variant's stats, or currentSnapshot if none. */
+  get displaySnapshot(): ChatStateSnapshot | null {
+    if (this.viewingVariantIndex != null) {
+      const variants = this.latestTurnVariants;
+      const v = variants[this.viewingVariantIndex];
+      if (v?.character_stats) {
+        return {
+          turn_number: this.currentChat?.session.current_turn ?? 0,
+          location_id: v.location_id ?? null,
+          location_name: v.location_name ?? null,
+          character_stats: v.character_stats,
+          world_stats: v.world_stats ?? {},
+        };
+      }
+    }
+    return this.currentSnapshot;
+  }
+
   async loadPublicWorlds(): Promise<void> {
     try {
       const worlds = await chatApi.listPublicWorlds();
