@@ -13,6 +13,7 @@ import {
 } from "@mantine/core";
 import { listPublicWorlds, createChat } from "../../api/chat";
 import { authRequest } from "../../api/request";
+import ReactMarkdown from "react-markdown";
 import { loadToolModel, loadTextModel, saveToolModel, saveTextModel } from "../../utils/modelSettings";
 
 interface EnabledModelInfo {
@@ -131,7 +132,9 @@ export function CharacterSetupPage() {
   return (
     <Container size="md" py="md">
       <Title order={3} mb="xs">{world.name}</Title>
-      <Text size="sm" c="dimmed" mb="md">{world.description}</Text>
+      <div className="md-body" style={{ color: "var(--mantine-color-dimmed)", marginBottom: "var(--mantine-spacing-md)", fontSize: "var(--mantine-font-size-sm)" }}>
+        <ReactMarkdown>{world.description || "No description."}</ReactMarkdown>
+      </div>
 
       <Divider label="Character" mb="md" />
       <Stack gap="sm" mb="md">

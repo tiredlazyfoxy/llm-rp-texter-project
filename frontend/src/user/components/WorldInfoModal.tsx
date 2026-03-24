@@ -1,4 +1,5 @@
 import { Button, Group, Modal, ScrollArea, Text, Title } from "@mantine/core";
+import ReactMarkdown from "react-markdown";
 import { getCurrentUser } from "../../auth";
 
 interface WorldInfoModalProps {
@@ -20,9 +21,9 @@ export function WorldInfoModal({ world, onClose }: WorldInfoModalProps) {
       {world && (
         <>
           <ScrollArea mah={300} mb="md">
-            <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
-              {world.description || "No description."}
-            </Text>
+            <div className="md-body" style={{ fontSize: "var(--mantine-font-size-sm)" }}>
+              <ReactMarkdown>{world.description || "No description."}</ReactMarkdown>
+            </div>
           </ScrollArea>
           <Group justify="flex-end" gap="sm">
             {canEdit && (
