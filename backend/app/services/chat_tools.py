@@ -66,6 +66,20 @@ class MoveToLocationParams(BaseModel):
     location_name: str
 
 
+# Planning-only param schemas
+class AddFactParams(BaseModel):
+    content: str
+
+
+class AddDecisionParams(BaseModel):
+    content: str
+
+
+class UpdateStatParams(BaseModel):
+    name: str
+    value: str
+
+
 # ---------------------------------------------------------------------------
 # Tool definitions (OpenAI function-calling format)
 # ---------------------------------------------------------------------------
@@ -133,6 +147,34 @@ CHAT_TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description, exits, and NPCs present."
         ),
         MoveToLocationParams,
+    ),
+]
+
+
+PLANNING_TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    pydantic_to_openai_tool(
+        "add_fact",
+        (
+            "Record a relevant observation or piece of context that the writing "
+            "agent needs to craft the narrative. Call once per distinct fact."
+        ),
+        AddFactParams,
+    ),
+    pydantic_to_openai_tool(
+        "add_decision",
+        (
+            "Record a specific plot point, action outcome, or NPC reaction "
+            "for this turn. The writing agent will follow these faithfully."
+        ),
+        AddDecisionParams,
+    ),
+    pydantic_to_openai_tool(
+        "update_stat",
+        (
+            "Update a stat value. Validated immediately — you will get an error "
+            "message if the stat name or value is invalid, and can retry."
+        ),
+        UpdateStatParams,
     ),
 ]
 
@@ -391,3 +433,61 @@ def get_writer_tools(
     writer_callables = {k: v for k, v in all_callables.items() if k in _WRITER_TOOL_NAMES}
 
     return writer_defs, writer_callables
+
+
+def get_planning_tools(
+    world_id: int,
+    session_id: int,
+    planning_context: "PlanningContext",
+    stat_defs: list["WorldStatDefinition"],
+    char_stats: dict[str, Any],
+    world_stats: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Callable]]:
+    """Return all 8 chat tools + 3 planning tools for the planning stage.
+
+    Planning tool callables are closures that mutate planning_context and stats dicts.
+    """
+    from app.models.schemas.pipeline import PlanningContext, StatUpdateEntry
+    from app.models.world import WorldStatDefinition
+    from app.services.stat_validation import validate_and_apply_stat_updates
+
+    chat_defs, chat_callables = get_chat_tools(world_id, session_id)
+
+    # Planning tool closures
+    async def add_fact_impl(content: str) -> str:
+        planning_context.facts.append(content)
+        return f"Fact recorded ({len(planning_context.facts)} total)."
+
+    async def add_decision_impl(content: str) -> str:
+        planning_context.decisions.append(content)
+        return f"Decision recorded ({len(planning_context.decisions)} total)."
+
+    async def update_stat_impl(name: str, value: str) -> str:
+        updates = {name: value}
+        try:
+            new_char, new_world = validate_and_apply_stat_updates(
+                updates, stat_defs, char_stats, world_stats,
+            )
+        except Exception as exc:
+            return f"Stat update failed: {exc}"
+
+        # Check if the stat was actually applied (validate silently skips invalid)
+        if new_char == char_stats and new_world == world_stats:
+            return f"Stat update rejected: '{name}' is not a valid stat or value '{value}' is invalid."
+
+        # Apply mutations to the shared dicts
+        char_stats.update(new_char)
+        world_stats.update(new_world)
+        planning_context.stat_updates.append(StatUpdateEntry(name=name, value=value))
+        return f"Stat updated: {name} = {value}"
+
+    planning_callables: dict[str, Callable] = {
+        "add_fact": add_fact_impl,
+        "add_decision": add_decision_impl,
+        "update_stat": update_stat_impl,
+    }
+
+    all_defs = chat_defs + PLANNING_TOOL_DEFINITIONS
+    all_callables = {**chat_callables, **planning_callables}
+
+    return all_defs, all_callables

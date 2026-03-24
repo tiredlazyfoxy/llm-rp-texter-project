@@ -16,6 +16,14 @@ class StatUpdateEntry(BaseModel):
     value: str
 
 
+class PlanningContext(BaseModel):
+    """Built by planning tools during the planning LLM call.
+    Converted to GenerationPlanOutput for persistence."""
+    facts: list[str] = []
+    decisions: list[str] = []
+    stat_updates: list[StatUpdateEntry] = []
+
+
 class GenerationPlanOutput(BaseModel):
     collected_data: str = ""
     stat_updates: list[StatUpdateEntry] = []

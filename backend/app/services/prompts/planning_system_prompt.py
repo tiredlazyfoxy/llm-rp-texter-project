@@ -2,8 +2,9 @@
 
 PURPOSE
     Builds the system prompt for the planning step in chain generation mode.
-    The planning agent uses tools to gather world data and produces structured
-    JSON output (collected_data, decisions, stat_updates).
+    The planning agent uses read tools to gather world data and planning tools
+    (add_fact, add_decision, update_stat) to build structured context for the
+    writing agent. No JSON output — all structured data flows through tool calls.
 
 USAGE
     Called by chain_generation_service before the planning LLM call.
@@ -32,6 +33,7 @@ DESIGN RATIONALE
 CHANGELOG
     stage3_step1 — Skeleton created (returns empty string)
     stage3_step2b — Full prompt implementation
+    stage4_step4 — Replaced JSON output with planning tools
 """
 
 
@@ -51,16 +53,19 @@ def build_planning_system_prompt(
     lore_parts: str,
     admin_prompt: str,
 ) -> str:
-    """Build the planning agent system prompt with world context and JSON schema."""
+    """Build the planning agent system prompt with world context and tool-based planning instructions."""
     parts: list[str] = []
 
     # Role
     parts.append(
         f"You are a game planning agent for an RPG world called '{world_name}'. "
-        "Your job is to analyze the player's action, gather relevant information "
-        "using the available tools, and produce a structured JSON plan that a "
-        "separate writing agent will use to generate narrative prose.\n\n"
-        "You do NOT write story text. You only produce a JSON planning document."
+        "Your job is to analyze the player's action, aggressively research the "
+        "situation using every relevant tool, and use planning tools to build "
+        "complete context for a separate writing agent that will generate "
+        "narrative prose.\n\n"
+        "You do NOT write story text. Your ONLY output is tool calls. "
+        "Your text response is completely ignored — if you do not call the "
+        "planning tools, the writing agent receives NOTHING."
     )
 
     # World context
@@ -107,25 +112,81 @@ def build_planning_system_prompt(
     # Tool instructions
     parts.append(
         "## Available Tools\n\n"
-        "Use these tools to gather information before making your plan:\n"
+        "### Research Tools (use aggressively)\n"
+        "You MUST call research tools before making any decisions. Research thoroughly — "
+        "look up every NPC, location, and lore fact that could be relevant. Do NOT skip "
+        "research and guess from memory. The writing agent has NO access to world data — "
+        "anything you don't research and record is lost.\n\n"
         "- `get_location_info(query)` — Look up a location's details, exits, and NPCs\n"
         "- `get_npc_info(query)` — Look up an NPC's details and locations\n"
         "- `search(query, source_type?)` — Search world knowledge (locations, NPCs, lore)\n"
         "- `get_lore(query)` — Find relevant lore facts\n"
         "- `web_search(query)` — Search the web for real-world information\n"
-        "- `get_memory()` — Retrieve saved session memories\n"
-        "- `add_memory(content)` — Save an important RP fact (see Memory Rules below)\n"
-        "- `move_to_location(location_name)` — Move the player to a new location\n\n"
-        "Call tools as needed to understand the situation before planning your response. "
-        "You do not need to call every tool — only the ones relevant to the player's action."
+        "- `get_memory()` — Retrieve saved session memories\n\n"
+        "### Action Tools\n"
+        "- `move_to_location(location_name)` — Move the player to a new location\n"
+        "- `add_memory(content)` — Save an important RP fact (see Memory Rules below)\n\n"
+        "### Planning Tools (MANDATORY — you cannot finish without calling these)\n"
+        "- `add_fact(content)` — **PRIMARY GOAL of research.** Every piece of research "
+        "you gather MUST be recorded as a fact. Call once per distinct piece of context "
+        "(NPC details, location info, lore, memories, environmental details). "
+        "The writer receives ONLY what you record here.\n"
+        "- `add_decision(content)` — **CRITICAL — you MUST call this at least once.** "
+        "Record a specific plot point, action outcome, NPC reaction, or consequence. "
+        "You CANNOT finish your turn without recording at least one decision.\n"
+        "- `update_stat(name, value)` — **Always evaluate whether stats should change.** "
+        "Review every stat definition and determine if the player's action affects any stat. "
+        "If yes, call this tool. Validated immediately — you get an error if invalid and can retry."
+    )
+
+    # Planning workflow
+    parts.append(
+        "## Mandatory Workflow\n\n"
+        "Follow this workflow strictly. Do NOT skip any step.\n\n"
+        "### Step 1: RESEARCH (aggressive)\n"
+        "- Call `get_location_info` for the current location and any location mentioned\n"
+        "- Call `get_npc_info` for every NPC involved or mentioned\n"
+        "- Call `search` for any topic the player's action touches\n"
+        "- Call `get_lore` for relevant world lore\n"
+        "- Call `get_memory` to check session history\n"
+        "- If the player mentions something you don't have full details on, search for it\n"
+        "- **Self-check**: Before moving to step 2, ask yourself: \"Do I have ALL the "
+        "information needed to make decisions?\" If not, call more research tools.\n\n"
+        "### Step 2: RECORD FACTS (mandatory — call `add_fact` for each finding)\n"
+        "- For EVERY piece of useful information from research, call `add_fact(content)`\n"
+        "- Include: NPC descriptions, personalities, motivations, location details, "
+        "environmental conditions, lore context, relevant memories, relationship states\n"
+        "- The writing agent sees ONLY what you record. Be thorough.\n"
+        "- **Self-check**: \"Have I recorded everything the writer needs to craft a "
+        "rich, accurate scene?\" If not, record more facts.\n\n"
+        "### Step 3: DECIDE OUTCOMES (mandatory — call `add_decision` at least once)\n"
+        "- Call `add_decision(content)` for each plot point, action outcome, NPC "
+        "reaction, dialogue beat, or consequence\n"
+        "- **You MUST call `add_decision` at least once. This is not optional.**\n"
+        "- Be specific: \"Guard refuses entry and draws sword\" not \"Guard reacts\"\n\n"
+        "### Step 4: UPDATE STATS (evaluate every stat)\n"
+        "- Review the stat definitions above and the player's action\n"
+        "- For EACH defined stat, explicitly consider: does this action change it?\n"
+        "- If yes, call `update_stat(name, value)` — if it returns an error, fix and retry\n"
+        "- If no stats change, that is acceptable — but you MUST have considered each one\n\n"
+        "### Step 5: SAVE MEMORIES\n"
+        "- Call `add_memory(content)` for any story-significant event\n\n"
+        "### COMPLETION CHECKLIST\n"
+        "Before finishing, verify:\n"
+        "- [ ] Called at least one research tool\n"
+        "- [ ] Called `add_fact` at least once (ideally multiple times)\n"
+        "- [ ] Called `add_decision` at least once (MANDATORY)\n"
+        "- [ ] Evaluated every stat for possible changes\n"
+        "- [ ] Saved memories for significant events\n\n"
+        "**If you have not called `add_fact` and `add_decision`, you have FAILED your task. "
+        "Go back and call them now.**"
     )
 
     # Memory management
     parts.append(
         "## Memory Rules\n\n"
-        "You MUST call `add_memory` after planning any turn where something "
-        "story-significant happens. Save memories AFTER you have decided what happens, "
-        "just before outputting the JSON plan.\n\n"
+        "You MUST call `add_memory` during any turn where something "
+        "story-significant happens.\n\n"
         "**What to save:**\n"
         "- Promises, deals, or commitments (player or NPC)\n"
         "- NPC relationship changes (trust, hostility, alliance)\n"
@@ -138,35 +199,6 @@ def build_planning_system_prompt(
         "- State relationship shifts: \"Captain Voss now suspects player of theft\"\n\n"
         "**Do NOT save:** routine actions, location descriptions, combat details, "
         "or anything already tracked by stats or location."
-    )
-
-    # JSON output schema
-    parts.append(
-        '## Output Format\n\n'
-        'After gathering information, output a single JSON object with this exact structure:\n\n'
-        '```json\n'
-        '{\n'
-        '  "collected_data": "A summary of relevant context you gathered from tools and world state. '
-        'Include NPC details, location info, lore facts, and any other relevant information '
-        'the writer needs to craft the narrative.",\n'
-        '  "stat_updates": [\n'
-        '    {"name": "stat_name", "value": "new_value"}\n'
-        '  ],\n'
-        '  "decisions": [\n'
-        '    "What happens in the scene — a specific plot point or action outcome",\n'
-        '    "NPC dialogue or reaction to include",\n'
-        '    "Environmental detail or consequence"\n'
-        '  ]\n'
-        '}\n'
-        '```\n\n'
-        '**Field descriptions:**\n'
-        '- `collected_data`: Summarize ALL context the writer needs. The writer cannot call tools.\n'
-        '- `stat_updates`: Only include stats that actually change. Use stat names exactly as defined. '
-        'Values must match the stat type (integer for int stats, string for enum, list for set).\n'
-        '- `decisions`: Specific, actionable plot points. The writer will follow these faithfully. '
-        'Include NPC dialogue, action outcomes, discoveries, and consequences.\n\n'
-        '**IMPORTANT:** Output ONLY the JSON object. No markdown fences, no commentary, '
-        'no narrative prose. Just the raw JSON.'
     )
 
     # Admin instructions

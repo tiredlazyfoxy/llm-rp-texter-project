@@ -79,7 +79,7 @@ frontend/
 Editor+ users have a debug toggle in chat settings. When enabled:
 - Tool calls show full arguments + results (no truncation)
 - Thinking content displayed in collapsible panels
-- Generation plan visible (chain mode: collected_data, decisions, stat_updates)
+- Generation plan visible (chain mode: facts, decisions, stat_updates — collected via planning tools)
 - Hidden stats revealed with indicator badge
 
 When disabled: clean message display, brief status text only.

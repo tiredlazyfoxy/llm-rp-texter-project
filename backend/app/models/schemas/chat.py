@@ -73,7 +73,7 @@ class ChatSessionListResponse(BaseModel):
 
 class ToolCallInfo(BaseModel):
     tool_name: str
-    arguments: dict[str, str]
+    arguments: dict[str, str | None]
     result: str
 
 

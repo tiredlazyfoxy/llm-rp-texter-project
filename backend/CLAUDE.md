@@ -35,13 +35,13 @@ backend/
         planning_system_prompt.py   — Planning stage system prompt (chain mode)
         writing_system_prompt.py    — Writing stage system prompt (chain mode)
         writing_plan_message.py     — Plan injection template for writer
-      chat_tools.py         — Chat tool implementations (8 tools) + factory + writer tools subset
+      chat_tools.py         — Chat tool implementations (8 chat tools + 3 planning tools) + factories: get_chat_tools(), get_writer_tools(), get_planning_tools()
       chat_context.py       — Context builder for rich system prompts
       stat_validation.py    — Stat update validation against definitions
       chat_service.py       — Chat CRUD (sessions, messages, memories, rewind, edit/delete messages)
       chat_agent_service.py — Generation dispatcher (routes to mode-specific services)
       simple_generation_service.py  — Simple mode: single LLM call with tools
-      chain_generation_service.py   — Chain mode: planning → writing pipeline
+      chain_generation_service.py   — Chain mode: planning (tools → PlanningContext → GenerationPlanOutput) → writing pipeline
   pyproject.toml         — Dependencies
   data/                  — SQLite DB location (dev)
 ```
@@ -58,7 +58,7 @@ backend/
 `World.generation_mode` controls which generation flow is used for chat:
 
 - **`"simple"`** — Single LLM call with tools, rich system prompt, stat validation. Admin prompt: `World.system_prompt`. Service: `simple_generation_service.py`
-- **`"chain"`** — Pipeline stages from `World.pipeline` JSON (PipelineConfig). Default: planning (tools + JSON) → writing (prose). Service: `chain_generation_service.py`
+- **`"chain"`** — Pipeline stages from `World.pipeline` JSON (PipelineConfig). Default: planning stage builds context via `add_fact`/`add_decision`/`update_stat` tools (no JSON output) → writing (prose). Service: `chain_generation_service.py`
 - **`"agentic"`** (future) — Sub-agent orchestration, config in `World.agent_config`. Not yet implemented.
 
 Dispatch in `chat_agent_service.py` routes to the appropriate service. Shared infrastructure: `chat_tools.py`, `chat_context.py`, `stat_validation.py`, rich system prompt.

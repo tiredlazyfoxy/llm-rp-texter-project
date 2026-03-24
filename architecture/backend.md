@@ -224,14 +224,14 @@ Each sub-API is a separate FastAPI `APIRouter` mounted on the main app.
 | Mode | Service File | Config Field | Description |
 |------|-------------|-------------|-------------|
 | `"simple"` | `simple_generation_service.py` | `World.system_prompt` | Single LLM call with tools, rich prompt, stat validation |
-| `"chain"` | `chain_generation_service.py` | `World.pipeline` (JSON) | Pipeline stages: planning (tools + JSON) → writing (prose) |
+| `"chain"` | `chain_generation_service.py` | `World.pipeline` (JSON) | Pipeline stages: planning (planning tools, no JSON output) → writing (prose) |
 | `"agentic"` | `agent_generation_service.py` | `World.agent_config` (JSON) | Sub-agent orchestration (future, not yet implemented) |
 
 **Dispatch**: `chat_agent_service.py` is a thin dispatcher — loads the world, checks `generation_mode`, delegates to the appropriate service. Same dispatch for both `generate_response()` and `regenerate_response()`.
 
 **Shared infrastructure** (used by all modes):
 
-- `chat_tools.py` — 8 player-facing tools (get_location_info, get_npc_info, search, get_lore, web_search, get_memory, add_memory, move_to_location). `get_chat_tools()` returns all 8; `get_writer_tools()` returns read-only subset (5) for chain writing stage
+- `chat_tools.py` — 8 chat tools (get_location_info, get_npc_info, search, get_lore, web_search, get_memory, add_memory, move_to_location) + 3 planning tools (add_fact, add_decision, update_stat). `get_chat_tools()` returns 8 tools for simple mode; `get_writer_tools()` returns read-only subset (5) for chain writing stage; `get_planning_tools()` returns 3 planning-only tools for chain planning stage
 - `chat_context.py` — Loads location, NPCs, rules, stats, lore, memories; formats into prompt-ready strings
 - `stat_validation.py` — Validates stat updates against definitions (int range clamping, enum membership, set filtering)
 - `prompts/chat_system_prompt.py` — Rich system prompt builder with full world context and memory management instructions
@@ -250,6 +250,6 @@ Each prompt file follows the **stage-4 documentation convention**:
 
 Prompts combine three layers:
 
-1. **Coded part** — structural instructions, I/O formats, JSON schemas (hardcoded in the prompt file)
+1. **Coded part** — structural instructions, tool usage guidance (hardcoded in the prompt file). Note: planning prompt instructs the LLM to use `add_fact`/`add_decision`/`update_stat` tools for structured output — it does not include JSON output instructions.
 2. **Admin part** — world-specific free text (from `World.system_prompt` or `PipelineStage.prompt`)
 3. **Player part** — `session.user_instructions` (player's recommendations/feedback, always included when non-empty)

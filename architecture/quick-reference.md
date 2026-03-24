@@ -180,7 +180,13 @@ All document-lookup tools use **free text → vector search → full document** 
 - **add_memory(content)** — Appends a new `ChatMemory` row for the session. LLM is instructed to save story-significant facts (promises, relationship changes, plot developments) as 1-2 short factual sentences.
 - **move_to_location(location_name)** — Resolves location name via vector search, updates `session.current_location_id`, returns new location info (description, exits, NPCs).
 
-Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions, callables)` — all 8 tools for planning/simple modes. `get_writer_tools(world_id, session_id)` → read-only subset (5 tools: get_location_info, get_npc_info, search, get_lore, get_memory) for chain writing stage.
+Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions, callables)` — all 8 tools for simple mode. `get_writer_tools(world_id, session_id)` → read-only subset (5 tools: get_location_info, get_npc_info, search, get_lore, get_memory) for chain writing stage. `get_planning_tools(session_id)` → 3 planning-only tools for chain planning stage (not available in simple mode or writing stage):
+
+- **add_fact(content)** — Records a story/context fact into the planning context.
+- **add_decision(content)** — Records a narrative decision (what happens next) into the planning context.
+- **update_stat(name, value)** — Records a stat change into the planning context.
+
+`PlanningContext` is built incrementally by tool calls during the planning stage, then converted to `GenerationPlanOutput` for persistence in `chat_messages.generation_plan`.
 
 **Lore injection filter:** `get_lore` skips lore facts already injected into the system prompt (same logic as admin `get_lore` — avoids duplicating context).
 
@@ -190,7 +196,7 @@ Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions
 - **Valued per chat session** in `character_stats` / `world_stats` JSON fields
 - **Types**: int (min/max range), enum (single from list), set (multiple from list)
 - **Updates (simple mode)**: LLM outputs `[STAT_UPDATE]...[/STAT_UPDATE]` block, parsed and validated server-side via `stat_validation.validate_and_apply_stat_updates()`
-- **Updates (chain mode)**: Planning agent includes `stat_updates` in GenerationPlanOutput JSON, validated server-side
+- **Updates (chain mode)**: Planning agent calls `update_stat()` tool; results collected in `PlanningContext`, converted to `GenerationPlanOutput`, validated server-side
 - **Validation**: int values clamped to `[min, max]` range; enum values checked against allowed list; set elements filtered to valid values; unknown stats logged and skipped
 - **Snapshots**: `chat_state_snapshots` records stats at each turn for rewind
 
@@ -213,7 +219,7 @@ Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions
 `World.generation_mode` controls which generation flow is used:
 
 - **`"simple"`** (default) — Single LLM call with tools available, rich system prompt, stat validation. Admin prompt: `World.system_prompt`. Service: `simple_generation_service.py`
-- **`"chain"`** — Pipeline stages defined in `World.pipeline` (PipelineConfig JSON). Default: planning stage (tools + structured JSON output) → writing stage (prose). Each stage has an admin-editable prompt. Service: `chain_generation_service.py`
+- **`"chain"`** — Pipeline stages defined in `World.pipeline` (PipelineConfig JSON). Default: planning stage (uses planning tools to build context — no JSON output) → writing stage (prose). Each stage has an admin-editable prompt. Service: `chain_generation_service.py`
 - **`"agentic"`** (future) — Sub-agent orchestration, config in `World.agent_config`. Service: `agent_generation_service.py`. Not yet implemented.
 
 Dispatch: `chat_agent_service.py` routes to the appropriate service based on `generation_mode`.
@@ -226,6 +232,12 @@ PipelineConfig:
     step_type: "planning" | "writing"
     prompt: str (admin-editable free text)
     max_agent_steps: int | null (for tool-calling stages)
+
+PlanningContext:                         — built incrementally during planning stage
+  facts: list[str]                       — added via add_fact() tool calls
+  decisions: list[str]                   — added via add_decision() tool calls
+  stat_updates: dict[str, Any]           — added via update_stat() tool calls
+  → converted to GenerationPlanOutput for persistence in chat_messages.generation_plan
 ```
 
 ### Debug Mode

@@ -1,22 +1,22 @@
 """Chain generation service — planning → writing pipeline.
 
 PURPOSE
-    Implements the 'chain' generation mode: planning stage (LLM with tools
-    produces structured JSON GenerationPlanOutput) followed by writing stage
-    (LLM produces narrative prose based on the plan).
+    Implements the 'chain' generation mode: planning stage (LLM with planning
+    tools builds PlanningContext) followed by writing stage (LLM produces
+    narrative prose based on the plan).
 
 USAGE
     Called by chat_agent_service dispatcher when world.generation_mode == "chain".
 
 CHANGELOG
     stage3_step2b — Created
+    stage4_step4 — Replaced JSON parsing with tool-based PlanningContext
 """
 
 import asyncio
 import functools
 import json
 import logging
-import re
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
@@ -26,7 +26,7 @@ from app.db import chats as chats_db
 from app.db import worlds as worlds_db
 from app.models.chat_message import ChatMessage
 from app.models.chat_state_snapshot import ChatStateSnapshot
-from app.models.schemas.pipeline import GenerationPlanOutput, PipelineConfig
+from app.models.schemas.pipeline import GenerationPlanOutput, PipelineConfig, PlanningContext
 from app.services import snowflake as snowflake_svc
 from app.services.chat_agent_service import (
     _lp,
@@ -37,12 +37,11 @@ from app.services.chat_agent_service import (
     sse,
 )
 from app.services.chat_context import build_chat_context
-from app.services.chat_tools import get_chat_tools, get_writer_tools
+from app.services.chat_tools import get_planning_tools, get_writer_tools
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts.planning_system_prompt import build_planning_system_prompt
 from app.services.prompts.writing_plan_message import build_writing_plan_message
 from app.services.prompts.writing_system_prompt import build_writing_system_prompt
-from app.services.stat_validation import validate_and_apply_stat_updates
 
 logger = logging.getLogger(__name__)
 
@@ -170,40 +169,6 @@ def _create_filtered_thinking_callback(
 
 
 # ---------------------------------------------------------------------------
-# JSON parsing with fallback
-# ---------------------------------------------------------------------------
-
-def _parse_plan_json(raw: str) -> GenerationPlanOutput | None:
-    """Parse GenerationPlanOutput from LLM response with regex fallback."""
-    # Strip thinking tags if present
-    cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
-
-    # Strip markdown code fences (```json ... ``` or ``` ... ```)
-    cleaned = re.sub(r"```(?:json)?\s*\n?", "", cleaned).strip()
-
-    # Try direct parse
-    try:
-        data = json.loads(cleaned)
-        return GenerationPlanOutput.model_validate(data)
-    except Exception:
-        pass
-
-    # Fallback: try every { as a potential start, parse to end of string
-    # This handles intermediate LLM text before the JSON block
-    for i in range(len(cleaned)):
-        if cleaned[i] == "{":
-            try:
-                data = json.loads(cleaned[i:])
-                return GenerationPlanOutput.model_validate(data)
-            except json.JSONDecodeError:
-                continue
-            except Exception:
-                pass
-
-    return None
-
-
-# ---------------------------------------------------------------------------
 # Core chain generation
 # ---------------------------------------------------------------------------
 
@@ -262,6 +227,11 @@ async def _run_chain_generation(
         thinking_parts: list[str] = []
         writing_thinking_parts: list[str] = []
 
+        # Load stats early — planning tools mutate these dicts directly
+        char_stats = chats_db.parse_stats(chat.character_stats)
+        world_stats = chats_db.parse_stats(chat.world_stats)
+        planning_ctx = PlanningContext()
+
         if planning_stage:
             logger.debug("%s === PLANNING STAGE ===", lp)
             await queue.put(sse("phase", {"phase": "planning"}))
@@ -295,8 +265,11 @@ async def _run_chain_generation(
                     detail="No model configured for planning stage",
                 )
 
-            # Get tools and wrap with visibility filtering
-            tool_defs, tool_callables = get_chat_tools(chat.world_id, chat.id)
+            # Get tools (8 chat + 3 planning) and wrap with visibility filtering
+            tool_defs, tool_callables = get_planning_tools(
+                chat.world_id, chat.id, planning_ctx,
+                context["stat_defs_list"], char_stats, world_stats,
+            )
             wrapped_tools: dict[str, Callable] = {
                 name: _make_tool_wrapper(name, fn, queue, tool_call_records, caller_role)
                 for name, fn in tool_callables.items()
@@ -334,47 +307,25 @@ async def _run_chain_generation(
                     on_delta=planning_callback,
                 )
 
-            planning_raw = "".join(planning_parts)
             logger.debug(
-                "%s Planning completed: raw=%d chars, thinking=%d chars, tool_calls=%d",
-                lp, len(planning_raw), len("".join(thinking_parts)), len(tool_call_records),
+                "%s Planning completed: facts=%d, decisions=%d, stat_updates=%d, tool_calls=%d",
+                lp, len(planning_ctx.facts), len(planning_ctx.decisions),
+                len(planning_ctx.stat_updates), len(tool_call_records),
             )
 
-            # Parse plan JSON
-            await queue.put(sse("status", {"text": "Planning response..."}))
-            plan = _parse_plan_json(planning_raw)
-            if plan:
-                logger.debug(
-                    "%s Plan parsed: collected_data=%d chars, decisions=%d, stat_updates=%d",
-                    lp,
-                    len(plan.collected_data) if plan.collected_data else 0,
-                    len(plan.decisions) if plan.decisions else 0,
-                    len(plan.stat_updates) if plan.stat_updates else 0,
-                )
-            if plan is None:
-                logger.error(
-                    "Failed to parse planning JSON (%d chars). Head: %s ... Tail: %s",
-                    len(planning_raw), planning_raw[:300], planning_raw[-200:],
-                )
-                await queue.put(sse("error", {"detail": "Planning stage produced invalid JSON"}))
-                return
+            # Convert PlanningContext → GenerationPlanOutput for persistence
+            plan = GenerationPlanOutput(
+                collected_data="\n".join(planning_ctx.facts),
+                decisions=planning_ctx.decisions,
+                stat_updates=planning_ctx.stat_updates,
+            )
 
         # If no planning stage, create empty plan
         if plan is None:
             plan = GenerationPlanOutput()
 
-        # Validate and apply stat updates from plan
-        char_stats = chats_db.parse_stats(chat.character_stats)
-        world_stats = chats_db.parse_stats(chat.world_stats)
-
-        if plan.stat_updates:
-            updates_dict = {su.name: su.value for su in plan.stat_updates}
-            logger.debug("%s Plan stat updates: %s", lp, updates_dict)
-            new_char, new_world = validate_and_apply_stat_updates(
-                updates_dict, context["stat_defs_list"], char_stats, world_stats,
-            )
-        else:
-            new_char, new_world = char_stats, world_stats
+        # Stats already validated/applied by update_stat tool — use mutated dicts directly
+        new_char, new_world = char_stats, world_stats
         logger.debug("%s Stats after planning: char=%s, world=%s", lp, new_char, new_world)
 
         # Emit stat_update (always — marks phase boundary)
@@ -476,7 +427,7 @@ async def _run_chain_generation(
             }
 
             logger.debug(
-                "%s Writing: calling chat_with_tools: model=%s, messages=%d, tools=%d, max_loops=5",
+                "%s Writing: calling chat_with_tools: model=%s, messages=%d, tools=%d, max_loops=20",
                 lp, writing_model_id, len(writer_messages), len(writer_tool_defs),
             )
             writer_client = await get_llm_client_for_model(writing_model_id)
@@ -487,7 +438,7 @@ async def _run_chain_generation(
                     tools=wrapped_writer_tools,
                     system=writing_prompt,
                     options=writing_options,
-                    max_loops=5,
+                    max_loops=20,
                     stream=True,
                     on_delta=writing_callback,
                 )

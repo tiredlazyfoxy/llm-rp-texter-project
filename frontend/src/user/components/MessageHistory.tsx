@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { ActionIcon, Divider, Stack, Text, Tooltip } from "@mantine/core";
-import { IconFold } from "@tabler/icons-react";
+import { ActionIcon, Alert, Button, Divider, Group, Stack, Text, Tooltip } from "@mantine/core";
+import { IconAlertTriangle, IconFold, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import { chatStore } from "../stores/ChatStore";
 import { MessageBubble } from "./MessageBubble";
@@ -18,7 +18,14 @@ export const MessageHistory = observer(function MessageHistory() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [items.length, chatStore.streamingContent, chatStore.streamingToolCalls.length]);
+  }, [items.length, chatStore.streamingContent, chatStore.streamingToolCalls.length, chatStore.error]);
+
+  function dismissError() {
+    chatStore.error = null;
+    chatStore.streamingContent = "";
+    chatStore.streamingThinking = "";
+    chatStore.streamingToolCalls = [];
+  }
 
   async function handleCompact(messageId: string) {
     if (!confirm("Summarize all messages up to this point?")) return;
@@ -77,7 +84,7 @@ export const MessageHistory = observer(function MessageHistory() {
         );
       })}
 
-      {isSending && (chatStore.streamingContent || chatStore.streamingToolCalls.length > 0 || chatStore.streamingThinking) && (
+      {(isSending || chatStore.error) && (chatStore.streamingContent || chatStore.streamingToolCalls.length > 0 || chatStore.streamingThinking) && (
         <MessageBubble
           message={{
             id: "__streaming__",
@@ -95,6 +102,46 @@ export const MessageHistory = observer(function MessageHistory() {
           streamingThinking={chatStore.streamingThinking}
           streamingToolCalls={chatStore.streamingToolCalls}
         />
+      )}
+
+      {chatStore.error && (
+        <Alert
+          icon={<IconAlertTriangle size={18} />}
+          color="red"
+          variant="light"
+          title="Generation failed"
+          withCloseButton
+          onClose={dismissError}
+        >
+          <Text size="sm" mb="xs">
+            {chatStore.debugMode
+              ? chatStore.error
+              : "Something went wrong during generation. Try again or check server logs."}
+          </Text>
+          <Group gap="xs">
+            <Button
+              size="xs"
+              variant="light"
+              color="blue"
+              leftSection={<IconRefresh size={14} />}
+              onClick={() => {
+                dismissError();
+                chatStore.retryAfterError();
+              }}
+            >
+              Retry
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              color="gray"
+              leftSection={<IconTrash size={14} />}
+              onClick={dismissError}
+            >
+              Dismiss
+            </Button>
+          </Group>
+        </Alert>
       )}
 
       <div ref={bottomRef} />

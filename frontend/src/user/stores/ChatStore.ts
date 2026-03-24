@@ -128,6 +128,7 @@ class ChatStore {
     const chatId = this.currentChat.session.id;
     runInAction(() => {
       this.isSending = true;
+      this.error = null;
       this.pendingInput = content;
       this.streamingContent = "";
       this.streamingThinking = "";
@@ -177,7 +178,6 @@ class ChatStore {
                   });
                 }
               }
-              this.pendingInput = "";
             }),
           onPhase: (phase) => runInAction(() => { this.currentPhase = phase; }),
           onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
@@ -208,9 +208,11 @@ class ChatStore {
             runInAction(() => {
               this.error = detail;
               this.isSending = false;
-              this.streamingContent = "";
+              this.isThinking = false;
               this.currentPhase = null;
               this.currentStatus = null;
+              // Keep streamingContent/streamingThinking/streamingToolCalls
+              // so the user can see what was collected before the error
             });
             resolve();
           },
@@ -219,11 +221,18 @@ class ChatStore {
     });
   }
 
+  async retryAfterError(): Promise<void> {
+    if (!this.pendingInput) return;
+    const content = this.pendingInput;
+    await this.sendMessage(content);
+  }
+
   async regenerate(): Promise<void> {
     if (!this.currentChat || this.isSending) return;
     const chatId = this.currentChat.session.id;
     runInAction(() => {
       this.isSending = true;
+      this.error = null;
       this.streamingContent = "";
       this.streamingThinking = "";
       this.streamingToolCalls = [];
@@ -264,7 +273,7 @@ class ChatStore {
           runInAction(() => {
             this.error = detail;
             this.isSending = false;
-            this.streamingContent = "";
+            this.isThinking = false;
             this.currentPhase = null;
             this.currentStatus = null;
           });
@@ -471,7 +480,7 @@ class ChatStore {
           runInAction(() => {
             this.error = detail;
             this.isSending = false;
-            this.streamingContent = "";
+            this.isThinking = false;
             this.currentPhase = null;
             this.currentStatus = null;
           });
