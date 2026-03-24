@@ -61,6 +61,7 @@ class ChatSessionListItem(BaseModel):
     world_id: str
     world_name: str
     character_name: str
+    current_location_name: str | None
     current_turn: int
     status: str
     modified_at: str

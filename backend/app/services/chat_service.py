@@ -398,11 +398,16 @@ async def list_user_sessions(user_id: int) -> list[ChatSessionListItem]:
     result: list[ChatSessionListItem] = []
     for s in sessions:
         world = await worlds_db.get_by_id(s.world_id)
+        location_name: str | None = None
+        if s.current_location_id:
+            loc = await locations_db.get_by_id(s.current_location_id)
+            location_name = loc.name if loc else None
         result.append(ChatSessionListItem(
             id=str(s.id),
             world_id=str(s.world_id),
             world_name=world.name if world else "",
             character_name=s.character_name,
+            current_location_name=location_name,
             current_turn=s.current_turn,
             status=s.status,
             modified_at=s.modified_at.isoformat(),

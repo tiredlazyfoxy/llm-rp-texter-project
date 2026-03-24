@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   ActionIcon,
-  Badge,
   Button,
   Container,
   Group,
@@ -49,8 +48,7 @@ export function ChatListPage() {
             <Table.Tr>
               <Table.Th>World</Table.Th>
               <Table.Th>Character</Table.Th>
-              <Table.Th>Turns</Table.Th>
-              <Table.Th>Status</Table.Th>
+              <Table.Th>Location</Table.Th>
               <Table.Th>Last activity</Table.Th>
               <Table.Th />
             </Table.Tr>
@@ -64,16 +62,7 @@ export function ChatListPage() {
               >
                 <Table.Td>{chat.world_name}</Table.Td>
                 <Table.Td>{chat.character_name}</Table.Td>
-                <Table.Td>{chat.current_turn}</Table.Td>
-                <Table.Td>
-                  <Badge
-                    size="sm"
-                    color={chat.status === "active" ? "green" : "gray"}
-                    variant="light"
-                  >
-                    {chat.status}
-                  </Badge>
-                </Table.Td>
+                <Table.Td>{chat.current_location_name || "—"}</Table.Td>
                 <Table.Td>{formatDate(chat.modified_at)}</Table.Td>
                 <Table.Td>
                   <ActionIcon

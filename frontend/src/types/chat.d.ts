@@ -10,6 +10,7 @@ interface ChatSessionItem {
   world_id: string;
   world_name: string;
   character_name: string;
+  current_location_name: string | null;
   current_turn: number;
   status: "active" | "archived";
   modified_at: string;
