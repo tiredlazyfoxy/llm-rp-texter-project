@@ -38,7 +38,10 @@ See `architecture/` for full documentation.
 - `backend/` — FastAPI backend (agent, users/chats API, admin API)
 - `frontend/` — Vite multi-page app (User SPA + Admin SPA)
 - `docker-compose.dev.yml` — Dev Docker setup with build
-- `docker-compose.prod.yml` — Production Docker setup
+- `docker-compose.prod.yml` — Production Docker setup (pre-built images)
+- `build.ps1` — Build images, compress with 7z, export to NAS
+- `fetch.sh` — Import images from NAS on deployment server
+- `.dockerignore` — Docker build exclusions
 - Each subfolder has its own `CLAUDE.md` for context
 
 ## Conventions

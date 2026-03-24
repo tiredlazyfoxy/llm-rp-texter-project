@@ -2,67 +2,108 @@
 
 ## Docker Architecture
 
-Two services, two compose files:
+Two compose files, two custom Docker images:
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.dev.yml` | Local development with build steps |
-| `docker-compose.prod.yml` | Production-ready deployment |
+| `docker-compose.dev.yml` | Local development (source mounts, hot-reload) |
+| `docker-compose.prod.yml` | Production (pre-built images from NAS) |
 
-## Docker Services
+## Production Services
 
-### 1. nginx
+### gate (nginx)
 
-- Serves both SPAs as static files (built by Vite)
-- User SPA at `/`
-- Admin SPA at `/admin`
-- Proxies `/api` to the FastAPI backend
-- No CORS needed (same-origin)
+- Image: `iezious/llmrp-gate:latest`
+- Multi-stage Dockerfile: `frontend/Dockerfile` (Node build → nginx:alpine)
+- Serves all three SPAs as static files
+- Proxies `/api` to backend with SSE support (no buffering, 300s timeout)
+- Config: `nginx/prod.conf`
 
-### 2. FastAPI Backend
+### backend (FastAPI)
 
-- Python 3.13 container
-- Runs uvicorn with FastAPI
-- Connects to SQLite (volume-mounted)
-- Exposes internal port for nginx proxy
+- Image: `iezious/llmrp-api:latest`
+- Dockerfile: `backend/Dockerfile` (python:3.13)
+- Runs uvicorn on port 8085
+- SQLite DB at `/app/data/llmrp.db` (volume-mounted)
+- Health check: `GET /api/health`
 
 ## URL Routing (Production)
 
 | Path | Target |
 |------|--------|
-| `/` | User SPA (static files) |
-| `/admin` | Admin SPA (static files) |
+| `/` | User SPA (static) |
+| `/admin` | Admin SPA (static) |
+| `/login` | Login SPA (static) |
 | `/api/*` | FastAPI backend (proxied) |
 
-## nginx Configuration Outline
+## nginx Production Config
 
-```nginx
-server {
-    listen 80;
+Located at `nginx/prod.conf`, key features:
 
-    # User SPA
-    location / {
-        root /usr/share/nginx/html/user;
-        try_files $uri $uri/ /index.html;
-    }
+- SSE streaming: `proxy_buffering off`, `proxy_cache off`
+- Long timeout: `proxy_read_timeout 300s` (LLM generation)
+- Multi-SPA fallback: each SPA path falls back to its own `index.html`
+- No CORS needed (same-origin via proxy)
 
-    # Admin SPA
-    location /admin {
-        alias /usr/share/nginx/html/admin;
-        try_files $uri $uri/ /admin/index.html;
-    }
+## Build and Distribution
 
-    # API proxy
-    location /api {
-        proxy_pass http://backend:8085;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
+Images are built locally, compressed with 7z, and stored on a NAS share. No Docker registry used.
+
+### Prerequisites
+
+- Git tag for versioning: `git tag v0.0.1`
+- `DOCKER_STORE` environment variable pointing to NAS mount
+- Docker and 7z installed
+
+### build.ps1 (Windows — build machine)
+
+```powershell
+.\build.ps1              # Build images + copy compose (default)
+.\build.ps1 -Images      # Build and compress images only
+.\build.ps1 -Config      # Copy docker-compose.prod.yml only
 ```
 
-## Build Process
+Steps:
+1. Reads version from `git describe --tags --abbrev=0`
+2. Builds `iezious/llmrp-api:$version` + `:latest`
+3. Builds `iezious/llmrp-gate:$version` + `:latest`
+4. `docker save` → 7z compress → move to `$DOCKER_STORE/llmrp/`
+5. Copies `docker-compose.prod.yml` as `docker-compose.yml`
 
-1. Frontend: `npm run build` produces static files for both SPAs
-2. Backend: Python dependencies installed via `pyproject.toml`
-3. Docker images built and orchestrated via compose
+### fetch.sh (Linux — deployment server)
+
+```bash
+./fetch.sh               # Load images + copy compose (default)
+./fetch.sh --images      # Load images only
+./fetch.sh --config      # Copy compose only
+```
+
+Steps:
+1. Reads 7z archives from `$DOCKER_STORE/llmrp/`
+2. `7z x -so | docker load` for each image
+3. Copies `docker-compose.yml` to working directory
+
+### Deployment
+
+```bash
+# On the server, after fetch:
+docker compose up -d
+```
+
+Environment variables via `.env` file (not checked into git):
+- `OPENAI_API_KEY`, `LLAMA_SWAP_URL` — LLM provider config
+- `SEARCH_CSE_ID`, `SEARCH_CSE_KEY` — Google search (optional)
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `backend/Dockerfile` | Backend image (python:3.13, uvicorn) |
+| `frontend/Dockerfile` | Frontend image (node build → nginx) |
+| `nginx/prod.conf` | Production nginx config (SSE, multi-SPA) |
+| `nginx/dev.conf` | Dev nginx config (proxy to Vite + backend) |
+| `docker-compose.prod.yml` | Production compose (pre-built images) |
+| `docker-compose.dev.yml` | Dev compose (source mounts, hot-reload) |
+| `build.ps1` | Build + compress + export to NAS |
+| `fetch.sh` | Import from NAS + deploy |
+| `.dockerignore` | Excludes .git, .venv, node_modules, docs |

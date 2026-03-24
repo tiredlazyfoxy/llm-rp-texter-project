@@ -69,6 +69,7 @@ Dispatch in `chat_agent_service.py` routes to the appropriate service. Shared in
 - Dependencies managed via `pyproject.toml`
 - Dev server: `uvicorn app.main:app --port 8085 --reload`
 - SQLite DB in `backend/data/` (dev), Docker volume `./data/` (prod)
+- Production Docker: `backend/Dockerfile` (python:3.13, port 8085, build context is repo root)
 
 ## Layer Separation
 

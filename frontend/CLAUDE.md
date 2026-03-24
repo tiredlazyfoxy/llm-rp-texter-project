@@ -97,6 +97,13 @@ When disabled: clean message display, brief status text only.
 - Dev server: `npx vite --port 8094`
 - Build: `npx vite build`
 
+## Production Docker
+
+- `frontend/Dockerfile` — multi-stage: Node 20 build → nginx:alpine
+- Build output copied to `/usr/share/nginx/html`
+- nginx config: `nginx/prod.conf` (multi-SPA fallback for `/`, `/admin`, `/login`)
+- Build context is repo root (not `frontend/`)
+
 ## See Also
 
 - `architecture/quick-reference.md` — API endpoints, SSE protocol, data types
