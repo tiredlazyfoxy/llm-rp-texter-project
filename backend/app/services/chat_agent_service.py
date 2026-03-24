@@ -26,6 +26,12 @@ logger = logging.getLogger(__name__)
 # Shared helpers (used by simple_generation_service, chain_generation_service)
 # ---------------------------------------------------------------------------
 
+def _lp(session_id: int, turn: int) -> str:
+    """Log prefix for session/turn tracing."""
+    return f"[s:{session_id} t:{turn}]"
+
+
+
 def sse(event: str, data: dict) -> str:
     """Format a Server-Sent Event string."""
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
@@ -112,6 +118,10 @@ async def build_llm_messages(session_id: int) -> list[dict[str, str]]:
                 "content": m.content,
             })
 
+    logger.debug(
+        "[s:%d] Built LLM messages: %d summaries, %d active, %d total",
+        session_id, len(summaries), len(active_msgs), len(llm_messages),
+    )
     return llm_messages
 
 
@@ -194,6 +204,7 @@ async def generate_response(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found")
 
     mode = world.generation_mode or "simple"
+    logger.debug("[s:%d] Dispatching generation: mode=%s, world_id=%d", session_id, mode, world.id)
 
     if mode == "chain":
         from app.services import chain_generation_service
@@ -231,6 +242,11 @@ async def regenerate_response(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
     if chat.status != "active" or chat.current_turn == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot regenerate")
+
+    logger.debug(
+        "[s:%d] Dispatching regeneration: turn=%d, rewind_to=%s",
+        session_id, chat.current_turn, turn_number,
+    )
 
     # If turn_number specified and < current_turn, rewind first
     if turn_number is not None and turn_number < chat.current_turn:

@@ -41,6 +41,8 @@ async def get_llm_client_for_model(model_id: str) -> LLMClient:
 
         resolved_key = _resolve_api_key(server.api_key)
 
+        logger.debug("LLM client: model=%s, server=%s, backend=%s", model_id, server.name, server.backend_type)
+
         if server.backend_type == "openai":
             return OpenAIAPIClient(
                 model=model_id, base_url=server.base_url, bearer_token=resolved_key,

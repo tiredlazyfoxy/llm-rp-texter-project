@@ -29,6 +29,7 @@ from app.models.chat_state_snapshot import ChatStateSnapshot
 from app.models.schemas.pipeline import GenerationPlanOutput, PipelineConfig
 from app.services import snowflake as snowflake_svc
 from app.services.chat_agent_service import (
+    _lp,
     build_llm_messages,
     build_message_response,
     create_thinking_callback,
@@ -81,6 +82,7 @@ def _make_tool_wrapper(
     """Wrap tool callable for SSE emission with visibility filtering."""
     @functools.wraps(fn)
     async def wrapper(**kwargs: Any) -> str:
+        logger.debug("Tool call: %s(%s)", name, ", ".join(f"{k}={v!r}" for k, v in kwargs.items()))
         # Editor+ sees tool call details; players only get status
         if caller_role != "player":
             await queue.put(sse("tool_call_start", {"tool_name": name, "arguments": kwargs}))
@@ -91,6 +93,7 @@ def _make_tool_wrapper(
             result = await fn(**kwargs)
         except Exception as exc:
             error_msg = f"Tool error: {exc}"
+            logger.debug("Tool error: %s -> %s", name, error_msg[:200])
             if caller_role != "player":
                 await queue.put(sse("tool_call_result", {"tool_name": name, "result": error_msg}))
             tool_call_records.append({
@@ -100,6 +103,7 @@ def _make_tool_wrapper(
             })
             return error_msg
 
+        logger.debug("Tool result: %s -> %s", name, result[:200] if isinstance(result, str) else str(result)[:200])
         if caller_role != "player":
             await queue.put(sse("tool_call_result", {"tool_name": name, "result": result}))
         tool_call_records.append({
@@ -208,6 +212,8 @@ async def _run_chain_generation(
 ) -> None:
     """Run the two-stage chain pipeline: planning → writing."""
     try:
+        lp = _lp(session_id, turn)
+
         # Load world and parse pipeline config
         world = await worlds_db.get_by_id(chat.world_id)
         if world is None:
@@ -218,6 +224,8 @@ async def _run_chain_generation(
         except Exception:
             pipeline = PipelineConfig(stages=[])
 
+        logger.debug("%s Pipeline config: %d stages, types=%s", lp, len(pipeline.stages), [s.step_type for s in pipeline.stages])
+
         if not pipeline.stages:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -226,6 +234,11 @@ async def _run_chain_generation(
 
         # Build context (shared by both stages)
         context = await build_chat_context(chat)
+        logger.debug(
+            "%s Context: location=%s, npcs=%d chars, rules=%d chars",
+            lp, context["location_name"] or "(none)",
+            len(context["present_npcs"]), len(context["rules"]),
+        )
 
         # Find stages
         planning_stage = next(
@@ -244,6 +257,7 @@ async def _run_chain_generation(
         writing_thinking_parts: list[str] = []
 
         if planning_stage:
+            logger.debug("%s === PLANNING STAGE ===", lp)
             await queue.put(sse("phase", {"phase": "planning"}))
             await queue.put(sse("status", {"text": "Gathering context..."}))
 
@@ -264,6 +278,8 @@ async def _run_chain_generation(
                 lore_parts=context["injected_lore"],
                 admin_prompt=planning_stage.prompt,
             )
+
+            logger.debug("%s Planning prompt: %d chars", lp, len(planning_prompt))
 
             # Resolve planning model
             planning_model_id = chat.tool_model_id or chat.text_model_id
@@ -295,6 +311,10 @@ async def _run_chain_generation(
 
             max_loops = planning_stage.max_agent_steps or 10
 
+            logger.debug(
+                "%s Planning: calling chat_with_tools: model=%s, messages=%d, tools=%d, max_loops=%d",
+                lp, planning_model_id, len(llm_messages), len(tool_defs), max_loops,
+            )
             client = await get_llm_client_for_model(planning_model_id)
             async with client:
                 await client.chat_with_tools(
@@ -309,10 +329,22 @@ async def _run_chain_generation(
                 )
 
             planning_raw = "".join(planning_parts)
+            logger.debug(
+                "%s Planning completed: raw=%d chars, thinking=%d chars, tool_calls=%d",
+                lp, len(planning_raw), len("".join(thinking_parts)), len(tool_call_records),
+            )
 
             # Parse plan JSON
             await queue.put(sse("status", {"text": "Planning response..."}))
             plan = _parse_plan_json(planning_raw)
+            if plan:
+                logger.debug(
+                    "%s Plan parsed: collected_data=%d chars, decisions=%d, stat_updates=%d",
+                    lp,
+                    len(plan.collected_data) if plan.collected_data else 0,
+                    len(plan.decisions) if plan.decisions else 0,
+                    len(plan.stat_updates) if plan.stat_updates else 0,
+                )
             if plan is None:
                 logger.error("Failed to parse planning JSON: %s", planning_raw[:500])
                 await queue.put(sse("error", {"detail": "Planning stage produced invalid JSON"}))
@@ -328,11 +360,13 @@ async def _run_chain_generation(
 
         if plan.stat_updates:
             updates_dict = {su.name: su.value for su in plan.stat_updates}
+            logger.debug("%s Plan stat updates: %s", lp, updates_dict)
             new_char, new_world = validate_and_apply_stat_updates(
                 updates_dict, context["stat_defs_list"], char_stats, world_stats,
             )
         else:
             new_char, new_world = char_stats, world_stats
+        logger.debug("%s Stats after planning: char=%s, world=%s", lp, new_char, new_world)
 
         # Emit stat_update (always — marks phase boundary)
         await queue.put(sse("stat_update", {"stats": {**new_char, **new_world}}))
@@ -343,6 +377,7 @@ async def _run_chain_generation(
         prose_content = ""
 
         if writing_stage:
+            logger.debug("%s === WRITING STAGE ===", lp)
             await queue.put(sse("phase", {"phase": "writing"}))
             await queue.put(sse("status", {"text": "Writing..."}))
 
@@ -400,6 +435,7 @@ async def _run_chain_generation(
                 current_stats=updated_stats,
             )
             writer_messages.append({"role": "user", "content": plan_message})
+            logger.debug("%s Writing prompt: %d chars, plan message: %d chars, messages: %d", lp, len(writing_prompt), len(plan_message), len(writer_messages))
 
             # Resolve writing model
             writing_model_id = chat.text_model_id
@@ -430,6 +466,10 @@ async def _run_chain_generation(
                 "repeat_penalty": chat.text_repeat_penalty,
             }
 
+            logger.debug(
+                "%s Writing: calling chat_with_tools: model=%s, messages=%d, tools=%d, max_loops=5",
+                lp, writing_model_id, len(writer_messages), len(writer_tool_defs),
+            )
             writer_client = await get_llm_client_for_model(writing_model_id)
             async with writer_client:
                 await writer_client.chat_with_tools(
@@ -444,6 +484,10 @@ async def _run_chain_generation(
                 )
 
             prose_content = "".join(writing_parts)
+            logger.debug(
+                "%s Writing completed: prose=%d chars, thinking=%d chars, writer_tool_calls=%d",
+                lp, len(prose_content), len("".join(writing_thinking_parts)), len(writer_tool_records),
+            )
 
             # Merge writer tool records into main records
             tool_call_records.extend(writer_tool_records)
@@ -473,6 +517,7 @@ async def _run_chain_generation(
             created_at=msg_now,
         )
         await chats_db.create_message(asst_msg)
+        logger.debug("%s Assistant message saved: id=%d, content=%d chars", lp, msg_id, len(prose_content))
 
         # Update session state
         chat.current_turn = turn
@@ -480,6 +525,7 @@ async def _run_chain_generation(
         chat.world_stats = chats_db.serialize_stats(new_world)
         chat.modified_at = now()
         await chats_db.update_session(chat)
+        logger.debug("%s Session updated: turn=%d", lp, turn)
 
         # Save/update snapshot
         if is_regenerate:
@@ -551,6 +597,7 @@ def generate_chain_response(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chat is not active")
 
         turn = chat.current_turn + 1
+        logger.debug("[s:%d] Starting chain generation, current_turn=%d", session_id, chat.current_turn)
 
         # Reuse existing user message at this turn (e.g. after edit) or create new
         existing = await chats_db.get_user_message_at_turn(session_id, turn)
@@ -618,6 +665,7 @@ def regenerate_chain_response(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot regenerate")
 
         turn = chat.current_turn
+        logger.debug("[s:%d] Starting chain regeneration, turn=%d", session_id, turn)
 
         # Mark current active assistant message as inactive
         current_asst = await chats_db.get_active_assistant_at_turn(session_id, turn)

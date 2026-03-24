@@ -25,6 +25,7 @@ from app.models.chat_message import ChatMessage
 from app.models.chat_state_snapshot import ChatStateSnapshot
 from app.services import snowflake as snowflake_svc
 from app.services.chat_agent_service import (
+    _lp,
     build_llm_messages,
     build_message_response,
     create_thinking_callback,
@@ -55,11 +56,13 @@ def _make_tool_wrapper(
     """Wrap a tool callable to emit SSE events and record calls."""
     @functools.wraps(fn)
     async def wrapper(**kwargs: Any) -> str:
+        logger.debug("Tool call: %s(%s)", name, ", ".join(f"{k}={v!r}" for k, v in kwargs.items()))
         await queue.put(sse("tool_call_start", {"tool_name": name, "arguments": kwargs}))
         try:
             result = await fn(**kwargs)
         except Exception as exc:
             error_msg = f"Tool error: {exc}"
+            logger.debug("Tool error: %s -> %s", name, error_msg[:200])
             await queue.put(sse("tool_call_result", {"tool_name": name, "result": error_msg}))
             tool_call_records.append({
                 "tool_name": name,
@@ -67,6 +70,7 @@ def _make_tool_wrapper(
                 "result": error_msg,
             })
             return error_msg
+        logger.debug("Tool result: %s -> %s", name, result[:200] if isinstance(result, str) else str(result)[:200])
         await queue.put(sse("tool_call_result", {"tool_name": name, "result": result}))
         tool_call_records.append({
             "tool_name": name,
@@ -91,6 +95,8 @@ async def _run_generation(
 ) -> None:
     """Run the LLM generation with tools, stat validation, and persistence."""
     try:
+        lp = _lp(session_id, turn)
+
         # Resolve model: prefer tool_model_id, fall back to text_model_id
         model_id = chat.tool_model_id or chat.text_model_id
         if not model_id:
@@ -98,9 +104,15 @@ async def _run_generation(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No model configured",
             )
+        logger.debug("%s Model resolved: %s", lp, model_id)
 
         # Build context
         context = await build_chat_context(chat)
+        logger.debug(
+            "%s Context: location=%s, npcs=%d chars, rules=%d chars, stats=%d chars",
+            lp, context["location_name"] or "(none)",
+            len(context["present_npcs"]), len(context["rules"]), len(context["current_stats"]),
+        )
 
         # Build rich system prompt
         system_prompt = build_rich_chat_system_prompt(
@@ -121,8 +133,11 @@ async def _run_generation(
             memories=context["memories"],
         )
 
+        logger.debug("%s System prompt: %d chars", lp, len(system_prompt))
+
         # Get tools
         tool_defs, tool_callables = get_chat_tools(chat.world_id, chat.id)
+        logger.debug("%s Tools: %s", lp, list(tool_callables.keys()))
 
         # Wrap tools with SSE emission + recording
         tool_call_records: list[dict[str, Any]] = []
@@ -144,6 +159,10 @@ async def _run_generation(
         }
 
         # Call LLM with tools
+        logger.debug(
+            "%s Calling chat_with_tools: model=%s, messages=%d, tools=%d, max_loops=15, options=%s",
+            lp, model_id, len(llm_messages), len(tool_defs), options,
+        )
         client = await get_llm_client_for_model(model_id)
         async with client:
             await client.chat_with_tools(
@@ -158,14 +177,20 @@ async def _run_generation(
             )
 
         full_content = "".join(content_parts)
+        logger.debug(
+            "%s LLM completed: content=%d chars, thinking=%d chars, tool_calls=%d",
+            lp, len(full_content), len("".join(thinking_parts)), len(tool_call_records),
+        )
 
         # Parse and validate stat updates
         updates = parse_stat_updates(full_content)
+        logger.debug("%s Stat updates parsed: %s", lp, updates if updates else "(none)")
         char_stats = chats_db.parse_stats(chat.character_stats)
         world_stats = chats_db.parse_stats(chat.world_stats)
         new_char, new_world = validate_and_apply_stat_updates(
             updates, context["stat_defs_list"], char_stats, world_stats,
         )
+        logger.debug("%s Stats after validation: char=%s, world=%s", lp, new_char, new_world)
 
         # Save assistant message
         msg_id = snowflake_svc.generate_id()
@@ -183,6 +208,7 @@ async def _run_generation(
             created_at=msg_now,
         )
         await chats_db.create_message(asst_msg)
+        logger.debug("%s Assistant message saved: id=%d, content=%d chars", lp, msg_id, len(full_content))
 
         # Update session state
         chat.current_turn = turn
@@ -190,6 +216,7 @@ async def _run_generation(
         chat.world_stats = chats_db.serialize_stats(new_world)
         chat.modified_at = now()
         await chats_db.update_session(chat)
+        logger.debug("%s Session updated: turn=%d", lp, turn)
 
         # Save/update snapshot
         if is_regenerate:
@@ -263,6 +290,7 @@ def generate_simple_response(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chat is not active")
 
         turn = chat.current_turn + 1
+        logger.debug("[s:%d] Starting simple generation, current_turn=%d", session_id, chat.current_turn)
 
         # Reuse existing user message at this turn (e.g. after edit) or create new
         existing = await chats_db.get_user_message_at_turn(session_id, turn)
@@ -327,6 +355,7 @@ def regenerate_simple_response(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot regenerate")
 
         turn = chat.current_turn
+        logger.debug("[s:%d] Starting simple regeneration, turn=%d", session_id, turn)
 
         # Mark current active assistant message as inactive
         current_asst = await chats_db.get_active_assistant_at_turn(session_id, turn)
