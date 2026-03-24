@@ -178,6 +178,9 @@ def _parse_plan_json(raw: str) -> GenerationPlanOutput | None:
     # Strip thinking tags if present
     cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
 
+    # Strip markdown code fences (```json ... ``` or ``` ... ```)
+    cleaned = re.sub(r"```(?:json)?\s*\n?", "", cleaned).strip()
+
     # Try direct parse
     try:
         data = json.loads(cleaned)
@@ -185,14 +188,17 @@ def _parse_plan_json(raw: str) -> GenerationPlanOutput | None:
     except Exception:
         pass
 
-    # Fallback: extract JSON object via regex
-    match = re.search(r"\{[\s\S]*\}", cleaned)
-    if match:
-        try:
-            data = json.loads(match.group(0))
-            return GenerationPlanOutput.model_validate(data)
-        except Exception:
-            pass
+    # Fallback: try every { as a potential start, parse to end of string
+    # This handles intermediate LLM text before the JSON block
+    for i in range(len(cleaned)):
+        if cleaned[i] == "{":
+            try:
+                data = json.loads(cleaned[i:])
+                return GenerationPlanOutput.model_validate(data)
+            except json.JSONDecodeError:
+                continue
+            except Exception:
+                pass
 
     return None
 
@@ -346,7 +352,10 @@ async def _run_chain_generation(
                     len(plan.stat_updates) if plan.stat_updates else 0,
                 )
             if plan is None:
-                logger.error("Failed to parse planning JSON: %s", planning_raw[:500])
+                logger.error(
+                    "Failed to parse planning JSON (%d chars). Head: %s ... Tail: %s",
+                    len(planning_raw), planning_raw[:300], planning_raw[-200:],
+                )
                 await queue.put(sse("error", {"detail": "Planning stage produced invalid JSON"}))
                 return
 

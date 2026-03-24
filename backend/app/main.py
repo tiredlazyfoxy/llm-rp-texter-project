@@ -25,6 +25,10 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 
+# Silence noisy third-party loggers
+for _quiet in ("aiosqlite", "aiohttp", "httpcore", "httpx"):
+    logging.getLogger(_quiet).setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 
