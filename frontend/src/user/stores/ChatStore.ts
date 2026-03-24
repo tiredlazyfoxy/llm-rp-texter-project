@@ -145,15 +145,19 @@ class ChatStore {
           onToken: (t) => runInAction(() => { this.streamingContent += t; }),
           onThinking: (t) => runInAction(() => { this.streamingThinking += t; }),
           onThinkingDone: () => runInAction(() => { this.isThinking = false; }),
-          onToolCallStart: (name, args) =>
+          onToolCallStart: (name, args) => {
+            console.debug("[Chat] tool_call_start:", name, args);
             runInAction(() => {
               this.streamingToolCalls.push({ tool_name: name, arguments: args });
-            }),
-          onToolCallResult: (name, result) =>
+            });
+          },
+          onToolCallResult: (name, result) => {
+            console.debug("[Chat] tool_call_result:", name, result?.slice(0, 200));
             runInAction(() => {
               const tc = this.streamingToolCalls.find((t) => t.tool_name === name && !t.result);
               if (tc) tc.result = result;
-            }),
+            });
+          },
           onUserAck: (ack) =>
             runInAction(() => {
               if (this.currentChat) {
@@ -180,6 +184,7 @@ class ChatStore {
             }
           }),
           onDone: (message) => {
+            console.debug("[Chat] done, message:", message.id);
             runInAction(() => {
               if (this.currentChat) {
                 this.currentChat.messages.push(message);
@@ -195,6 +200,7 @@ class ChatStore {
             resolve();
           },
           onError: (detail) => {
+            console.error("[Chat] error:", detail);
             runInAction(() => {
               this.error = detail;
               this.isSending = false;

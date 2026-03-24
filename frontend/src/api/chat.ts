@@ -147,36 +147,46 @@ function _streamChat(
               handlers.onToken?.(parsed.content as string);
               break;
             case "thinking":
+              console.debug("[SSE] thinking chunk", (parsed.content as string).length, "chars");
               handlers.onThinking?.(parsed.content as string);
               break;
             case "thinking_done":
+              console.debug("[SSE] thinking_done");
               handlers.onThinkingDone?.();
               break;
             case "tool_call_start":
+              console.debug("[SSE] tool_call_start:", parsed.tool_name, parsed.arguments);
               handlers.onToolCallStart?.(
                 parsed.tool_name as string,
                 parsed.arguments as Record<string, string>,
               );
               break;
             case "tool_call_result":
+              console.debug("[SSE] tool_call_result:", parsed.tool_name, parsed.result);
               handlers.onToolCallResult?.(parsed.tool_name as string, parsed.result as string);
               break;
             case "phase":
+              console.debug("[SSE] phase:", parsed.phase);
               handlers.onPhase?.(parsed.phase as "planning" | "writing");
               break;
             case "status":
+              console.debug("[SSE] status:", parsed.text);
               handlers.onStatus?.(parsed.text as string);
               break;
             case "stat_update":
+              console.debug("[SSE] stat_update:", parsed.stats);
               handlers.onStatUpdate?.(parsed.stats as Record<string, number | string | string[]>);
               break;
             case "user_ack":
+              console.debug("[SSE] user_ack:", parsed);
               handlers.onUserAck?.(parsed as { id: string; turn_number: number; created_at: string });
               break;
             case "done":
+              console.debug("[SSE] done, message id:", (parsed.message as ChatMessage)?.id);
               handlers.onDone?.(parsed.message as ChatMessage);
               break;
             case "error":
+              console.error("[SSE] error:", parsed.detail);
               handlers.onError?.(parsed.detail as string);
               break;
           }

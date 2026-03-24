@@ -18,7 +18,7 @@ export const MessageHistory = observer(function MessageHistory() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [items.length, chatStore.streamingContent]);
+  }, [items.length, chatStore.streamingContent, chatStore.streamingToolCalls.length]);
 
   async function handleCompact(messageId: string) {
     if (!confirm("Summarize all messages up to this point?")) return;
@@ -77,7 +77,7 @@ export const MessageHistory = observer(function MessageHistory() {
         );
       })}
 
-      {isSending && chatStore.streamingContent && (
+      {isSending && (chatStore.streamingContent || chatStore.streamingToolCalls.length > 0 || chatStore.streamingThinking) && (
         <MessageBubble
           message={{
             id: "__streaming__",
@@ -93,6 +93,7 @@ export const MessageHistory = observer(function MessageHistory() {
           isStreaming
           streamingContent={chatStore.streamingContent}
           streamingThinking={chatStore.streamingThinking}
+          streamingToolCalls={chatStore.streamingToolCalls}
         />
       )}
 

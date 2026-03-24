@@ -24,11 +24,18 @@ import ReactMarkdown from "react-markdown";
 import { ToolCallTrace } from "./ToolCallTrace";
 import { chatStore } from "../stores/ChatStore";
 
+interface StreamingToolCall {
+  tool_name: string;
+  arguments: Record<string, string>;
+  result?: string;
+}
+
 interface MessageBubbleProps {
   message: ChatMessage;
   isStreaming?: boolean;
   streamingContent?: string;
   streamingThinking?: string;
+  streamingToolCalls?: StreamingToolCall[];
 }
 
 interface GenerationPlanData {
@@ -42,6 +49,7 @@ export const MessageBubble = observer(function MessageBubble({
   isStreaming,
   streamingContent,
   streamingThinking,
+  streamingToolCalls,
 }: MessageBubbleProps) {
   const [thinkOpen, setThinkOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -142,6 +150,11 @@ export const MessageBubble = observer(function MessageBubble({
           </>
         )}
 
+        {/* Streaming tool calls */}
+        {isStreaming && streamingToolCalls && streamingToolCalls.length > 0 && (
+          <ToolCallTrace toolCalls={streamingToolCalls as ToolCallInfo[]} debugMode={debug} streaming />
+        )}
+
         {/* Stored thinking content (debug mode only, loaded messages) */}
         {debug && !isStreaming && message.thinking_content && (
           <>
@@ -187,9 +200,7 @@ export const MessageBubble = observer(function MessageBubble({
 
         {/* Tool calls */}
         {!isStreaming && message.tool_calls && message.tool_calls.length > 0 && (
-          debug ? (
-            <ToolCallTrace toolCalls={message.tool_calls} debugMode />
-          ) : null
+          <ToolCallTrace toolCalls={message.tool_calls} debugMode={debug} />
         )}
 
         {/* Generation plan (debug mode, chain mode) */}
