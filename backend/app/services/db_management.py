@@ -151,11 +151,13 @@ async def sync_table_schema(table_name: str) -> SyncResultInfo:
             await db_mgmt.add_column(table_name, col.name, ddl)
             added.append(col.name)
 
-    # Drop extra columns
-    dropped: list[str] = []
-    for col_name in sorted(existing_col_names - model_col_names):
-        await db_mgmt.drop_column(table_name, col_name)
-        dropped.append(col_name)
+    # Drop extra columns via table recreation (SQLite can't DROP COLUMN with FKs)
+    dropped = sorted(existing_col_names - model_col_names)
+    if dropped:
+        # After adds above, re-read current columns to get the full set
+        current_cols = {c["name"] for c in await db_mgmt.get_table_columns(table_name)}
+        keep_columns = sorted(current_cols - set(dropped))
+        await db_mgmt.recreate_table_from_model(sa_table, keep_columns)
 
     logger.info(
         "Synced table %s: added %s, dropped %s",
