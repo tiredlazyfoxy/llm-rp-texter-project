@@ -71,7 +71,7 @@ _TRANSLATE_SYSTEM_BASE = (
 def _translate_system(enable_thinking: bool) -> str:
     if enable_thinking:
         return _TRANSLATE_SYSTEM_BASE
-    return "/no_think\n" + _TRANSLATE_SYSTEM_BASE
+    return "/no_think\n\n/nothink\n\n" + _TRANSLATE_SYSTEM_BASE
 
 
 def _sse(event_type: str, data: dict) -> str:
@@ -89,6 +89,8 @@ async def translate_to_english_stream(
 ) -> AsyncGenerator[str, None]:
     """Translate text to English, yielding SSE events (token + done)."""
     client = await get_llm_client_for_model(model_id)
+    if not enable_thinking:
+        text= text + "\n\n/nothink\n/no_think"  # Disable thinking tokens if not enabled
     messages: list[LLMMessage] = [{"role": "user", "content": text}]
     queue: asyncio.Queue[str | None] = asyncio.Queue()
     content_parts: list[str] = []
