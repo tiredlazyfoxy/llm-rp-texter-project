@@ -11,7 +11,6 @@ import { observer } from "mobx-react-lite";
 import { chatStore } from "../stores/ChatStore";
 import { MessageHistory } from "../components/MessageHistory";
 import { ChatInput } from "../components/ChatInput";
-import { VariantSelector } from "../components/VariantSelector";
 import { StatsPanel } from "../components/StatsPanel";
 import { ChatSettingsPanel } from "../components/ChatSettingsPanel";
 import { ChatMemoriesButton } from "../components/ChatMemoriesModal";
@@ -78,7 +77,6 @@ export const ChatViewPage = observer(function ChatViewPage() {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
           <MessageHistory />
-          <VariantSelector />
           <ChatInput />
         </div>
         <StatsPanel />

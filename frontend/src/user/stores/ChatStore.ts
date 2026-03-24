@@ -25,6 +25,9 @@ class ChatStore {
   streamingToolCalls: Array<{ tool_name: string; arguments: Record<string, string>; result?: string }> = [];
   isThinking = false;
 
+  // Variant state — tracks which variant the user is viewing
+  activeVariantId: string | null = null;
+
   // Debug & pipeline state
   debugMode = false;
   currentPhase: "planning" | "writing" | null = null;
@@ -126,6 +129,12 @@ class ChatStore {
   async sendMessage(content: string): Promise<void> {
     if (!this.currentChat || this.isSending) return;
     const chatId = this.currentChat.session.id;
+
+    // Auto-commit viewed variant before sending
+    if (this.hasMultipleVariants && this.activeVariantId) {
+      await this.continueWithVariant(this.activeVariantId);
+    }
+
     runInAction(() => {
       this.isSending = true;
       this.error = null;
@@ -238,6 +247,11 @@ class ChatStore {
       this.streamingToolCalls = [];
       this.currentPhase = null;
       this.currentStatus = null;
+      // Remove old assistant message immediately so streaming bubble takes its place
+      const turn = this.currentChat!.session.current_turn;
+      this.currentChat!.messages = this.currentChat!.messages.filter(
+        (m) => !(m.role === "assistant" && m.turn_number === turn),
+      );
     });
 
     await new Promise<void>((resolve) => {
@@ -260,6 +274,17 @@ class ChatStore {
         onDone: (message) => {
           runInAction(() => {
             if (this.currentChat) {
+              // Replace the active assistant message in messages list
+              const msgs = this.currentChat.messages;
+              const lastAsstIdx = msgs.findLastIndex(
+                (m) => m.role === "assistant" && m.turn_number === this.currentChat!.session.current_turn,
+              );
+              if (lastAsstIdx >= 0) {
+                msgs[lastAsstIdx] = message;
+              } else {
+                msgs.push(message);
+              }
+              // Append to variants for the switcher
               this.currentChat.variants = [...this.currentChat.variants, message];
             }
             this.streamingContent = "";

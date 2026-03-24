@@ -203,9 +203,11 @@ Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions
 ## Regeneration & Variants
 
 - `is_active_variant` field on `chat_messages`
-- Regenerate: create new assistant message, mark old as inactive
+- Regenerate: create new assistant message, mark old as inactive, **replace** bubble content (not append)
 - Variants only exist for the **latest** turn
-- Continue: pick one variant, delete others
+- Inline `< N/M >` switcher in message bubble when multiple variants exist
+- Continue (explicit): "Use this" icon on non-latest variant → pick variant, delete others
+- Continue (implicit): sending a new message auto-commits the currently viewed variant
 
 ## Summarization (stage2_step4)
 

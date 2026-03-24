@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActionIcon,
   Button,
@@ -12,7 +12,9 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import {
+  IconCheck,
   IconChevronDown,
+  IconChevronLeft,
   IconChevronRight,
   IconCornerUpLeft,
   IconEdit,
@@ -36,6 +38,8 @@ interface MessageBubbleProps {
   streamingContent?: string;
   streamingThinking?: string;
   streamingToolCalls?: StreamingToolCall[];
+  variants?: ChatMessage[];
+  onSelectVariant?: (id: string) => void;
 }
 
 interface GenerationPlanData {
@@ -50,15 +54,38 @@ export const MessageBubble = observer(function MessageBubble({
   streamingContent,
   streamingThinking,
   streamingToolCalls,
+  variants,
+  onSelectVariant,
 }: MessageBubbleProps) {
   const [thinkOpen, setThinkOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
+  const [variantIndex, setVariantIndex] = useState(-1); // -1 = use default (latest)
+
+  const hasVariants = variants && variants.length > 1;
+  // Resolve which message to display: variant-selected or the prop message
+  const displayIndex = hasVariants
+    ? (variantIndex < 0 ? variants.length - 1 : variantIndex)
+    : -1;
+  const displayMsg = hasVariants ? variants[displayIndex] : message;
+  const isLatestVariant = !hasVariants || displayIndex === variants.length - 1;
+
+  // Reset to latest variant when variants array grows (after regenerate)
+  useEffect(() => {
+    if (hasVariants) setVariantIndex(-1);
+  }, [variants?.length]);
+
+  // Track displayed variant for auto-select on send
+  useEffect(() => {
+    if (hasVariants) {
+      chatStore.activeVariantId = displayMsg.id;
+    }
+  }, [displayMsg.id, hasVariants]);
 
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
-  const content = isStreaming ? streamingContent ?? "" : message.content;
+  const content = isStreaming ? streamingContent ?? "" : displayMsg.content;
   const debug = chatStore.debugMode;
   const isSummarized = false; // Messages in active list are not summarized
   const currentTurn = chatStore.currentChat?.session.current_turn ?? 0;
@@ -95,9 +122,9 @@ export const MessageBubble = observer(function MessageBubble({
 
   // Parse generation plan JSON
   let plan: GenerationPlanData | null = null;
-  if (debug && message.generation_plan) {
+  if (debug && displayMsg.generation_plan) {
     try {
-      plan = JSON.parse(message.generation_plan) as GenerationPlanData;
+      plan = JSON.parse(displayMsg.generation_plan) as GenerationPlanData;
     } catch {
       // ignore parse errors
     }
@@ -131,6 +158,47 @@ export const MessageBubble = observer(function MessageBubble({
             : "var(--mantine-color-dark-5)",
         }}
       >
+        {/* Variant switcher */}
+        {hasVariants && !isStreaming && (
+          <Group gap={4} mb={4} justify="space-between">
+            <Group gap={4}>
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                color="gray"
+                disabled={displayIndex === 0}
+                onClick={() => setVariantIndex(displayIndex - 1)}
+              >
+                <IconChevronLeft size={12} />
+              </ActionIcon>
+              <Text size="xs" c="dimmed">
+                {displayIndex + 1} / {variants.length}
+              </Text>
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                color="gray"
+                disabled={displayIndex === variants.length - 1}
+                onClick={() => setVariantIndex(displayIndex + 1)}
+              >
+                <IconChevronRight size={12} />
+              </ActionIcon>
+            </Group>
+            {!isLatestVariant && onSelectVariant && (
+              <Tooltip label="Use this variant">
+                <ActionIcon
+                  variant="light"
+                  size="xs"
+                  color="green"
+                  onClick={() => onSelectVariant(displayMsg.id)}
+                >
+                  <IconCheck size={12} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+          </Group>
+        )}
+
         {/* Streaming thinking (always shown during streaming) */}
         {streamingThinking && (
           <>
@@ -154,7 +222,7 @@ export const MessageBubble = observer(function MessageBubble({
         )}
 
         {/* Stored thinking content (debug mode only, loaded messages) */}
-        {debug && !isStreaming && message.thinking_content && (
+        {debug && !isStreaming && displayMsg.thinking_content && (
           <>
             <UnstyledButton onClick={() => setThinkOpen((o) => !o)}>
               <Group gap={4}>
@@ -168,15 +236,15 @@ export const MessageBubble = observer(function MessageBubble({
                 c="dimmed"
                 style={{ whiteSpace: "pre-wrap", fontFamily: "monospace", maxHeight: 300, overflow: "auto" }}
               >
-                {message.thinking_content}
+                {displayMsg.thinking_content}
               </Text>
             </Collapse>
           </>
         )}
 
         {/* Tool calls (above content for completed messages) */}
-        {!isStreaming && message.tool_calls && message.tool_calls.length > 0 && (
-          <ToolCallTrace toolCalls={message.tool_calls} debugMode={debug} planningCollapsed />
+        {!isStreaming && displayMsg.tool_calls && displayMsg.tool_calls.length > 0 && (
+          <ToolCallTrace toolCalls={displayMsg.tool_calls} debugMode={debug} planningCollapsed />
         )}
 
         {/* Generation plan (debug mode, chain mode) */}

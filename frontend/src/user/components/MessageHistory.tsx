@@ -65,7 +65,15 @@ export const MessageHistory = observer(function MessageHistory() {
                 my="xs"
               />
             )}
-            <MessageBubble message={msg} />
+            <MessageBubble
+              message={msg}
+              {...(msg.role === "assistant" && msg.turn_number === currentTurn && chatStore.hasMultipleVariants
+                ? {
+                    variants: chatStore.latestTurnVariants,
+                    onSelectVariant: (id: string) => chatStore.continueWithVariant(id),
+                  }
+                : {})}
+            />
             {showCompact && (
               <Tooltip label="Summarize messages up to here" position="right">
                 <ActionIcon

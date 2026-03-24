@@ -12,7 +12,7 @@ frontend/
     user/                — User SPA (served at /)
       App.tsx, main.tsx
       pages/             — ChatListPage, WorldSelectPage, CharacterSetupPage, ChatViewPage
-      components/        — MessageHistory, MessageBubble, VariantSelector, StatsPanel,
+      components/        — MessageHistory, MessageBubble, StatsPanel,
                            ChatInput, ToolCallTrace, ChatSettingsPanel
       stores/            — ChatStore.ts (MobX)
     admin/               — Admin SPA (served at /admin)
