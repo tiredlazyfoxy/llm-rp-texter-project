@@ -16,6 +16,9 @@ class ChatStore {
   isCompacting = false;
   isRegeneratingSummary: string | null = null;
 
+  // Pending user input (kept until backend ack, restored on error)
+  pendingInput = "";
+
   // Streaming state
   streamingContent = "";
   streamingThinking = "";
@@ -125,6 +128,7 @@ class ChatStore {
     const chatId = this.currentChat.session.id;
     runInAction(() => {
       this.isSending = true;
+      this.pendingInput = content;
       this.streamingContent = "";
       this.streamingThinking = "";
       this.streamingToolCalls = [];
@@ -150,6 +154,23 @@ class ChatStore {
               const tc = this.streamingToolCalls.find((t) => t.tool_name === name && !t.result);
               if (tc) tc.result = result;
             }),
+          onUserAck: (ack) =>
+            runInAction(() => {
+              if (this.currentChat) {
+                this.currentChat.messages.push({
+                  id: ack.id,
+                  role: "user",
+                  content,
+                  turn_number: ack.turn_number,
+                  tool_calls: null,
+                  generation_plan: null,
+                  thinking_content: null,
+                  is_active_variant: true,
+                  created_at: ack.created_at,
+                });
+              }
+              this.pendingInput = "";
+            }),
           onPhase: (phase) => runInAction(() => { this.currentPhase = phase; }),
           onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
           onStatUpdate: (stats) => runInAction(() => {
@@ -165,6 +186,7 @@ class ChatStore {
                 this.currentChat.variants = [message];
                 this.currentChat.session.current_turn = message.turn_number;
               }
+              this.pendingInput = "";
               this.streamingContent = "";
               this.isSending = false;
               this.currentPhase = null;
@@ -282,7 +304,7 @@ class ChatStore {
 
   stopGeneration(): void {
     this._abortController?.abort();
-    runInAction(() => { this.isSending = false; this.streamingContent = ""; });
+    runInAction(() => { this.isSending = false; this.pendingInput = ""; this.streamingContent = ""; });
   }
 
   async loadMemories(): Promise<void> {

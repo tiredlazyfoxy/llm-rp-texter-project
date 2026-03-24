@@ -564,6 +564,13 @@ def generate_chain_response(
         )
         await chats_db.create_message(user_msg)
 
+        # Acknowledge user message to frontend
+        yield sse("user_ack", {
+            "id": str(user_msg.id),
+            "turn_number": user_msg.turn_number,
+            "created_at": user_msg.created_at.isoformat(),
+        })
+
         # Build LLM message history
         llm_messages = await build_llm_messages(session_id)
 

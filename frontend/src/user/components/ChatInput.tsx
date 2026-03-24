@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActionIcon, Badge, Group, Loader, Text, Textarea, Tooltip } from "@mantine/core";
 import { IconArrowBackUp, IconLanguage, IconPlayerStop, IconRefresh, IconSend } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
@@ -11,6 +11,13 @@ export const ChatInput = observer(function ChatInput() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const disabled = chatStore.currentChat?.session.status !== "active";
 
+  // Clear local input when backend ack clears pendingInput
+  useEffect(() => {
+    if (!chatStore.pendingInput && chatStore.isSending) {
+      setValue("");
+    }
+  }, [chatStore.pendingInput]);
+
   const getValue = useCallback(() => value, [value]);
   const { isTranslating, canRevert, translateError, handleTranslate, handleRevert, onInputChange, clearTranslateError } = useTranslation({
     getValue,
@@ -21,7 +28,6 @@ export const ChatInput = observer(function ChatInput() {
   async function handleSend() {
     const text = value.trim();
     if (!text || chatStore.isSending) return;
-    setValue("");
     await chatStore.sendMessage(text);
   }
 

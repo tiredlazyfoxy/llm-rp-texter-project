@@ -12,6 +12,7 @@ export interface ChatSSEHandlers {
   onPhase?: (phase: "planning" | "writing") => void;
   onStatus?: (text: string) => void;
   onStatUpdate?: (stats: Record<string, number | string | string[]>) => void;
+  onUserAck?: (ack: { id: string; turn_number: number; created_at: string }) => void;
   onDone?: (message: ChatMessage) => void;
   onError?: (detail: string) => void;
 }
@@ -168,6 +169,9 @@ function _streamChat(
               break;
             case "stat_update":
               handlers.onStatUpdate?.(parsed.stats as Record<string, number | string | string[]>);
+              break;
+            case "user_ack":
+              handlers.onUserAck?.(parsed as { id: string; turn_number: number; created_at: string });
               break;
             case "done":
               handlers.onDone?.(parsed.message as ChatMessage);
