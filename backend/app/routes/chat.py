@@ -9,6 +9,7 @@ from app.models.schemas.llm_servers import EnabledModelsListResponse
 from app.services import llm_servers as llm_service
 from app.models.schemas.chat import (
     ChatDetailResponse,
+    ChatMemoryResponse,
     ChatMessageResponse,
     ChatSessionListResponse,
     ChatSessionResponse,
@@ -227,11 +228,11 @@ async def delete_chat(
 # Memories
 # ---------------------------------------------------------------------------
 
-@router.get("/{chat_id}/memories", response_model=list[ChatSummaryResponse])
+@router.get("/{chat_id}/memories", response_model=list[ChatMemoryResponse])
 async def list_memories(
     chat_id: str,
     caller: User = Depends(_require_player),
-) -> list[ChatSummaryResponse]:
+) -> list[ChatMemoryResponse]:
     return await chat_service.list_memories(int(chat_id), caller.id)
 
 
@@ -295,7 +296,7 @@ async def list_summaries(
     chat_id: str,
     caller: User = Depends(_require_player),
 ) -> list[ChatSummaryResponse]:
-    return await chat_service.list_memories(int(chat_id), caller.id)
+    return await chat_service.list_summaries(int(chat_id), caller.id)
 
 
 @router.get(

@@ -441,6 +441,22 @@ async def create_memory(memory: ChatMemory) -> ChatMemory:
         return memory
 
 
+async def delete_memory(memory_id: int, session_id: int) -> bool:
+    """Delete a memory by ID (scoped to session). Returns True if deleted."""
+    session = await get_standalone_session()
+    async with session:
+        mem = (await session.exec(
+            select(ChatMemory)
+            .where(ChatMemory.id == memory_id)
+            .where(ChatMemory.session_id == session_id)
+        )).one_or_none()
+        if mem is None:
+            return False
+        await session.delete(mem)
+        await session.commit()
+        return True
+
+
 # ---------------------------------------------------------------------------
 # Helpers used by service layer
 # ---------------------------------------------------------------------------

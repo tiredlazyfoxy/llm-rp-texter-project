@@ -70,8 +70,8 @@ export async function deleteChat(chatId: string): Promise<void> {
   await authRequest(`/api/chats/${chatId}`, { method: "DELETE" });
 }
 
-export async function listChatMemories(chatId: string): Promise<ChatSummaryItem[]> {
-  return authRequest<ChatSummaryItem[]>(`/api/chats/${chatId}/memories`);
+export async function listChatMemories(chatId: string): Promise<ChatMemoryItem[]> {
+  return authRequest<ChatMemoryItem[]>(`/api/chats/${chatId}/memories`);
 }
 
 export async function deleteChatMemory(chatId: string, memoryId: string): Promise<void> {

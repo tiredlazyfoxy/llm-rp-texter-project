@@ -8,7 +8,7 @@ class ChatStore {
   isLoading = false;
   isSending = false;
   error: string | null = null;
-  memories: ChatSummaryItem[] = [];
+  memories: ChatMemoryItem[] = [];
 
   // Summary state
   summaries: ChatSummary[] = [];
@@ -232,6 +232,7 @@ class ChatStore {
               this.currentPhase = null;
               this.currentStatus = null;
             });
+            this.loadMemories().catch(() => {});
             resolve();
           },
           onError: (detail) => {
@@ -318,6 +319,7 @@ class ChatStore {
           });
           // Reload to get updated variants from server
           if (reloadId) this.loadChatDetail(reloadId);
+          this.loadMemories().catch(() => {});
           resolve();
         },
         onError: (detail) => {

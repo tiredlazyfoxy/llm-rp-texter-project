@@ -160,6 +160,12 @@ class ChatSummaryResponse(BaseModel):
     created_at: str
 
 
+class ChatMemoryResponse(BaseModel):
+    id: str
+    content: str
+    created_at: str
+
+
 class EditMessageRequest(BaseModel):
     content: str
 

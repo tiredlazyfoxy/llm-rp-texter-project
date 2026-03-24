@@ -18,6 +18,7 @@ from app.models.chat_state_snapshot import ChatStateSnapshot
 from app.models.world import WorldStatDefinition
 from app.models.schemas.chat import (
     ChatDetailResponse,
+    ChatMemoryResponse,
     ChatMessageResponse,
     ChatSessionListItem,
     ChatSessionResponse,
@@ -622,7 +623,22 @@ async def rewind_chat(
 # Public API: memories
 # ---------------------------------------------------------------------------
 
-async def list_memories(session_id: int, user_id: int) -> list[ChatSummaryResponse]:
+async def list_memories(session_id: int, user_id: int) -> list[ChatMemoryResponse]:
+    chat = await chats_db.get_session_by_id(session_id)
+    if chat is None or chat.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
+    memories = await chats_db.list_memories(session_id)
+    return [
+        ChatMemoryResponse(
+            id=str(m.id),
+            content=m.content,
+            created_at=m.created_at.isoformat(),
+        )
+        for m in memories
+    ]
+
+
+async def list_summaries(session_id: int, user_id: int) -> list[ChatSummaryResponse]:
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None or chat.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
@@ -659,7 +675,7 @@ async def delete_memory(session_id: int, memory_id: int, user_id: int) -> None:
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None or chat.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
-    deleted = await chats_db.delete_summary(memory_id, session_id)
+    deleted = await chats_db.delete_memory(memory_id, session_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found")
 

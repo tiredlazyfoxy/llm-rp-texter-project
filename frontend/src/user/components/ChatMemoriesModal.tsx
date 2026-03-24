@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import {
   ActionIcon,
-  Badge,
-  Button,
   Collapse,
   Group,
   Modal,
-  Popover,
   Stack,
   Text,
   Tooltip,
@@ -44,7 +41,6 @@ interface ChatMemoriesModalProps {
 const ChatMemoriesModal = observer(function ChatMemoriesModal({ opened, onClose }: ChatMemoriesModalProps) {
   const memories = chatStore.memories;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (opened) chatStore.loadMemories().catch(() => {});
@@ -57,11 +53,6 @@ const ChatMemoriesModal = observer(function ChatMemoriesModal({ opened, onClose 
       else next.add(id);
       return next;
     });
-  }
-
-  async function handleDelete(id: string) {
-    await chatStore.deleteMemory(id);
-    setConfirmDelete(null);
   }
 
   return (
@@ -93,40 +84,17 @@ const ChatMemoriesModal = observer(function ChatMemoriesModal({ opened, onClose 
                         : <IconChevronRight size={14} />
                       }
                     </UnstyledToggle>
-                    <Badge size="sm" variant="light" color="gray">
-                      Turns {mem.start_turn}–{mem.end_turn}
-                    </Badge>
                     <Text size="xs" c="dimmed">{formatDate(mem.created_at)}</Text>
                   </Group>
 
-                  <Popover
-                    opened={confirmDelete === mem.id}
-                    onClose={() => setConfirmDelete(null)}
-                    withArrow
-                    position="left"
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    size="sm"
+                    onClick={() => chatStore.deleteMemory(mem.id)}
                   >
-                    <Popover.Target>
-                      <ActionIcon
-                        variant="subtle"
-                        color="red"
-                        size="sm"
-                        onClick={() => setConfirmDelete(mem.id)}
-                      >
-                        <IconTrash size={14} />
-                      </ActionIcon>
-                    </Popover.Target>
-                    <Popover.Dropdown>
-                      <Text size="sm" mb="xs">Delete this memory?</Text>
-                      <Group gap="xs">
-                        <Button size="xs" color="red" onClick={() => handleDelete(mem.id)}>
-                          Delete
-                        </Button>
-                        <Button size="xs" variant="subtle" onClick={() => setConfirmDelete(null)}>
-                          Cancel
-                        </Button>
-                      </Group>
-                    </Popover.Dropdown>
-                  </Popover>
+                    <IconTrash size={14} />
+                  </ActionIcon>
                 </Group>
 
                 <Collapse in={isExpanded}>

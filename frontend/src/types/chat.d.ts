@@ -159,6 +159,12 @@ interface ChatSummaryItem {
   created_at: string;
 }
 
+interface ChatMemoryItem {
+  id: string;
+  content: string;
+  created_at: string;
+}
+
 interface ChatSummary {
   id: string;
   start_message_id: string;
