@@ -55,7 +55,7 @@ interface ChatMessage {
 
 interface ToolCallInfo {
   tool_name: string;
-  arguments: Record<string, string>;
+  arguments: Record<string, string | null>;
   result: string;
 }
 
