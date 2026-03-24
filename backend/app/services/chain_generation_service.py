@@ -559,6 +559,11 @@ def generate_chain_response(
         turn = chat.current_turn + 1
         logger.debug("[s:%d] Starting chain generation, current_turn=%d", session_id, chat.current_turn)
 
+        # Clear generation variants on new message
+        if chat.generation_variants != "[]":
+            chat.generation_variants = "[]"
+            await chats_db.update_session(chat)
+
         # Reuse existing user message at this turn (e.g. after edit) or create new
         existing = await chats_db.get_user_message_at_turn(session_id, turn)
         if existing and existing.content == user_message:
@@ -627,10 +632,14 @@ def regenerate_chain_response(
         turn = chat.current_turn
         logger.debug("[s:%d] Starting chain regeneration, turn=%d", session_id, turn)
 
-        # Mark current active assistant message as inactive
+        # Move current assistant message to generation_variants
+        from app.services.chat_service import _msg_to_variant, _load_variants, _save_variants
         current_asst = await chats_db.get_active_assistant_at_turn(session_id, turn)
         if current_asst:
-            await chats_db.set_message_inactive(current_asst.id)
+            variants = _load_variants(chat)
+            variants.append(_msg_to_variant(current_asst))
+            _save_variants(chat, variants)
+            await chats_db.delete_message_by_id(current_asst.id)
 
         # Reload user message for this turn
         user_msg = await chats_db.get_user_message_at_turn(session_id, turn)
@@ -641,7 +650,7 @@ def regenerate_chain_response(
         if prev_snap:
             chat.character_stats = prev_snap.character_stats
             chat.world_stats = prev_snap.world_stats
-            await chats_db.update_session(chat)
+        await chats_db.update_session(chat)
 
         # Build message history excluding current turn's assistant
         llm_messages: list[dict[str, str]] = []

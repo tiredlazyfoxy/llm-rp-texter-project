@@ -25,5 +25,6 @@ class ChatSession(SQLModel, table=True):
     text_repeat_penalty: float = Field(default=1.0)
     text_top_p: float = Field(default=1.0)
     user_instructions: str = Field(default="")
+    generation_variants: str = Field(default="[]")
     created_at: datetime
     modified_at: datetime

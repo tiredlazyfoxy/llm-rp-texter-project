@@ -38,14 +38,8 @@ interface MessageBubbleProps {
   streamingContent?: string;
   streamingThinking?: string;
   streamingToolCalls?: StreamingToolCall[];
-  variants?: ChatMessage[];
-  onSelectVariant?: (id: string) => void;
-}
-
-interface GenerationPlanData {
-  collected_data: string;
-  decisions: string[];
-  stat_updates: Array<{ name: string; value: string }>;
+  variants?: GenerationVariant[];
+  onSelectVariant?: (index: number) => void;
 }
 
 export const MessageBubble = observer(function MessageBubble({
@@ -61,34 +55,38 @@ export const MessageBubble = observer(function MessageBubble({
   const [planOpen, setPlanOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
-  const [variantIndex, setVariantIndex] = useState(-1); // -1 = use default (latest)
+  const [variantIndex, setVariantIndex] = useState(-1); // -1 = current message (latest)
 
-  const hasVariants = variants && variants.length > 1;
-  // Resolve which message to display: variant-selected or the prop message
-  const displayIndex = hasVariants
-    ? (variantIndex < 0 ? variants.length - 1 : variantIndex)
-    : -1;
-  const displayMsg = hasVariants ? variants[displayIndex] : message;
-  const isLatestVariant = !hasVariants || displayIndex === variants.length - 1;
+  // variants = old generations stored on session; current message is the latest
+  // Total count: variants.length + 1 (current). Index 0..N-1 = variants, N = current message.
+  const hasVariants = variants && variants.length > 0;
+  const totalCount = hasVariants ? variants.length + 1 : 1;
+  const displayIndex = variantIndex < 0 ? totalCount - 1 : variantIndex;
+  const isViewingVariant = hasVariants && displayIndex < variants.length;
+  const viewedVariant = isViewingVariant ? variants[displayIndex] : null;
 
-  // Reset to latest variant when variants array grows (after regenerate)
+  // Reset to latest when variants array grows (after regenerate)
   useEffect(() => {
     if (hasVariants) setVariantIndex(-1);
   }, [variants?.length]);
 
-  // Track displayed variant for auto-select on send
+  // Track which variant the user is viewing for auto-commit on send
   useEffect(() => {
-    if (hasVariants) {
-      chatStore.activeVariantId = displayMsg.id;
-    }
-  }, [displayMsg.id, hasVariants]);
+    chatStore.viewingVariantIndex = isViewingVariant ? displayIndex : null;
+  }, [isViewingVariant, displayIndex]);
 
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
-  const content = isStreaming ? streamingContent ?? "" : displayMsg.content;
+  const content = isStreaming
+    ? streamingContent ?? ""
+    : viewedVariant ? viewedVariant.content : message.content;
   const debug = chatStore.debugMode;
   const isSummarized = false; // Messages in active list are not summarized
   const currentTurn = chatStore.currentChat?.session.current_turn ?? 0;
+
+  // Resolve display fields: variant (rich types) or message (JSON strings)
+  const displayToolCalls = viewedVariant ? viewedVariant.tool_calls : message.tool_calls;
+  const displayThinking = viewedVariant ? viewedVariant.thinking_content : message.thinking_content;
 
   async function handleRewind() {
     if (!confirm(`Rewind to turn ${message.turn_number - 1}?`)) return;
@@ -120,13 +118,17 @@ export const MessageBubble = observer(function MessageBubble({
     }
   }
 
-  // Parse generation plan JSON
+  // Parse generation plan: variant has rich object, message has JSON string
   let plan: GenerationPlanData | null = null;
-  if (debug && displayMsg.generation_plan) {
-    try {
-      plan = JSON.parse(displayMsg.generation_plan) as GenerationPlanData;
-    } catch {
-      // ignore parse errors
+  if (debug) {
+    if (viewedVariant) {
+      plan = viewedVariant.generation_plan ?? null;
+    } else if (message.generation_plan) {
+      try {
+        plan = JSON.parse(message.generation_plan) as GenerationPlanData;
+      } catch {
+        // ignore parse errors
+      }
     }
   }
 
@@ -172,25 +174,25 @@ export const MessageBubble = observer(function MessageBubble({
                 <IconChevronLeft size={12} />
               </ActionIcon>
               <Text size="xs" c="dimmed">
-                {displayIndex + 1} / {variants.length}
+                {displayIndex + 1} / {totalCount}
               </Text>
               <ActionIcon
                 variant="subtle"
                 size="xs"
                 color="gray"
-                disabled={displayIndex === variants.length - 1}
+                disabled={displayIndex === totalCount - 1}
                 onClick={() => setVariantIndex(displayIndex + 1)}
               >
                 <IconChevronRight size={12} />
               </ActionIcon>
             </Group>
-            {!isLatestVariant && onSelectVariant && (
+            {isViewingVariant && onSelectVariant && (
               <Tooltip label="Use this variant">
                 <ActionIcon
                   variant="light"
                   size="xs"
                   color="green"
-                  onClick={() => onSelectVariant(displayMsg.id)}
+                  onClick={() => onSelectVariant(displayIndex)}
                 >
                   <IconCheck size={12} />
                 </ActionIcon>
@@ -222,7 +224,7 @@ export const MessageBubble = observer(function MessageBubble({
         )}
 
         {/* Stored thinking content (debug mode only, loaded messages) */}
-        {debug && !isStreaming && displayMsg.thinking_content && (
+        {debug && !isStreaming && displayThinking && (
           <>
             <UnstyledButton onClick={() => setThinkOpen((o) => !o)}>
               <Group gap={4}>
@@ -236,15 +238,15 @@ export const MessageBubble = observer(function MessageBubble({
                 c="dimmed"
                 style={{ whiteSpace: "pre-wrap", fontFamily: "monospace", maxHeight: 300, overflow: "auto" }}
               >
-                {displayMsg.thinking_content}
+                {displayThinking}
               </Text>
             </Collapse>
           </>
         )}
 
         {/* Tool calls (above content for completed messages) */}
-        {!isStreaming && displayMsg.tool_calls && displayMsg.tool_calls.length > 0 && (
-          <ToolCallTrace toolCalls={displayMsg.tool_calls} debugMode={debug} planningCollapsed />
+        {!isStreaming && displayToolCalls && displayToolCalls.length > 0 && (
+          <ToolCallTrace toolCalls={displayToolCalls} debugMode={debug} planningCollapsed />
         )}
 
         {/* Generation plan (debug mode, chain mode) */}

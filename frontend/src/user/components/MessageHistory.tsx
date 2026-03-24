@@ -18,7 +18,7 @@ export const MessageHistory = observer(function MessageHistory() {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [items.length, chatStore.streamingContent, chatStore.streamingToolCalls.length, chatStore.error]);
+  }, [items.length, chatStore.streamingContent, chatStore.streamingToolCalls.length, chatStore.error, chatStore.isSending]);
 
   function dismissError() {
     chatStore.error = null;
@@ -70,7 +70,7 @@ export const MessageHistory = observer(function MessageHistory() {
               {...(msg.role === "assistant" && msg.turn_number === currentTurn && chatStore.hasMultipleVariants
                 ? {
                     variants: chatStore.latestTurnVariants,
-                    onSelectVariant: (id: string) => chatStore.continueWithVariant(id),
+                    onSelectVariant: (index: number) => chatStore.continueWithVariant(index),
                   }
                 : {})}
             />

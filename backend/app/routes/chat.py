@@ -175,7 +175,7 @@ async def continue_chat(
     req: ContinueRequest,
     caller: User = Depends(_require_player),
 ) -> dict:
-    await chat_service.continue_chat(int(chat_id), caller.id, int(req.selected_variant_id))
+    await chat_service.continue_chat(int(chat_id), caller.id, req.variant_index)
     return {"ok": True}
 
 

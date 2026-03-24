@@ -25,8 +25,8 @@ class ChatStore {
   streamingToolCalls: Array<{ tool_name: string; arguments: Record<string, string>; result?: string }> = [];
   isThinking = false;
 
-  // Variant state — tracks which variant the user is viewing
-  activeVariantId: string | null = null;
+  // Variant state — index the user is currently viewing (for auto-commit on send)
+  viewingVariantIndex: number | null = null;
 
   // Debug & pipeline state
   debugMode = false;
@@ -73,12 +73,12 @@ class ChatStore {
     return items;
   }
 
-  get latestTurnVariants(): ChatMessage[] {
+  get latestTurnVariants(): GenerationVariant[] {
     return this.currentChat?.variants ?? [];
   }
 
   get hasMultipleVariants(): boolean {
-    return this.latestTurnVariants.length > 1;
+    return this.latestTurnVariants.length > 0;
   }
 
   get currentSnapshot(): ChatStateSnapshot | null {
@@ -130,9 +130,9 @@ class ChatStore {
     if (!this.currentChat || this.isSending) return;
     const chatId = this.currentChat.session.id;
 
-    // Auto-commit viewed variant before sending
-    if (this.hasMultipleVariants && this.activeVariantId) {
-      await this.continueWithVariant(this.activeVariantId);
+    // Auto-commit viewed variant before sending (if viewing a non-current variant)
+    if (this.hasMultipleVariants && this.viewingVariantIndex !== null) {
+      await this.continueWithVariant(this.viewingVariantIndex);
     }
 
     runInAction(() => {
@@ -231,9 +231,13 @@ class ChatStore {
   }
 
   async retryAfterError(): Promise<void> {
-    if (!this.pendingInput) return;
-    const content = this.pendingInput;
-    await this.sendMessage(content);
+    if (this.pendingInput) {
+      const content = this.pendingInput;
+      await this.sendMessage(content);
+      return;
+    }
+    // No pending input = regeneration error, retry regenerate
+    await this.regenerate();
   }
 
   async regenerate(): Promise<void> {
@@ -248,6 +252,7 @@ class ChatStore {
       this.currentPhase = null;
       this.currentStatus = null;
       // Remove old assistant message immediately so streaming bubble takes its place
+      // (server already moved it to generation_variants)
       const turn = this.currentChat!.session.current_turn;
       this.currentChat!.messages = this.currentChat!.messages.filter(
         (m) => !(m.role === "assistant" && m.turn_number === turn),
@@ -272,26 +277,21 @@ class ChatStore {
         onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
         onStatUpdate: () => {},
         onDone: (message) => {
+          // Reload chat detail to get server-side variants
+          const reloadId = this.currentChat?.session.id;
           runInAction(() => {
             if (this.currentChat) {
-              // Replace the active assistant message in messages list
-              const msgs = this.currentChat.messages;
-              const lastAsstIdx = msgs.findLastIndex(
-                (m) => m.role === "assistant" && m.turn_number === this.currentChat!.session.current_turn,
-              );
-              if (lastAsstIdx >= 0) {
-                msgs[lastAsstIdx] = message;
-              } else {
-                msgs.push(message);
-              }
-              // Append to variants for the switcher
-              this.currentChat.variants = [...this.currentChat.variants, message];
+              this.currentChat.messages.push(message);
+              this.currentChat.session.current_turn = message.turn_number;
             }
             this.streamingContent = "";
             this.isSending = false;
             this.currentPhase = null;
             this.currentStatus = null;
+            this.viewingVariantIndex = null;
           });
+          // Reload to get updated variants from server
+          if (reloadId) this.loadChatDetail(reloadId);
           resolve();
         },
         onError: (detail) => {
@@ -302,15 +302,18 @@ class ChatStore {
             this.currentPhase = null;
             this.currentStatus = null;
           });
+          // Reload to restore the message from server variants
+          if (this.currentChat) this.loadChatDetail(this.currentChat.session.id);
           resolve();
         },
       });
     });
   }
 
-  async continueWithVariant(variantId: string): Promise<void> {
+  async continueWithVariant(variantIndex: number): Promise<void> {
     if (!this.currentChat) return;
-    await chatApi.continueChat(this.currentChat.session.id, { selected_variant_id: variantId });
+    await chatApi.continueChat(this.currentChat.session.id, { variant_index: variantIndex });
+    this.viewingVariantIndex = null;
     await this.loadChatDetail(this.currentChat.session.id);
   }
 

@@ -23,6 +23,7 @@ from app.models.schemas.chat import (
     ChatSessionResponse,
     ChatStateSnapshotResponse,
     ChatSummaryResponse,
+    GenerationVariant,
     LocationBrief,
     ModelConfig,
     StatDefinitionResponse,
@@ -73,30 +74,72 @@ def _model_config_from_session_text(s: ChatSession) -> ModelConfig:
 
 
 def _msg_to_response(m: ChatMessage) -> ChatMessageResponse:
-    tool_calls: list[ToolCallInfo] | None = None
-    if m.tool_calls:
-        try:
-            raw = json.loads(m.tool_calls)
-            tool_calls = [
-                ToolCallInfo(
-                    tool_name=tc["tool_name"],
-                    arguments=tc.get("arguments", {}),
-                    result=tc.get("result", ""),
-                )
-                for tc in raw
-            ]
-        except Exception:
-            tool_calls = None
     return ChatMessageResponse(
         id=str(m.id),
         role=m.role,
         content=m.content,
         turn_number=m.turn_number,
-        tool_calls=tool_calls,
+        tool_calls=_parse_tool_calls(m.tool_calls),
         generation_plan=m.generation_plan,
         thinking_content=m.thinking_content,
         is_active_variant=m.is_active_variant,
         created_at=m.created_at.isoformat(),
+    )
+
+
+def _parse_tool_calls(raw_json: str | None) -> list[ToolCallInfo] | None:
+    """Parse tool_calls JSON string into rich ToolCallInfo list."""
+    if not raw_json:
+        return None
+    try:
+        raw = json.loads(raw_json)
+        return [
+            ToolCallInfo(
+                tool_name=tc["tool_name"],
+                arguments=tc.get("arguments", {}),
+                result=tc.get("result", ""),
+            )
+            for tc in raw
+        ]
+    except Exception:
+        return None
+
+
+def _parse_generation_plan(raw_json: str | None) -> "GenerationPlanOutput | None":
+    """Parse generation_plan JSON string into rich GenerationPlanOutput."""
+    from app.models.schemas.pipeline import GenerationPlanOutput
+    if not raw_json:
+        return None
+    try:
+        return GenerationPlanOutput.model_validate_json(raw_json)
+    except Exception:
+        return None
+
+
+def _msg_to_variant(m: ChatMessage) -> GenerationVariant:
+    """Serialize a ChatMessage to a GenerationVariant (for session JSON storage)."""
+    return GenerationVariant(
+        content=m.content,
+        tool_calls=_parse_tool_calls(m.tool_calls),
+        generation_plan=_parse_generation_plan(m.generation_plan),
+        thinking_content=m.thinking_content,
+        created_at=m.created_at.isoformat(),
+    )
+
+
+def _load_variants(session: ChatSession) -> list[GenerationVariant]:
+    """Parse generation_variants JSON from session."""
+    try:
+        raw = json.loads(session.generation_variants)
+        return [GenerationVariant.model_validate(v) for v in raw]
+    except Exception:
+        return []
+
+
+def _save_variants(session: ChatSession, variants: list[GenerationVariant]) -> None:
+    """Serialize variants list back to session JSON field."""
+    session.generation_variants = json.dumps(
+        [v.model_dump() for v in variants]
     )
 
 
@@ -182,10 +225,7 @@ async def _build_detail_response(
             loc_name = location_cache[snap.location_id]
         snap_responses.append(_snap_to_response(snap, loc_name, hidden_names))
 
-    variants: list[ChatMessageResponse] = []
-    if session.current_turn > 0:
-        variant_msgs = await chats_db.list_variants_for_turn(session.id, session.current_turn)
-        variants = [_msg_to_response(m) for m in variant_msgs]
+    variants = _load_variants(session)
 
     summaries = await chats_db.list_summaries(session.id)
     summary_responses = [
@@ -482,14 +522,46 @@ async def delete_chat(session_id: int, user_id: int) -> None:
 # Public API: continue / rewind
 # ---------------------------------------------------------------------------
 
-async def continue_chat(session_id: int, user_id: int, selected_variant_id: int) -> None:
+async def continue_chat(session_id: int, user_id: int, variant_index: int) -> None:
+    """Select a variant from generation_variants: replace active assistant message, clear variants."""
+    from app.services import snowflake as snowflake_svc
+
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None or chat.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")
-    variant = await chats_db.get_message_by_id(selected_variant_id)
-    if variant is None or variant.session_id != session_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid variant")
-    await chats_db.delete_non_selected_variants(session_id, variant.turn_number, selected_variant_id)
+
+    variants = _load_variants(chat)
+    if variant_index < 0 or variant_index >= len(variants):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid variant index")
+
+    chosen = variants[variant_index]
+
+    # Delete current active assistant message at this turn
+    current_asst = await chats_db.get_active_assistant_at_turn(session_id, chat.current_turn)
+    if current_asst:
+        await chats_db.delete_message_by_id(current_asst.id)
+
+    # Create new ChatMessage from the chosen variant
+    from datetime import datetime, timezone
+    new_msg = ChatMessage(
+        id=snowflake_svc.generate_id(),
+        session_id=session_id,
+        role="assistant",
+        content=chosen.content,
+        turn_number=chat.current_turn,
+        tool_calls=json.dumps([tc.model_dump() for tc in chosen.tool_calls]) if chosen.tool_calls else None,
+        generation_plan=chosen.generation_plan.model_dump_json() if chosen.generation_plan else None,
+        thinking_content=chosen.thinking_content,
+        is_active_variant=True,
+        created_at=datetime.fromisoformat(chosen.created_at).replace(tzinfo=timezone.utc)
+            if chosen.created_at else datetime.now(timezone.utc),
+    )
+    await chats_db.create_message(new_msg)
+
+    # Clear variants
+    _save_variants(chat, [])
+    chat.modified_at = datetime.now(timezone.utc)
+    await chats_db.update_session(chat)
 
 
 async def rewind_chat(

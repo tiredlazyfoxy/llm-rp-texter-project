@@ -202,12 +202,13 @@ Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions
 
 ## Regeneration & Variants
 
-- `is_active_variant` field on `chat_messages`
-- Regenerate: create new assistant message, mark old as inactive, **replace** bubble content (not append)
-- Variants only exist for the **latest** turn
-- Inline `< N/M >` switcher in message bubble when multiple variants exist
-- Continue (explicit): "Use this" icon on non-latest variant → pick variant, delete others
-- Continue (implicit): sending a new message auto-commits the currently viewed variant
+- Variants stored as JSON array on `chat_sessions.generation_variants` (`GenerationVariant[]`)
+- Regenerate: serialize current assistant message → move to `generation_variants` → delete from DB → generate new
+- Only one active assistant message per turn in DB; old ones stored in session JSON
+- Inline `< N/M >` switcher in message bubble (variants + current = total)
+- Continue (explicit): "Use this" icon on old variant → restore as DB message, clear variants
+- Continue (implicit): sending a new message auto-commits viewed variant; server clears variants on send
+- `POST /continue` accepts `{ variant_index: int }` (index into variants array)
 
 ## Summarization (stage2_step4)
 

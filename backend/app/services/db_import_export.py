@@ -384,6 +384,7 @@ def _chat_session_to_dict(s: ChatSession) -> dict:
         "text_repeat_penalty": s.text_repeat_penalty,
         "text_top_p": s.text_top_p,
         "user_instructions": s.user_instructions,
+        "generation_variants": s.generation_variants,
         "created_at": _serialize_datetime(s.created_at),
         "modified_at": _serialize_datetime(s.modified_at),
     }
@@ -410,6 +411,7 @@ def _dict_to_chat_session(d: dict) -> ChatSession:
         text_repeat_penalty=d.get("text_repeat_penalty", 1.0),
         text_top_p=d.get("text_top_p", 1.0),
         user_instructions=d.get("user_instructions", ""),
+        generation_variants=d.get("generation_variants", "[]"),
         created_at=_parse_datetime(d.get("created_at")),
         modified_at=_parse_datetime(d.get("modified_at")),
     )

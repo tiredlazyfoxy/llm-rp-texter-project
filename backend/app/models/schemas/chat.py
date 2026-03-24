@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel
 
+from app.models.schemas.pipeline import GenerationPlanOutput
+
 
 class ModelConfig(BaseModel):
     model_id: str | None = None
@@ -24,7 +26,7 @@ class SendMessageRequest(BaseModel):
 
 
 class ContinueRequest(BaseModel):
-    selected_variant_id: str
+    variant_index: int
 
 
 class RewindRequest(BaseModel):
@@ -89,6 +91,15 @@ class ChatMessageResponse(BaseModel):
     created_at: str
 
 
+class GenerationVariant(BaseModel):
+    """Serialized assistant message stored in session.generation_variants."""
+    content: str
+    tool_calls: list[ToolCallInfo] | None = None
+    generation_plan: GenerationPlanOutput | None = None
+    thinking_content: str | None = None
+    created_at: str
+
+
 class ChatStateSnapshotResponse(BaseModel):
     turn_number: int
     location_id: str | None
@@ -101,7 +112,7 @@ class ChatDetailResponse(BaseModel):
     session: ChatSessionResponse
     messages: list[ChatMessageResponse]
     snapshots: list[ChatStateSnapshotResponse]
-    variants: list[ChatMessageResponse]
+    variants: list[GenerationVariant]
     summaries: list["ChatSummaryResponse"] = []
 
 

@@ -59,6 +59,20 @@ interface ToolCallInfo {
   result: string;
 }
 
+interface GenerationPlanData {
+  collected_data: string;
+  decisions: string[];
+  stat_updates: Array<{ name: string; value: string }>;
+}
+
+interface GenerationVariant {
+  content: string;
+  tool_calls: ToolCallInfo[] | null;
+  generation_plan: GenerationPlanData | null;
+  thinking_content: string | null;
+  created_at: string;
+}
+
 interface ChatStateSnapshot {
   turn_number: number;
   location_id: string | null;
@@ -71,7 +85,7 @@ interface ChatDetail {
   session: ChatSession;
   messages: ChatMessage[];
   snapshots: ChatStateSnapshot[];
-  variants: ChatMessage[];
+  variants: GenerationVariant[];
   summaries: ChatSummary[];
 }
 
@@ -125,7 +139,7 @@ interface SendMessageRequest {
 }
 
 interface ContinueRequest {
-  selected_variant_id: string;
+  variant_index: number;
 }
 
 interface RewindRequest {

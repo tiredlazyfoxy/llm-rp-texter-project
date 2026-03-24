@@ -106,7 +106,7 @@ Dispatch in `chat_agent_service.py` routes to the appropriate service. Shared in
 | `world_stat_definitions` | world_id, name, scope, stat_type, constraints, hidden |
 | `world_rules` | world_id, rule_text, order |
 | `llm_servers` | name, backend_type, base_url, enabled_models, is_embedding, embedding_model |
-| `chat_sessions` | user_id, world_id, current_location_id, tool_model_id, text_model_id, character_stats, world_stats, current_turn |
+| `chat_sessions` | user_id, world_id, current_location_id, tool_model_id, text_model_id, character_stats, world_stats, current_turn, generation_variants (JSON) |
 | `chat_messages` | session_id, role, content, turn_number, tool_calls, generation_plan, thinking_content, is_active_variant |
 | `chat_state_snapshots` | session_id, turn_number, location_id, character_stats, world_stats |
 | `chat_summaries` | session_id, start/end turn, content |
