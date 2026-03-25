@@ -48,6 +48,7 @@ export function PipelineStageEditPage() {
   const [originalContent, setOriginalContent] = useState("");
   const [pipelineConfig, setPipelineConfig] = useState<PipelineConfig>({ stages: [] });
   const [stepType, setStepType] = useState("");
+  const [stageName, setStageName] = useState("");
   const [stageTools, setStageTools] = useState<string[]>([]);
   const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
 
@@ -77,6 +78,7 @@ export function PipelineStageEditPage() {
       setContent(stage.prompt);
       setOriginalContent(stage.prompt);
       setStepType(stage.step_type);
+      setStageName(stage.name || "");
       setStageTools(stage.tools || []);
     } catch (e) {
       setError(String(e));
@@ -158,6 +160,7 @@ export function PipelineStageEditPage() {
           </Button>
           <Title order={4}>
             <Text span c="dimmed" size="sm" mr={6}>Pipeline stage {stageIndex + 1}</Text>
+            {stageName && <Text span size="sm" fw={600} mr={6}>{stageName}</Text>}
             <Badge variant="light" color={(stepType === "tool" || stepType === "planning") ? "violet" : "teal"}>{stepType}</Badge>
           </Title>
         </Group>

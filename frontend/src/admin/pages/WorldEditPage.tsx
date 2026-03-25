@@ -510,8 +510,8 @@ export function WorldEditPage() {
               if (mode === "chain" && pipelineConfig.stages.length === 0) {
                 setPipelineConfig({
                   stages: [
-                    { step_type: "tool", prompt: "", max_agent_steps: 10, tools: [] },
-                    { step_type: "writer", prompt: "", max_agent_steps: null, tools: [] },
+                    { step_type: "tool", name: "", prompt: "", max_agent_steps: 10, tools: [] },
+                    { step_type: "writer", name: "", prompt: "", max_agent_steps: null, tools: [] },
                   ],
                 });
               }
@@ -558,6 +558,7 @@ export function WorldEditPage() {
                     if (!v) return;
                     const newStage: PipelineStage = {
                       step_type: v,
+                      name: "",
                       prompt: "",
                       max_agent_steps: v === "tool" ? 10 : null,
                       tools: [],
@@ -592,21 +593,37 @@ export function WorldEditPage() {
                     <Group justify="space-between" wrap="nowrap">
                       <Group gap="xs" wrap="nowrap">
                         <Badge size="sm" variant="light" circle>{idx + 1}</Badge>
-                        <Badge size="sm" variant="outline" color={(stage.step_type === "tool" || stage.step_type === "planning") ? "violet" : "teal"}>{stage.step_type}</Badge>
-                        {(stage.step_type === "tool" || stage.step_type === "planning") && (
-                          <NumberInput
-                            size="xs"
-                            label="Max steps"
-                            value={stage.max_agent_steps ?? 10}
-                            onChange={v => {
-                              const stages = [...pipelineConfig.stages];
-                              stages[idx] = { ...stages[idx], max_agent_steps: typeof v === "number" ? v : 10 };
-                              setPipelineConfig({ stages });
-                            }}
-                            min={1}
-                            max={50}
-                            w={100}
-                          />
+                        {(stage.step_type === "tool" || stage.step_type === "planning") ? (
+                          <>
+                            <TextInput
+                              size="xs"
+                              placeholder="Stage name"
+                              value={stage.name || ""}
+                              onChange={e => {
+                                const stages = [...pipelineConfig.stages];
+                                stages[idx] = { ...stages[idx], name: e.currentTarget.value };
+                                setPipelineConfig({ stages });
+                              }}
+                              w={150}
+                            />
+                            <NumberInput
+                              size="xs"
+                              placeholder="Max steps"
+                              title="Max agent steps"
+                              value={stage.max_agent_steps ?? 10}
+                              onChange={v => {
+                                const stages = [...pipelineConfig.stages];
+                                stages[idx] = { ...stages[idx], max_agent_steps: typeof v === "number" ? v : 10 };
+                                setPipelineConfig({ stages });
+                              }}
+                              min={1}
+                              max={50}
+                              w={80}
+                              ml="xs"
+                            />
+                          </>
+                        ) : (
+                          <Badge size="sm" variant="outline" color="teal">{stage.step_type}</Badge>
                         )}
                       </Group>
                       <Group gap={4} wrap="nowrap">

@@ -54,6 +54,7 @@ export interface UpdateWorldRequest {
 
 export interface PipelineStage {
   step_type: string;
+  name: string;
   prompt: string;
   max_agent_steps: number | null;
   tools: string[];

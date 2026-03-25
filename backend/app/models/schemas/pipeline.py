@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class PipelineStage(BaseModel):
     step_type: str  # "tool" | "writer" (legacy: "planning" | "writing")
+    name: str = ""  # admin-defined stage label (e.g. "Research", "Combat")
     prompt: str = ""  # full system prompt template with {PLACEHOLDER} syntax
     max_agent_steps: int | None = None  # only for "tool" steps
     tools: list[str] = []  # enabled tool names from tool catalog
