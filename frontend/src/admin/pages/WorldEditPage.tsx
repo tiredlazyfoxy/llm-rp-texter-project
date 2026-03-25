@@ -551,7 +551,7 @@ export function WorldEditPage() {
                   placeholder="Add stage..."
                   data={[
                     { value: "tool", label: "Tool" },
-                    { value: "writer", label: "Writer" },
+                    { value: "writer", label: "Writer", disabled: pipelineConfig.stages.some(s => s.step_type === "writer" || s.step_type === "writing") },
                   ]}
                   value={null}
                   onChange={v => {
@@ -563,6 +563,18 @@ export function WorldEditPage() {
                       max_agent_steps: v === "tool" ? 10 : null,
                       tools: [],
                     };
+                    if (v === "tool") {
+                      // Insert before writer stage if one exists
+                      const writerIdx = pipelineConfig.stages.findIndex(s => s.step_type === "writer" || s.step_type === "writing");
+                      if (writerIdx !== -1) {
+                        setPipelineConfig(prev => {
+                          const stages = [...prev.stages];
+                          stages.splice(writerIdx, 0, newStage);
+                          return { stages };
+                        });
+                        return;
+                      }
+                    }
                     setPipelineConfig(prev => ({ stages: [...prev.stages, newStage] }));
                   }}
                   clearable
