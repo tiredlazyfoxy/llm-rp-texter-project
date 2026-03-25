@@ -47,8 +47,9 @@ See `architecture/` for full documentation.
 ## Conventions
 
 - Planning docs go to `plans/` folder (tracked in git) — **not** `~/.claude/plans/`
-- Plan naming: `stageN_stepM_somename.md` (e.g. `stage1_step1_backend_setup.md`)
-- When a plan is done: rename to `stageN_stepM_somename.done.md` for retrospective
+- **Backlog ideas**: `backlog.<idea_name>.md` — ideas not yet scheduled for execution
+- **Scheduled work**: `stageN_stepM_somename.md` — when a backlog item is promoted to execution
+- **Completed work**: `stageN_stepM_somename.done.md` — for retrospective
 - Final architecture docs go to `architecture/`
 - Every project subfolder must have a `CLAUDE.md`
 

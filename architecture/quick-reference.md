@@ -276,4 +276,10 @@ Editor+ toggle in user settings. Controls UI visibility of tool call details, th
 - Stage 3 Step 2a: Simple mode backend (chat tools, rich prompt, stat validation, shared infrastructure, move_to_location) — done
 - Stage 3 Step 2b: Chain mode backend (planning → writing pipeline, generation_plan, writer tools, memory enforcement) — done
 - Stage 3 Step 3: User UI (debug mode, message edit/delete, thinking_content storage, SSE phase/status, hidden stats filtering) — done
-- Stage 4 Step 2: Agent mode (sub-agent orchestration design doc) — planned
+
+## Backlog
+
+- Agent flow — sub-agent orchestration design (`plans/backlog.agent_flow.md`)
+- Agent mode — agentic generation mode design (`plans/backlog.agent_mode.md`)
+- Split research/planning — separate research and planning stages (`plans/backlog.split_research_planning.md`)
+- Prompt tuning — infrastructure for prompt iteration (`plans/backlog.prompt_tuning.md`)
