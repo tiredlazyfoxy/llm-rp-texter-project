@@ -3,6 +3,10 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env.local", override=False)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 

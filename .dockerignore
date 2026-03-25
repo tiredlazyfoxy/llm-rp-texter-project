@@ -7,3 +7,4 @@ plans/
 docker-compose.dev.yml
 start.ps1
 .claude/
+.env.local
