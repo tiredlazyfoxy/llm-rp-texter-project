@@ -376,7 +376,33 @@ Existing worlds with `generation_mode="chain"` have stages with `step_type="plan
 - Empty `system_prompt` → fallback to `build_rich_chat_system_prompt()` (existing behavior)
 - Empty `simple_tools` (`"[]"`) → fallback to all 8 chat tools (existing behavior)
 
-No destructive migration needed. All changes are backward-compatible with on-read normalization.
+On-read normalization handles runtime compatibility, but we also need a **one-time migration script** to permanently convert existing data in the DB:
+
+### 13b. Migration Script (temporary, execute and delete)
+
+**File**: `backend/migrate_stage5.py` — standalone script, not part of the app package. Deleted after execution.
+
+Run once after deploying Step 1 changes:
+
+```bash
+cd backend && python migrate_stage5.py
+```
+
+**What it does for each world with `generation_mode="chain"`:**
+
+1. Parse `World.pipeline` JSON
+2. For each stage:
+   - `"planning"` → `"tool"`, set `tools` to all 11 tool names, set `prompt` to `DEFAULT_TOOL_PROMPT`
+   - `"writing"` → `"writer"`, set `tools` to 5 read-only tools, set `prompt` to `DEFAULT_WRITER_PROMPT`
+   - If stage already had a non-empty `prompt` (admin free-text), append it to the default template under a `## World-Specific Instructions` section
+3. Save updated `World.pipeline` JSON back to DB
+
+**What it does for each world with `generation_mode="simple"`:**
+
+1. If `World.system_prompt` is non-empty (was admin-appended text), wrap it into `DEFAULT_SIMPLE_PROMPT` under a `## Game Master Instructions` section
+2. Set `World.simple_tools` to all 8 chat tool names (preserves existing behavior)
+
+**After execution**: verify results, then delete the script. The on-read fallback in generation services remains as a safety net.
 
 ### 14. Validation
 
@@ -406,12 +432,15 @@ The `simple_tools` field is a regular string column on the `worlds` table. JSONL
 1. `placeholder_registry.py` + `tool_catalog.py` (pure data, no dependencies)
 2. `World.simple_tools` field + DB init update
 3. `PipelineStage.tools` field
-4. API endpoint for pipeline config options
-5. Frontend types + API function
-6. `world_field_editor_system_prompt.py` — new field type
-7. `WorldEditPage.tsx` — simple mode tool selection + chain mode overhaul
-8. `PipelineStageEditPage.tsx` — placeholder panel + click-to-insert
-9. `WorldFieldEditPage.tsx` — placeholder panel for simple mode prompt editing
+4. `default_templates.py` (needed by migration script)
+5. `migrate_stage5.py` — temp migration script (run once, then delete)
+6. API endpoint for pipeline config options
+7. Frontend types + API function
+8. `world_field_editor_system_prompt.py` — new field type
+9. `WorldEditPage.tsx` — simple mode tool selection + chain mode overhaul
+10. `PipelineStageEditPage.tsx` — placeholder panel + click-to-insert
+11. `WorldFieldEditPage.tsx` — placeholder panel for simple mode prompt editing
+12. Run migration script on existing DB
 
 ---
 
@@ -424,6 +453,8 @@ The `simple_tools` field is a regular string column on the `worlds` table. JSONL
 | `backend/app/services/prompts/placeholder_registry.py` | NEW — 11 placeholder definitions |
 | `backend/app/services/prompts/tool_catalog.py` | NEW — 11 tool definitions |
 | `backend/app/routes/admin/worlds.py` | New endpoint: GET pipeline-config |
+| `backend/app/services/prompts/default_templates.py` | NEW — default prompt templates (used by migration) |
+| `backend/migrate_stage5.py` | NEW — temp migration script (delete after running) |
 | `backend/app/services/prompts/world_field_editor_system_prompt.py` | Add `"pipeline_prompt"` field type |
 | `frontend/src/types/world.d.ts` | Update PipelineStage, add new types |
 | `frontend/src/api/worlds.ts` | Add `getPipelineConfigOptions()` |
