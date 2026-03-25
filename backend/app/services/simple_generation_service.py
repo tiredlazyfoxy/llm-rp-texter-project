@@ -36,9 +36,13 @@ from app.services.chat_agent_service import (
     strip_stat_block,
 )
 from app.services.chat_context import build_chat_context
-from app.services.chat_tools import get_chat_tools
+from app.services.chat_tools import get_chat_tools, get_tools_by_names
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts.chat_system_prompt import build_rich_chat_system_prompt
+from app.services.prompts.prompt_injection import (
+    build_tools_description,
+    resolve_prompt_template,
+)
 from app.services.stat_validation import validate_and_apply_stat_updates
 
 logger = logging.getLogger(__name__)
@@ -115,30 +119,60 @@ async def _run_generation(
             len(context["present_npcs"]), len(context["rules"]), len(context["current_stats"]),
         )
 
-        # Build rich system prompt
-        system_prompt = build_rich_chat_system_prompt(
-            world_name=context["world"].name,
-            world_description=context["world"].description,
-            admin_system_prompt=context["world"].system_prompt,
-            location_name=context["location_name"],
-            location_description=context["location_description"],
-            location_exits=context["location_exits"],
-            present_npcs=context["present_npcs"],
-            rules=context["rules"],
-            stat_definitions=context["stat_definitions"],
-            current_stats=context["current_stats"],
-            character_name=chat.character_name,
-            character_description=chat.character_description,
-            injected_lore=context["injected_lore"],
-            user_instructions=chat.user_instructions,
-            memories=context["memories"],
-        )
+        # Parse tool selection from world config
+        world = context["world"]
+        try:
+            configured_tools: list[str] = json.loads(world.simple_tools) if world.simple_tools else []
+        except (json.JSONDecodeError, TypeError):
+            configured_tools = []
 
-        logger.debug("%s System prompt: %d chars", lp, len(system_prompt))
-
-        # Get tools
-        tool_defs, tool_callables = get_chat_tools(chat.world_id, chat.id)
+        # Get tools (filtered or all chat tools as fallback)
+        if configured_tools:
+            tool_defs, tool_callables = get_tools_by_names(
+                configured_tools, chat.world_id, chat.id,
+            )
+        else:
+            tool_defs, tool_callables = get_chat_tools(chat.world_id, chat.id)
         logger.debug("%s Tools: %s", lp, list(tool_callables.keys()))
+
+        # Build system prompt (template resolution or legacy fallback)
+        if world.system_prompt and world.system_prompt.strip():
+            tools_desc = build_tools_description(
+                [d["function"]["name"] for d in tool_defs],
+            )
+            system_prompt = resolve_prompt_template(
+                world.system_prompt,
+                WORLD_NAME=world.name,
+                RULES=context["rules"],
+                INJECTED_LORE=context["injected_lore"],
+                LOCATION=context["location_block"],
+                CHARACTER_NAME=chat.character_name,
+                CHARACTER_STATS=context["character_stats"],
+                WORLD_STATS=context["world_stats"],
+                USER_INSTRUCTIONS=chat.user_instructions or "",
+                TURN_FACTS="",
+                TURN_DECISIONS="",
+                TOOLS=tools_desc,
+            )
+        else:
+            system_prompt = build_rich_chat_system_prompt(
+                world_name=world.name,
+                world_description=world.description,
+                admin_system_prompt=world.system_prompt,
+                location_name=context["location_name"],
+                location_description=context["location_description"],
+                location_exits=context["location_exits"],
+                present_npcs=context["present_npcs"],
+                rules=context["rules"],
+                stat_definitions=context["stat_definitions"],
+                current_stats=context["current_stats"],
+                character_name=chat.character_name,
+                character_description=chat.character_description,
+                injected_lore=context["injected_lore"],
+                user_instructions=chat.user_instructions,
+                memories=context["memories"],
+            )
+        logger.debug("%s System prompt: %d chars", lp, len(system_prompt))
 
         # Wrap tools with SSE emission + recording
         tool_call_records: list[dict[str, Any]] = []

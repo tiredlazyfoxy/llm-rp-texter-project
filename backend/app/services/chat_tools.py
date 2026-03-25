@@ -491,3 +491,39 @@ def get_planning_tools(
     all_callables = {**chat_callables, **planning_callables}
 
     return all_defs, all_callables
+
+
+_PLANNING_TOOL_NAMES = {"add_fact", "add_decision", "update_stat"}
+
+
+def get_tools_by_names(
+    tool_names: list[str],
+    world_id: int,
+    session_id: int,
+    planning_context: "PlanningContext | None" = None,
+    stat_defs: "list[WorldStatDefinition] | None" = None,
+    char_stats: dict[str, Any] | None = None,
+    world_stats: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Callable]]:
+    """Return a filtered subset of tools by name.
+
+    Planning tools (add_fact, add_decision, update_stat) are only instantiated
+    when they appear in tool_names AND planning_context is provided.
+    If planning tools are requested but planning_context is None, they are
+    silently skipped.
+    """
+    name_set = set(tool_names)
+    needs_planning = bool(name_set & _PLANNING_TOOL_NAMES) and planning_context is not None
+
+    if needs_planning:
+        all_defs, all_callables = get_planning_tools(
+            world_id, session_id, planning_context,
+            stat_defs or [], char_stats or {}, world_stats or {},
+        )
+    else:
+        all_defs, all_callables = get_chat_tools(world_id, session_id)
+
+    filtered_defs = [d for d in all_defs if d["function"]["name"] in name_set]
+    filtered_callables = {k: v for k, v in all_callables.items() if k in name_set}
+
+    return filtered_defs, filtered_callables

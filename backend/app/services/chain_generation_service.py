@@ -37,10 +37,17 @@ from app.services.chat_agent_service import (
     now,
     sse,
 )
-from app.services.chat_context import build_chat_context
-from app.services.chat_tools import get_planning_tools, get_writer_tools
+from app.services.chat_context import ChatContext, build_chat_context
+from app.services.chat_tools import get_planning_tools, get_tools_by_names, get_writer_tools
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts.planning_system_prompt import build_planning_system_prompt
+from app.services.prompts.prompt_injection import (
+    build_tools_description,
+    format_decisions,
+    format_facts,
+    resolve_prompt_template,
+)
+from app.services.prompts.tool_catalog import ALL_TOOL_NAMES
 from app.services.prompts.writing_plan_message import build_writing_plan_message
 from app.services.prompts.writing_system_prompt import build_writing_system_prompt
 
@@ -170,6 +177,389 @@ def _create_filtered_thinking_callback(
 
 
 # ---------------------------------------------------------------------------
+# Prompt resolution helpers
+# ---------------------------------------------------------------------------
+
+def _build_placeholder_values(
+    context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str, tools_desc: str,
+) -> dict[str, str]:
+    """Build the common placeholder kwargs for resolve_prompt_template."""
+    return {
+        "WORLD_NAME": context["world"].name,
+        "RULES": context["rules"],
+        "INJECTED_LORE": context["injected_lore"],
+        "LOCATION": context["location_block"],
+        "CHARACTER_NAME": chat.character_name,
+        "CHARACTER_STATS": context["character_stats"],
+        "WORLD_STATS": context["world_stats"],
+        "USER_INSTRUCTIONS": chat.user_instructions or "",
+        "TURN_FACTS": turn_facts,
+        "TURN_DECISIONS": turn_decisions,
+        "TOOLS": tools_desc,
+    }
+
+
+def _resolve_tool_prompt(
+    stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str, tools_desc: str,
+) -> str:
+    """Resolve tool-step system prompt: template or legacy fallback."""
+    if stage.prompt and stage.prompt.strip():
+        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc)
+        return resolve_prompt_template(stage.prompt, **values)
+    return build_planning_system_prompt(
+        world_name=context["world"].name,
+        world_description=context["world"].description,
+        location_name=context["location_name"],
+        location_description=context["location_description"],
+        location_exits=context["location_exits"],
+        present_npcs=context["present_npcs"],
+        rules=context["rules"],
+        stat_definitions=context["stat_definitions"],
+        current_stats=context["current_stats"],
+        character_name=chat.character_name,
+        character_description=chat.character_description,
+        user_instructions=chat.user_instructions or "",
+        lore_parts=context["injected_lore"],
+        admin_prompt="",
+    )
+
+
+def _resolve_writer_prompt(
+    stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
+) -> str:
+    """Resolve writer-step system prompt: template or legacy fallback."""
+    if stage.prompt and stage.prompt.strip():
+        tools_desc = build_tools_description(stage.tools)
+        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc)
+        return resolve_prompt_template(stage.prompt, **values)
+    return build_writing_system_prompt(
+        world_name=context["world"].name,
+        world_description=context["world"].description,
+        character_name=chat.character_name,
+        character_description=chat.character_description,
+        lore_parts=context["injected_lore"],
+        admin_prompt="",
+        user_instructions=chat.user_instructions or "",
+    )
+
+
+def _combine_planning_contexts(contexts: list[PlanningContext]) -> GenerationPlanOutput:
+    """Merge all PlanningContexts into a single GenerationPlanOutput."""
+    return GenerationPlanOutput(
+        collected_data="\n".join(f for ctx in contexts for f in ctx.facts),
+        decisions=[d for ctx in contexts for d in ctx.decisions],
+        stat_updates=[su for ctx in contexts for su in ctx.stat_updates],
+    )
+
+
+def _migrate_legacy_stages(pipeline: PipelineConfig) -> None:
+    """On-read migration: 'planning' → 'tool', 'writing' → 'writer'."""
+    for stage in pipeline.stages:
+        if stage.step_type == "planning":
+            stage.step_type = "tool"
+            if not stage.tools:
+                stage.tools = list(ALL_TOOL_NAMES)
+        elif stage.step_type == "writing":
+            stage.step_type = "writer"
+            if not stage.tools:
+                stage.tools = ["get_location_info", "get_npc_info", "search", "get_lore", "get_memory"]
+
+
+# ---------------------------------------------------------------------------
+# Individual stage runners
+# ---------------------------------------------------------------------------
+
+async def _run_tool_stage(
+    lp: str,
+    stage,
+    stage_idx: int,
+    chat: Any,
+    context: ChatContext,
+    llm_messages: list[dict[str, str]],
+    queue: asyncio.Queue,
+    caller_role: str,
+    all_planning_contexts: list[PlanningContext],
+    char_stats: dict[str, Any],
+    world_stats: dict[str, Any],
+    tool_call_records: list[dict[str, Any]],
+    all_thinking_parts: list[str],
+) -> None:
+    """Execute a single tool step in the pipeline."""
+    phase_label = stage.name or f"Tool step {stage_idx + 1}"
+    logger.debug("%s === TOOL STAGE %d: %s ===", lp, stage_idx, phase_label)
+    await queue.put(sse("phase", {"phase": "planning"}))
+    await queue.put(sse("status", {"text": f"{phase_label}: Gathering context..."}))
+
+    planning_ctx = PlanningContext()
+
+    # Get tools
+    if stage.tools:
+        tool_defs, tool_callables = get_tools_by_names(
+            stage.tools, chat.world_id, chat.id,
+            planning_context=planning_ctx,
+            stat_defs=context["stat_defs_list"],
+            char_stats=char_stats, world_stats=world_stats,
+        )
+    else:
+        tool_defs, tool_callables = get_planning_tools(
+            chat.world_id, chat.id, planning_ctx,
+            context["stat_defs_list"], char_stats, world_stats,
+        )
+
+    # Resolve prompt
+    tools_desc = build_tools_description([d["function"]["name"] for d in tool_defs])
+    prev_facts = format_facts(all_planning_contexts)
+    prev_decisions = format_decisions(all_planning_contexts)
+    system_prompt = _resolve_tool_prompt(stage, context, chat, prev_facts, prev_decisions, tools_desc)
+    logger.debug("%s Tool prompt: %d chars", lp, len(system_prompt))
+
+    # Model
+    model_id = chat.tool_model_id or chat.text_model_id
+    if not model_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No model configured for tool stage {stage_idx}",
+        )
+
+    # Wrap tools, stream, call LLM
+    stage_records: list[dict[str, Any]] = []
+    wrapped = {
+        name: _make_tool_wrapper(name, fn, queue, stage_records, caller_role)
+        for name, fn in tool_callables.items()
+    }
+    planning_parts: list[str] = []
+    stage_thinking: list[str] = []
+    callback = _create_filtered_thinking_callback(queue, planning_parts, caller_role, stage_thinking)
+
+    options = {
+        "temperature": chat.tool_temperature,
+        "top_p": chat.tool_top_p,
+        "repeat_penalty": chat.tool_repeat_penalty,
+    }
+    max_loops = stage.max_agent_steps or 10
+
+    logger.debug(
+        "%s Tool stage: model=%s, messages=%d, tools=%d, max_loops=%d",
+        lp, model_id, len(llm_messages), len(tool_defs), max_loops,
+    )
+    client = await get_llm_client_for_model(model_id)
+    async with client:
+        await client.chat_with_tools(
+            llm_messages, tools_definitions=tool_defs, tools=wrapped,
+            system=system_prompt, options=options, max_loops=max_loops,
+            stream=True, on_delta=callback,
+        )
+
+    logger.debug(
+        "%s Tool stage %d completed: facts=%d, decisions=%d, stat_updates=%d, tool_calls=%d",
+        lp, stage_idx, len(planning_ctx.facts), len(planning_ctx.decisions),
+        len(planning_ctx.stat_updates), len(stage_records),
+    )
+
+    all_planning_contexts.append(planning_ctx)
+    tool_call_records.extend(stage_records)
+    all_thinking_parts.extend(stage_thinking)
+
+
+async def _run_writer_stage(
+    lp: str,
+    stage,
+    stage_idx: int,
+    chat: Any,
+    session_id: int,
+    context: ChatContext,
+    queue: asyncio.Queue,
+    caller_role: str,
+    all_planning_contexts: list[PlanningContext],
+    char_stats: dict[str, Any],
+    world_stats: dict[str, Any],
+    tool_call_records: list[dict[str, Any]],
+    all_thinking_parts: list[str],
+) -> str:
+    """Execute a single writer step. Returns prose content."""
+    phase_label = stage.name or "Writing"
+    logger.debug("%s === WRITER STAGE %d: %s ===", lp, stage_idx, phase_label)
+    await queue.put(sse("phase", {"phase": "writing"}))
+    await queue.put(sse("status", {"text": f"{phase_label}..."}))
+
+    # Resolve prompt
+    all_facts = format_facts(all_planning_contexts)
+    all_decisions_str = format_decisions(all_planning_contexts)
+    system_prompt = _resolve_writer_prompt(stage, context, chat, all_facts, all_decisions_str)
+
+    # Build writer messages: summaries + clean history + plan
+    writer_messages: list[dict[str, str]] = []
+    summaries = await chats_db.list_summaries(session_id)
+    for s in summaries:
+        writer_messages.append({
+            "role": "user",
+            "content": f"[Summary of turns {s.start_turn}\u2013{s.end_turn}]:\n{s.content}",
+        })
+    all_active = await chats_db.list_active_messages(session_id)
+    for m in all_active:
+        if m.role in ("user", "assistant"):
+            writer_messages.append({"role": m.role, "content": m.content})
+        elif m.role == "system":
+            writer_messages.append({"role": "user", "content": m.content})
+
+    # Inject plan message
+    combined_plan = _combine_planning_contexts(all_planning_contexts)
+    updated_stats = _format_updated_stats(char_stats, world_stats)
+    plan_message = build_writing_plan_message(
+        collected_data=combined_plan.collected_data,
+        decisions=combined_plan.decisions,
+        location_name=context["location_name"],
+        present_npcs=context["present_npcs"],
+        current_stats=updated_stats,
+    )
+    writer_messages.append({"role": "user", "content": plan_message})
+    logger.debug(
+        "%s Writer prompt: %d chars, plan message: %d chars, messages: %d",
+        lp, len(system_prompt), len(plan_message), len(writer_messages),
+    )
+
+    # Model
+    model_id = chat.text_model_id
+    if not model_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"No model configured for writer stage {stage_idx}",
+        )
+
+    # Get writer tools
+    if stage.tools:
+        tool_defs, tool_callables = get_tools_by_names(stage.tools, chat.world_id, chat.id)
+    else:
+        tool_defs, tool_callables = get_writer_tools(chat.world_id, chat.id)
+
+    stage_records: list[dict[str, Any]] = []
+    wrapped = {
+        name: _make_tool_wrapper(name, fn, queue, stage_records, caller_role)
+        for name, fn in tool_callables.items()
+    }
+
+    # Stream
+    writing_parts: list[str] = []
+    writing_thinking: list[str] = []
+    callback = create_thinking_callback(queue, writing_parts, writing_thinking)
+
+    options = {
+        "temperature": chat.text_temperature,
+        "top_p": chat.text_top_p,
+        "repeat_penalty": chat.text_repeat_penalty,
+    }
+
+    logger.debug(
+        "%s Writer: model=%s, messages=%d, tools=%d, max_loops=20",
+        lp, model_id, len(writer_messages), len(tool_defs),
+    )
+    client = await get_llm_client_for_model(model_id)
+    async with client:
+        await client.chat_with_tools(
+            writer_messages, tools_definitions=tool_defs, tools=wrapped,
+            system=system_prompt, options=options, max_loops=20,
+            stream=True, on_delta=callback,
+        )
+
+    prose = "".join(writing_parts)
+    logger.debug(
+        "%s Writer completed: prose=%d chars, thinking=%d chars, writer_tool_calls=%d",
+        lp, len(prose), len("".join(writing_thinking)), len(stage_records),
+    )
+
+    tool_call_records.extend(stage_records)
+    all_thinking_parts.extend(writing_thinking)
+    return prose
+
+
+async def _finalize_chain(
+    lp: str,
+    chat: Any,
+    turn: int,
+    session_id: int,
+    queue: asyncio.Queue,
+    prose_content: str,
+    char_stats: dict[str, Any],
+    world_stats: dict[str, Any],
+    all_planning_contexts: list[PlanningContext],
+    tool_call_records: list[dict[str, Any]],
+    all_thinking_parts: list[str],
+    is_regenerate: bool,
+) -> None:
+    """Save message, update session/snapshot, emit done."""
+    new_char, new_world = char_stats, world_stats
+    logger.debug("%s Stats after pipeline: char=%s, world=%s", lp, new_char, new_world)
+
+    await queue.put(sse("stat_update", {"stats": {**new_char, **new_world}}))
+
+    combined_plan = _combine_planning_contexts(all_planning_contexts)
+    thinking_text = "".join(all_thinking_parts) if all_thinking_parts else None
+    plan_json = combined_plan.model_dump_json() if all_planning_contexts else None
+
+    # Save assistant message
+    msg_id = snowflake_svc.generate_id()
+    msg_now = now()
+    asst_msg = ChatMessage(
+        id=msg_id,
+        session_id=session_id,
+        role="assistant",
+        content=prose_content,
+        turn_number=turn,
+        tool_calls=json.dumps(tool_call_records) if tool_call_records else None,
+        generation_plan=plan_json,
+        thinking_content=thinking_text,
+        is_active_variant=True,
+        created_at=msg_now,
+    )
+    await chats_db.create_message(asst_msg)
+    logger.debug("%s Assistant message saved: id=%d, content=%d chars", lp, msg_id, len(prose_content))
+
+    # Update session
+    chat.current_turn = turn
+    chat.character_stats = chats_db.serialize_stats(new_char)
+    chat.world_stats = chats_db.serialize_stats(new_world)
+    chat.modified_at = now()
+    await chats_db.update_session(chat)
+    logger.debug("%s Session updated: turn=%d", lp, turn)
+
+    # Save/update snapshot
+    snap_data = {
+        "session_id": session_id,
+        "turn_number": turn,
+        "location_id": chat.current_location_id,
+        "character_stats": chats_db.serialize_stats(new_char),
+        "world_stats": chats_db.serialize_stats(new_world),
+    }
+    if is_regenerate:
+        snap = await chats_db.get_snapshot_at_turn(session_id, turn)
+        if snap:
+            snap.character_stats = snap_data["character_stats"]
+            snap.world_stats = snap_data["world_stats"]
+            snap.location_id = snap_data["location_id"]
+            await chats_db.update_snapshot(snap)
+        else:
+            await chats_db.create_snapshot(ChatStateSnapshot(
+                id=snowflake_svc.generate_id(), created_at=now(), **snap_data,
+            ))
+    else:
+        await chats_db.create_snapshot(ChatStateSnapshot(
+            id=snowflake_svc.generate_id(), created_at=now(), **snap_data,
+        ))
+
+    # Emit done
+    msg_resp = build_message_response(
+        msg_id=msg_id,
+        content=prose_content,
+        turn_number=turn,
+        created_at=msg_now,
+        tool_calls=tool_call_records if tool_call_records else None,
+        generation_plan=plan_json,
+        thinking_content=thinking_text,
+    )
+    await queue.put(sse("done", {"message": msg_resp}))
+
+
+# ---------------------------------------------------------------------------
 # Core chain generation
 # ---------------------------------------------------------------------------
 
@@ -182,354 +572,60 @@ async def _run_chain_generation(
     caller_role: str,
     is_regenerate: bool = False,
 ) -> None:
-    """Run the two-stage chain pipeline: planning → writing."""
+    """Run the dynamic N-step chain pipeline: tool steps → writer step."""
     try:
         lp = _lp(session_id, turn)
 
-        # Load world and parse pipeline config
+        # Load world and parse pipeline
         world = await worlds_db.get_by_id(chat.world_id)
         if world is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found")
-
         try:
             pipeline = PipelineConfig.model_validate_json(world.pipeline)
         except Exception:
             pipeline = PipelineConfig(stages=[])
 
-        logger.debug("%s Pipeline config: %d stages, types=%s", lp, len(pipeline.stages), [s.step_type for s in pipeline.stages])
-
+        logger.debug("%s Pipeline: %d stages, types=%s", lp, len(pipeline.stages), [s.step_type for s in pipeline.stages])
         if not pipeline.stages:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Chain mode requires at least one pipeline stage",
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Chain mode requires at least one pipeline stage")
 
-        # Build context (shared by both stages)
+        _migrate_legacy_stages(pipeline)
+
+        # Build context and shared state
         context = await build_chat_context(chat)
-        logger.debug(
-            "%s Context: location=%s, npcs=%d chars, rules=%d chars",
-            lp, context["location_name"] or "(none)",
-            len(context["present_npcs"]), len(context["rules"]),
-        )
-
-        # Find stages
-        planning_stage = next(
-            (s for s in pipeline.stages if s.step_type == "planning"), None,
-        )
-        writing_stage = next(
-            (s for s in pipeline.stages if s.step_type == "writing"), None,
-        )
-
-        # ---------------------------------------------------------------
-        # PLANNING STAGE
-        # ---------------------------------------------------------------
-        plan: GenerationPlanOutput | None = None
+        all_planning_contexts: list[PlanningContext] = []
         tool_call_records: list[dict[str, Any]] = []
-        thinking_parts: list[str] = []
-        writing_thinking_parts: list[str] = []
-
-        # Load stats early — planning tools mutate these dicts directly
+        all_thinking_parts: list[str] = []
+        prose_content = ""
         char_stats = chats_db.parse_stats(chat.character_stats)
         world_stats = chats_db.parse_stats(chat.world_stats)
-        planning_ctx = PlanningContext()
 
-        if planning_stage:
-            logger.debug("%s === PLANNING STAGE ===", lp)
-            await queue.put(sse("phase", {"phase": "planning"}))
-            await queue.put(sse("status", {"text": "Gathering context..."}))
+        # Run pipeline stages
+        for stage_idx, stage in enumerate(pipeline.stages):
+            if stage.step_type == "tool":
+                await _run_tool_stage(
+                    lp, stage, stage_idx, chat, context, llm_messages, queue, caller_role,
+                    all_planning_contexts, char_stats, world_stats,
+                    tool_call_records, all_thinking_parts,
+                )
+                # Refresh context (move_to_location may have changed it)
+                chat_refreshed = await chats_db.get_session_by_id(session_id)
+                if chat_refreshed:
+                    context = await build_chat_context(chat_refreshed)
+                    chat = chat_refreshed
 
-            # Build planning prompt
-            planning_prompt = build_planning_system_prompt(
-                world_name=world.name,
-                world_description=world.description,
-                location_name=context["location_name"],
-                location_description=context["location_description"],
-                location_exits=context["location_exits"],
-                present_npcs=context["present_npcs"],
-                rules=context["rules"],
-                stat_definitions=context["stat_definitions"],
-                current_stats=context["current_stats"],
-                character_name=chat.character_name,
-                character_description=chat.character_description,
-                user_instructions=chat.user_instructions,
-                lore_parts=context["injected_lore"],
-                admin_prompt=planning_stage.prompt,
-            )
-
-            logger.debug("%s Planning prompt: %d chars", lp, len(planning_prompt))
-
-            # Resolve planning model
-            planning_model_id = chat.tool_model_id or chat.text_model_id
-            if not planning_model_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="No model configured for planning stage",
+            elif stage.step_type == "writer":
+                prose_content = await _run_writer_stage(
+                    lp, stage, stage_idx, chat, session_id, context, queue, caller_role,
+                    all_planning_contexts, char_stats, world_stats,
+                    tool_call_records, all_thinking_parts,
                 )
 
-            # Get tools (8 chat + 3 planning) and wrap with visibility filtering
-            tool_defs, tool_callables = get_planning_tools(
-                chat.world_id, chat.id, planning_ctx,
-                context["stat_defs_list"], char_stats, world_stats,
-            )
-            wrapped_tools: dict[str, Callable] = {
-                name: _make_tool_wrapper(name, fn, queue, tool_call_records, caller_role)
-                for name, fn in tool_callables.items()
-            }
-
-            # Planning stage streaming — collect raw content and thinking
-            planning_parts: list[str] = []
-            planning_callback = _create_filtered_thinking_callback(
-                queue, planning_parts, caller_role, thinking_parts,
-            )
-
-            # LLM options
-            options: dict = {
-                "temperature": chat.tool_temperature,
-                "top_p": chat.tool_top_p,
-                "repeat_penalty": chat.tool_repeat_penalty,
-            }
-
-            max_loops = planning_stage.max_agent_steps or 10
-
-            logger.debug(
-                "%s Planning: calling chat_with_tools: model=%s, messages=%d, tools=%d, max_loops=%d",
-                lp, planning_model_id, len(llm_messages), len(tool_defs), max_loops,
-            )
-            client = await get_llm_client_for_model(planning_model_id)
-            async with client:
-                await client.chat_with_tools(
-                    llm_messages,
-                    tools_definitions=tool_defs,
-                    tools=wrapped_tools,
-                    system=planning_prompt,
-                    options=options,
-                    max_loops=max_loops,
-                    stream=True,
-                    on_delta=planning_callback,
-                )
-
-            logger.debug(
-                "%s Planning completed: facts=%d, decisions=%d, stat_updates=%d, tool_calls=%d",
-                lp, len(planning_ctx.facts), len(planning_ctx.decisions),
-                len(planning_ctx.stat_updates), len(tool_call_records),
-            )
-
-            # Convert PlanningContext → GenerationPlanOutput for persistence
-            plan = GenerationPlanOutput(
-                collected_data="\n".join(planning_ctx.facts),
-                decisions=planning_ctx.decisions,
-                stat_updates=planning_ctx.stat_updates,
-            )
-
-        # If no planning stage, create empty plan
-        if plan is None:
-            plan = GenerationPlanOutput()
-
-        # Stats already validated/applied by update_stat tool — use mutated dicts directly
-        new_char, new_world = char_stats, world_stats
-        logger.debug("%s Stats after planning: char=%s, world=%s", lp, new_char, new_world)
-
-        # Emit stat_update (always — marks phase boundary)
-        await queue.put(sse("stat_update", {"stats": {**new_char, **new_world}}))
-
-        # ---------------------------------------------------------------
-        # WRITING STAGE
-        # ---------------------------------------------------------------
-        prose_content = ""
-
-        if writing_stage:
-            logger.debug("%s === WRITING STAGE ===", lp)
-            await queue.put(sse("phase", {"phase": "writing"}))
-            await queue.put(sse("status", {"text": "Writing..."}))
-
-            # Build writing prompt
-            writing_prompt = build_writing_system_prompt(
-                world_name=world.name,
-                world_description=world.description,
-                character_name=chat.character_name,
-                character_description=chat.character_description,
-                lore_parts=context["injected_lore"],
-                admin_prompt=writing_stage.prompt,
-                user_instructions=chat.user_instructions,
-            )
-
-            # Build writer messages: summaries + clean user/assistant messages + plan
-            writer_messages: list[dict[str, str]] = []
-
-            summaries = await chats_db.list_summaries(session_id)
-            for s in summaries:
-                writer_messages.append({
-                    "role": "user",
-                    "content": f"[Summary of turns {s.start_turn}\u2013{s.end_turn}]:\n{s.content}",
-                })
-
-            # Clean messages: user + assistant only (no tool_calls content)
-            all_active = await chats_db.list_active_messages(session_id)
-            for m in all_active:
-                if m.role in ("user", "assistant"):
-                    writer_messages.append({
-                        "role": m.role,
-                        "content": m.content,
-                    })
-                elif m.role == "system":
-                    writer_messages.append({
-                        "role": "user",
-                        "content": m.content,
-                    })
-
-            # Reload context in case move_to_location was called during planning
-            chat_refreshed = await chats_db.get_session_by_id(session_id)
-            if chat_refreshed:
-                writer_context = await build_chat_context(chat_refreshed)
-            else:
-                writer_context = context
-
-            # Format post-update stats for the writer
-            updated_stats = _format_updated_stats(new_char, new_world)
-
-            # Add plan message with structural scene context
-            plan_message = build_writing_plan_message(
-                collected_data=plan.collected_data,
-                decisions=plan.decisions,
-                location_name=writer_context["location_name"],
-                present_npcs=writer_context["present_npcs"],
-                current_stats=updated_stats,
-            )
-            writer_messages.append({"role": "user", "content": plan_message})
-            logger.debug("%s Writing prompt: %d chars, plan message: %d chars, messages: %d", lp, len(writing_prompt), len(plan_message), len(writer_messages))
-
-            # Resolve writing model
-            writing_model_id = chat.text_model_id
-            if not writing_model_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="No model configured for writing stage",
-                )
-
-            # Get read-only tools for the writer
-            writer_tool_defs, writer_tool_callables = get_writer_tools(
-                chat.world_id, chat.id,
-            )
-            writer_tool_records: list[dict[str, Any]] = []
-            wrapped_writer_tools: dict[str, Callable] = {
-                name: _make_tool_wrapper(name, fn, queue, writer_tool_records, caller_role)
-                for name, fn in writer_tool_callables.items()
-            }
-
-            # Writing stage streaming with thinking tag detection
-            writing_parts: list[str] = []
-            writing_thinking_parts: list[str] = []
-            writing_callback = create_thinking_callback(queue, writing_parts, writing_thinking_parts)
-
-            writing_options: dict = {
-                "temperature": chat.text_temperature,
-                "top_p": chat.text_top_p,
-                "repeat_penalty": chat.text_repeat_penalty,
-            }
-
-            logger.debug(
-                "%s Writing: calling chat_with_tools: model=%s, messages=%d, tools=%d, max_loops=20",
-                lp, writing_model_id, len(writer_messages), len(writer_tool_defs),
-            )
-            writer_client = await get_llm_client_for_model(writing_model_id)
-            async with writer_client:
-                await writer_client.chat_with_tools(
-                    writer_messages,
-                    tools_definitions=writer_tool_defs,
-                    tools=wrapped_writer_tools,
-                    system=writing_prompt,
-                    options=writing_options,
-                    max_loops=20,
-                    stream=True,
-                    on_delta=writing_callback,
-                )
-
-            prose_content = "".join(writing_parts)
-            logger.debug(
-                "%s Writing completed: prose=%d chars, thinking=%d chars, writer_tool_calls=%d",
-                lp, len(prose_content), len("".join(writing_thinking_parts)), len(writer_tool_records),
-            )
-
-            # Merge writer tool records into main records
-            tool_call_records.extend(writer_tool_records)
-
-        # ---------------------------------------------------------------
-        # FINALIZE
-        # ---------------------------------------------------------------
-
-        # Combine thinking from both stages
-        all_thinking = thinking_parts + writing_thinking_parts
-        thinking_text = "".join(all_thinking) if all_thinking else None
-
-        # Save assistant message
-        msg_id = snowflake_svc.generate_id()
-        msg_now = now()
-        plan_json = plan.model_dump_json() if plan else None
-        asst_msg = ChatMessage(
-            id=msg_id,
-            session_id=session_id,
-            role="assistant",
-            content=prose_content,
-            turn_number=turn,
-            tool_calls=json.dumps(tool_call_records) if tool_call_records else None,
-            generation_plan=plan_json,
-            thinking_content=thinking_text,
-            is_active_variant=True,
-            created_at=msg_now,
+        await _finalize_chain(
+            lp, chat, turn, session_id, queue, prose_content,
+            char_stats, world_stats, all_planning_contexts,
+            tool_call_records, all_thinking_parts, is_regenerate,
         )
-        await chats_db.create_message(asst_msg)
-        logger.debug("%s Assistant message saved: id=%d, content=%d chars", lp, msg_id, len(prose_content))
-
-        # Update session state
-        chat.current_turn = turn
-        chat.character_stats = chats_db.serialize_stats(new_char)
-        chat.world_stats = chats_db.serialize_stats(new_world)
-        chat.modified_at = now()
-        await chats_db.update_session(chat)
-        logger.debug("%s Session updated: turn=%d", lp, turn)
-
-        # Save/update snapshot
-        if is_regenerate:
-            snap = await chats_db.get_snapshot_at_turn(session_id, turn)
-            if snap:
-                snap.character_stats = chats_db.serialize_stats(new_char)
-                snap.world_stats = chats_db.serialize_stats(new_world)
-                snap.location_id = chat.current_location_id
-                await chats_db.update_snapshot(snap)
-            else:
-                snap = ChatStateSnapshot(
-                    id=snowflake_svc.generate_id(),
-                    session_id=session_id,
-                    turn_number=turn,
-                    location_id=chat.current_location_id,
-                    character_stats=chats_db.serialize_stats(new_char),
-                    world_stats=chats_db.serialize_stats(new_world),
-                    created_at=now(),
-                )
-                await chats_db.create_snapshot(snap)
-        else:
-            snap = ChatStateSnapshot(
-                id=snowflake_svc.generate_id(),
-                session_id=session_id,
-                turn_number=turn,
-                location_id=chat.current_location_id,
-                character_stats=chats_db.serialize_stats(new_char),
-                world_stats=chats_db.serialize_stats(new_world),
-                created_at=now(),
-            )
-            await chats_db.create_snapshot(snap)
-
-        # Emit done
-        msg_resp = build_message_response(
-            msg_id=msg_id,
-            content=prose_content,
-            turn_number=turn,
-            created_at=msg_now,
-            tool_calls=tool_call_records if tool_call_records else None,
-            generation_plan=plan_json,
-            thinking_content=thinking_text,
-        )
-        await queue.put(sse("done", {"message": msg_resp}))
 
     except Exception as exc:
         logger.exception("Chain generation error")

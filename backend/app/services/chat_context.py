@@ -46,6 +46,10 @@ class ChatContext(TypedDict):
     injected_lore: str
     memories: str
     stat_defs_list: list[WorldStatDefinition]
+    # Consolidated fields for {PLACEHOLDER} template resolution
+    location_block: str
+    character_stats: str
+    world_stats: str
 
 
 async def build_chat_context(session: ChatSession) -> ChatContext:
@@ -91,6 +95,17 @@ async def build_chat_context(session: ChatSession) -> ChatContext:
     memories_list = await chats_db.list_memories(session.id)
     memories = "\n---\n".join(m.content for m in memories_list) if memories_list else ""
 
+    # Consolidated fields for placeholder resolution
+    location_block = _format_location_block(
+        location_name, location_description, location_exits, present_npcs,
+    )
+    character_stats_block = _format_scoped_stats(
+        "character", stat_defs, char_stats, world_stats_dict,
+    )
+    world_stats_block = _format_scoped_stats(
+        "world", stat_defs, char_stats, world_stats_dict,
+    )
+
     return ChatContext(
         world=world,
         location_name=location_name,
@@ -103,6 +118,9 @@ async def build_chat_context(session: ChatSession) -> ChatContext:
         injected_lore=injected_lore,
         memories=memories,
         stat_defs_list=stat_defs,
+        location_block=location_block,
+        character_stats=character_stats_block,
+        world_stats=world_stats_block,
     )
 
 
@@ -188,4 +206,76 @@ def _format_current_stats(
         parts.append("World stats:")
         for name, value in world_stats.items():
             parts.append(f"  {name}: {value}")
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Consolidated fields for {PLACEHOLDER} template resolution
+# ---------------------------------------------------------------------------
+
+def _format_location_block(
+    location_name: str,
+    location_description: str,
+    location_exits: str,
+    present_npcs: str,
+) -> str:
+    """Format location into a single block for the {LOCATION} placeholder."""
+    if not location_name:
+        return ""
+
+    parts = [f"**Location: {location_name}**"]
+    if location_description:
+        parts.append(location_description)
+    if location_exits:
+        parts.append(f"**Exits:** {location_exits}")
+    parts.append(
+        "When the player moves to a different location, you MUST call the "
+        "`move_to_location` tool with the exact location name."
+    )
+    if present_npcs:
+        parts.append(f"**NPCs present:**\n{present_npcs}")
+    return "\n\n".join(parts)
+
+
+def _format_scoped_stats(
+    scope: str,
+    stat_defs: list[WorldStatDefinition],
+    char_stats: dict[str, Any],
+    world_stats: dict[str, Any],
+) -> str:
+    """Format stat definitions + current values for a single scope.
+
+    Returns empty string if no stats exist for the given scope.
+    """
+    scoped_defs = [sd for sd in stat_defs if sd.scope.value == scope]
+    if not scoped_defs:
+        return ""
+
+    stats_dict = char_stats if scope == "character" else world_stats
+
+    parts: list[str] = []
+    for sd in scoped_defs:
+        line = f"- **{sd.name}** ({sd.stat_type.value}"
+        constraints: list[str] = []
+        if sd.stat_type.value == "int":
+            if sd.min_value is not None:
+                constraints.append(str(sd.min_value))
+            if sd.max_value is not None:
+                constraints.append(str(sd.max_value))
+            if constraints:
+                line += f", {'-'.join(constraints)}"
+        if sd.enum_values:
+            try:
+                vals = json.loads(sd.enum_values)
+                line += f", {'/'.join(str(v) for v in vals)}"
+            except json.JSONDecodeError:
+                pass
+        line += f"): {sd.description}"
+        # Append current value
+        if sd.name in stats_dict:
+            line += f" — Current: {stats_dict[sd.name]}"
+        if sd.hidden:
+            line += " (hidden from player)"
+        parts.append(line)
+
     return "\n".join(parts)
