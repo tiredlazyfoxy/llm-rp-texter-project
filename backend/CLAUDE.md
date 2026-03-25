@@ -32,8 +32,12 @@ backend/
       db_import_export.py — gzipped JSONL per table
       db_management.py    — DB introspection service (status, schema drift, create tables)
       prompts/           — LLM prompt package (one documented file per prompt, stage-4 docstring)
-        planning_system_prompt.py   — Planning stage system prompt (chain mode)
-        writing_system_prompt.py    — Writing stage system prompt (chain mode)
+        placeholder_registry.py     — Static registry of 11 prompt placeholders ({WORLD_NAME}, {RULES}, etc.)
+        tool_catalog.py             — Static registry of 11 tools with name, description, category
+        default_templates.py        — Default prompt templates (simple, tool, writer) using {PLACEHOLDER} syntax
+        world_field_editor_system_prompt.py — System prompt for LLM-assisted field editing
+        planning_system_prompt.py   — Planning stage system prompt (chain mode, legacy fallback)
+        writing_system_prompt.py    — Writing stage system prompt (chain mode, legacy fallback)
         writing_plan_message.py     — Plan injection template for writer
       chat_tools.py         — Chat tool implementations (8 chat tools + 3 planning tools) + factories: get_chat_tools(), get_writer_tools(), get_planning_tools()
       chat_context.py       — Context builder for rich system prompts
@@ -57,8 +61,8 @@ backend/
 
 `World.generation_mode` controls which generation flow is used for chat:
 
-- **`"simple"`** — Single LLM call with tools, rich system prompt, stat validation. Admin prompt: `World.system_prompt`. Service: `simple_generation_service.py`
-- **`"chain"`** — Pipeline stages from `World.pipeline` JSON (PipelineConfig). Default: planning stage builds context via `add_fact`/`add_decision`/`update_stat` tools (no JSON output) → writing (prose). Service: `chain_generation_service.py`
+- **`"simple"`** — Single LLM call with admin-selected tools, prompt template with `{PLACEHOLDER}` syntax, stat validation. Admin prompt: `World.system_prompt`. Tools: `World.simple_tools`. Service: `simple_generation_service.py`
+- **`"chain"`** — Pipeline stages from `World.pipeline` JSON (PipelineConfig). Each stage has step_type (`"tool"` or `"writer"`), admin-configurable prompt template, and per-stage tool selection. Default: tool stage → writer stage. Service: `chain_generation_service.py`
 - **`"agentic"`** (future) — Sub-agent orchestration, config in `World.agent_config`. Not yet implemented.
 
 Dispatch in `chat_agent_service.py` routes to the appropriate service. Shared infrastructure: `chat_tools.py`, `chat_context.py`, `stat_validation.py`, rich system prompt.
@@ -98,7 +102,7 @@ Dispatch in `chat_agent_service.py` routes to the appropriate service. Shared in
 | Table | Key Fields |
 |---|---|
 | `users` | username, role (admin/editor/player), pwdhash, jwt_signing_key |
-| `worlds` | name, system_prompt, character_template, generation_mode, pipeline, agent_config, status |
+| `worlds` | name, system_prompt, simple_tools, character_template, generation_mode, pipeline, agent_config, status |
 | `world_locations` | world_id, name, content, exits |
 | `world_npcs` | world_id, name, content |
 | `world_lore_facts` | world_id, content, is_injected (bool), weight (int) |

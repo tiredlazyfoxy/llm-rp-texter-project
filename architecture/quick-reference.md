@@ -18,7 +18,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **users**: id, username, pwdhash, salt, role (admin/editor/player), jwt_signing_key, last_login, last_key_update
 
-**worlds**: id, name, description, system_prompt, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), generation_mode (str: "simple"/"chain"/"agentic", default "simple"), pipeline (JSON — PipelineConfig for chain mode), agent_config (JSON — future agentic mode config), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts.)
+**worlds**: id, name, description, system_prompt (full prompt template with `{PLACEHOLDER}` syntax), simple_tools (JSON list of enabled tool names for simple mode), character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), generation_mode (str: "simple"/"chain"/"agentic", default "simple"), pipeline (JSON — PipelineConfig for chain mode), agent_config (JSON — future agentic mode config), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts.)
 
 **world_locations**: id, world_id, name, content (markdown), exits (JSON array of location IDs or None), created_at, modified_at
 
@@ -88,7 +88,7 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 
 ### Admin — Worlds (`/api/admin/worlds`) — stage1_step4
 
-CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. Includes `POST /api/admin/worlds/:id/reindex` for per-world vector reindex. (See stage1_step4 plan for full endpoint list.)
+CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. Includes `POST /api/admin/worlds/:id/reindex` for per-world vector reindex. `GET /api/admin/worlds/pipeline-config` returns static config data (placeholders, tools, default templates) for the admin prompt editor UI. (See stage1_step4 plan for full endpoint list.)
 
 ### Chats (`/api/chats`) — stage2_step3
 
@@ -221,8 +221,8 @@ Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions
 
 `World.generation_mode` controls which generation flow is used:
 
-- **`"simple"`** (default) — Single LLM call with tools available, rich system prompt, stat validation. Admin prompt: `World.system_prompt`. Service: `simple_generation_service.py`
-- **`"chain"`** — Pipeline stages defined in `World.pipeline` (PipelineConfig JSON). Default: planning stage (uses planning tools to build context — no JSON output) → writing stage (prose). Each stage has an admin-editable prompt. Service: `chain_generation_service.py`
+- **`"simple"`** (default) — Single LLM call with admin-selected tools, prompt template with `{PLACEHOLDER}` syntax, stat validation. Admin prompt: `World.system_prompt`. Tools: `World.simple_tools`. Service: `simple_generation_service.py`
+- **`"chain"`** — Pipeline stages defined in `World.pipeline` (PipelineConfig JSON). Each stage has step_type (`"tool"` or `"writer"`), admin-configurable prompt template with `{PLACEHOLDER}` syntax, and per-stage tool selection. Default: tool stage (research + planning tools) → writer stage (prose). Service: `chain_generation_service.py`
 - **`"agentic"`** (future) — Sub-agent orchestration, config in `World.agent_config`. Service: `agent_generation_service.py`. Not yet implemented.
 
 Dispatch: `chat_agent_service.py` routes to the appropriate service based on `generation_mode`.
@@ -232,14 +232,16 @@ Dispatch: `chat_agent_service.py` routes to the appropriate service based on `ge
 ```
 PipelineConfig:
   stages: list[PipelineStage]
-    step_type: "planning" | "writing"
-    prompt: str (admin-editable free text)
-    max_agent_steps: int | null (for tool-calling stages)
+    step_type: "tool" | "writer"           (was: "planning" | "writing")
+    name: str                              admin-defined stage label (e.g. "Research")
+    prompt: str                            full system prompt template with {PLACEHOLDER} syntax
+    max_agent_steps: int | null            for tool-calling stages
+    tools: list[str]                       enabled tool names from tool catalog
 
-PlanningContext:                         — built incrementally during planning stage
+PlanningContext:                         — built incrementally during tool stage
   facts: list[str]                       — added via add_fact() tool calls
   decisions: list[str]                   — added via add_decision() tool calls
-  stat_updates: dict[str, Any]           — added via update_stat() tool calls
+  stat_updates: list[StatUpdateEntry]    — added via update_stat() tool calls
   → converted to GenerationPlanOutput for persistence in chat_messages.generation_plan
 ```
 
@@ -277,8 +279,11 @@ Editor+ toggle in user settings. Controls UI visibility of tool call details, th
 - Stage 3 Step 2b: Chain mode backend (planning → writing pipeline, generation_plan, writer tools, memory enforcement) — done
 - Stage 3 Step 3: User UI (debug mode, message edit/delete, thinking_content storage, SSE phase/status, hidden stats filtering) — done
 
+- Stage 5 Step 1: Admin-configurable prompt templates — placeholder registry, tool catalog, per-stage tool selection, admin UI (placeholder panel, autocomplete, stage names) — done
+
 ## Backlog
 
+- Stage 5 Step 2: Prompt injection engine — resolve `{PLACEHOLDER}` in templates at runtime, refactor generation services (`plans/stage5_step2_prompt_injection_engine.md`)
 - Agent flow — sub-agent orchestration design (`plans/backlog.agent_flow.md`)
 - Agent mode — agentic generation mode design (`plans/backlog.agent_mode.md`)
 - Split research/planning — separate research and planning stages (`plans/backlog.split_research_planning.md`)

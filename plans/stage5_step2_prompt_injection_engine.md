@@ -6,7 +6,7 @@ Build the backend engine that resolves `{PLACEHOLDER}` patterns in admin-configu
 
 ## Prerequisites
 
-Step 1 complete: `PipelineStage.tools`, `World.simple_tools`, placeholder registry, tool catalog all in place.
+Step 1 complete: `PipelineStage.tools`, `PipelineStage.name`, `World.simple_tools`, placeholder registry, tool catalog, default templates (`default_templates.py`), pipeline-config API endpoint (returns placeholders, tools, and default_templates), admin UI (placeholder panel, autocomplete, per-stage tool selection, stage names) all in place.
 
 ---
 
@@ -143,7 +143,7 @@ Reuses existing `get_chat_tools()` internals. Planning tool closures same patter
 
 ### 4. Default Prompt Templates
 
-**New file**: `backend/app/services/prompts/default_templates.py`
+**Existing file** (created in Step 1): `backend/app/services/prompts/default_templates.py`
 
 Three string constants equivalent to the current hardcoded prompts but using `{PLACEHOLDER}` syntax:
 
@@ -303,27 +303,7 @@ Note: the writer gets facts + decisions injected as a user message (not in syste
 
 #### API Endpoint for Default Templates
 
-**File**: `backend/app/routes/admin/worlds.py`
-
-Extend the pipeline-config endpoint:
-
-```
-GET /api/admin/worlds/pipeline-config
-```
-
-Response now includes:
-
-```json
-{
-  "placeholders": [...],
-  "tools": [...],
-  "default_templates": {
-    "simple": "...",
-    "tool": "...",
-    "writer": "..."
-  }
-}
-```
+**Already done in Step 1.** `GET /api/admin/worlds/pipeline-config` already returns `default_templates` with `simple`, `tool`, and `writer` keys.
 
 ### 5. Simple Mode Refactor
 
@@ -628,11 +608,11 @@ Frontend receives the same events — no frontend SSE changes needed.
 
 1. `chat_context.py` — add `location_block`, `character_stats`, `world_stats` fields
 2. `prompt_injection.py` — core engine (resolve, build_tools_description, build_turn_plan_parts)
-3. `default_templates.py` — three default prompt constants
+3. ~~`default_templates.py` — done in Step 1~~
 4. `chat_tools.py` — add `get_tools_by_names()` factory
 5. `simple_generation_service.py` — refactor to use templates + tool selection
 6. `chain_generation_service.py` — refactor to dynamic N-step loop
-7. Extend pipeline-config API endpoint with default templates
+7. ~~Extend pipeline-config API endpoint — done in Step 1~~
 8. Integration test: existing chain worlds still work
 9. Integration test: custom prompts with placeholders resolve correctly
 
@@ -644,11 +624,11 @@ Frontend receives the same events — no frontend SSE changes needed.
 | --- | --- |
 | `backend/app/services/chat_context.py` | Add `location_block`, `character_stats`, `world_stats` to ChatContext |
 | `backend/app/services/prompts/prompt_injection.py` | NEW — resolve_prompt_template, build_tools_description, build_turn_plan_parts |
-| `backend/app/services/prompts/default_templates.py` | NEW — DEFAULT_SIMPLE_PROMPT, DEFAULT_TOOL_PROMPT, DEFAULT_WRITER_PROMPT |
+| `backend/app/services/prompts/default_templates.py` | EXISTS (Step 1) — DEFAULT_SIMPLE_PROMPT, DEFAULT_TOOL_PROMPT, DEFAULT_WRITER_PROMPT |
 | `backend/app/services/chat_tools.py` | Add get_tools_by_names() |
 | `backend/app/services/simple_generation_service.py` | Replace hardcoded prompt with template resolution |
 | `backend/app/services/chain_generation_service.py` | Replace hardcoded 2-stage with dynamic N-step loop |
-| `backend/app/routes/admin/worlds.py` | Extend pipeline-config endpoint with default templates |
+| `backend/app/routes/admin/worlds.py` | Already done (Step 1) — pipeline-config endpoint has default_templates |
 | `backend/app/services/prompts/chat_system_prompt.py` | KEEP as fallback (no changes) |
 | `backend/app/services/prompts/planning_system_prompt.py` | KEEP as fallback (no changes) |
 | `backend/app/services/prompts/writing_system_prompt.py` | KEEP as fallback (no changes) |

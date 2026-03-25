@@ -17,7 +17,9 @@ frontend/
       stores/            — ChatStore.ts (MobX)
     admin/               — Admin SPA (served at /admin)
       App.tsx, main.tsx
-      pages/             — WorldsList, WorldView, WorldEdit, DocumentEdit, PipelineStageEdit, LlmServersPage, DbManagementPage
+      pages/             — WorldsList, WorldView, WorldEdit, WorldFieldEdit, DocumentEdit, PipelineStageEdit, LlmServersPage, DbManagementPage
+      components/        — LlmChatPanel, PlaceholderPanel, PlaceholderSuggestions
+      hooks/             — usePlaceholderAutocomplete (inline {PLACEHOLDER} autocomplete)
     utils/               — Shared utilities (formatDate.ts, ...)
     api/                 — API client functions (chat.ts, llmServers.ts, dbManagement.ts, ...)
     types/               — TypeScript .d.ts interfaces matching backend schemas
