@@ -11,11 +11,11 @@ import {
   Text,
   Textarea,
   Title,
-  Tooltip,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import type { PipelineConfig, PipelineConfigOptions } from "../../types/world";
 import { LlmChatPanel } from "../components/LlmChatPanel";
+import { PlaceholderPanel } from "../components/PlaceholderPanel";
 import { PlaceholderSuggestions } from "../components/PlaceholderSuggestions";
 import { usePlaceholderAutocomplete } from "../hooks/usePlaceholderAutocomplete";
 import { getPipelineConfigOptions, getWorld, updateWorld } from "../../api/worlds";
@@ -28,16 +28,6 @@ function extractIds(): { worldId: string; stageIndex: number } | null {
   const m = window.location.pathname.match(/\/admin\/worlds\/(\d+)\/pipeline\/(\d+)/);
   if (!m) return null;
   return { worldId: m[1], stageIndex: parseInt(m[2]) };
-}
-
-/** Group items by a key function. */
-function groupBy<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
-  const result: Record<string, T[]> = {};
-  for (const item of items) {
-    const k = key(item);
-    (result[k] ??= []).push(item);
-  }
-  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,10 +144,6 @@ export function PipelineStageEditPage() {
     );
   }
 
-  const placeholderGroups = configOptions
-    ? groupBy(configOptions.placeholders, p => p.category)
-    : {};
-
   return (
     <Container size="lg" py="md">
       {/* Top bar */}
@@ -214,28 +200,11 @@ export function PipelineStageEditPage() {
 
         {/* Placeholder reference panel */}
         {configOptions && (
-          <Paper p="sm" withBorder>
-            <Text size="sm" fw={500} mb="xs">Placeholders (click to insert)</Text>
-            <Stack gap="xs">
-              {Object.entries(placeholderGroups).map(([category, placeholders]) => (
-                <Group key={category} gap="xs">
-                  <Text size="xs" c="dimmed" w={70}>{category}:</Text>
-                  {placeholders.map(p => (
-                    <Tooltip key={p.name} label={p.description} withArrow>
-                      <Badge
-                        size="sm"
-                        variant="outline"
-                        style={{ cursor: "pointer" }}
-                        onClick={() => insertPlaceholder(p.name)}
-                      >
-                        {`{${p.name}}`}
-                      </Badge>
-                    </Tooltip>
-                  ))}
-                </Group>
-              ))}
-            </Stack>
-          </Paper>
+          <PlaceholderPanel
+            placeholders={configOptions.placeholders}
+            content={content}
+            onInsert={insertPlaceholder}
+          />
         )}
 
         {/* Enabled tools for this stage (read-only) */}
