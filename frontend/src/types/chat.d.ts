@@ -57,6 +57,12 @@ interface ToolCallInfo {
   tool_name: string;
   arguments: Record<string, string | null>;
   result: string;
+  stage_name?: string;
+}
+
+interface ThinkingPart {
+  stage_name: string;
+  content: string;
 }
 
 interface GenerationPlanData {
@@ -196,6 +202,7 @@ interface SSEThinkingEvent {
 interface SSEToolCallStartEvent {
   tool_name: string;
   arguments: Record<string, string>;
+  stage_name?: string;
 }
 
 interface SSEToolCallResultEvent {

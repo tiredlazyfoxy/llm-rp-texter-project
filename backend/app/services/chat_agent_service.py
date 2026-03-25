@@ -79,6 +79,7 @@ def build_message_response(
                 tool_name=tc["tool_name"],
                 arguments=tc["arguments"],
                 result=tc["result"],
+                stage_name=tc.get("stage_name"),
             ).model_dump()
             for tc in tool_calls
         ]

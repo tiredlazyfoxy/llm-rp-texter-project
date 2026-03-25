@@ -8,8 +8,8 @@ interface ToolCallTraceProps {
   toolCalls: ToolCallInfo[];
   debugMode?: boolean;
   streaming?: boolean;
-  /** Start planning group collapsed (for completed messages) */
-  planningCollapsed?: boolean;
+  /** Start groups collapsed (for completed messages) */
+  defaultCollapsed?: boolean;
 }
 
 /** Human-readable label for a tool call, e.g. `get location for "Brine House"` */
@@ -101,18 +101,56 @@ function ToolCallGroup({
   );
 }
 
-export function ToolCallTrace({ toolCalls, debugMode, streaming, planningCollapsed }: ToolCallTraceProps) {
+/** Group tool calls by stage_name, preserving insertion order. */
+function groupByStage(toolCalls: ToolCallInfo[]): Array<{ stage: string; calls: ToolCallInfo[] }> {
+  const groups: Array<{ stage: string; calls: ToolCallInfo[] }> = [];
+  for (const tc of toolCalls) {
+    const stage = tc.stage_name || "";
+    const last = groups[groups.length - 1];
+    if (last && last.stage === stage) {
+      last.calls.push(tc);
+    } else {
+      groups.push({ stage, calls: [tc] });
+    }
+  }
+  return groups;
+}
+
+/** Legacy grouping by tool category (for old messages without stage_name). */
+function groupByCategory(toolCalls: ToolCallInfo[]): Array<{ stage: string; calls: ToolCallInfo[] }> {
+  const research = toolCalls.filter((tc) => !PLANNING_TOOLS.has(tc.tool_name));
+  const planning = toolCalls.filter((tc) => PLANNING_TOOLS.has(tc.tool_name));
+  const groups: Array<{ stage: string; calls: ToolCallInfo[] }> = [];
+  if (research.length > 0) groups.push({ stage: "Research", calls: research });
+  if (planning.length > 0) groups.push({ stage: "Planning", calls: planning });
+  return groups;
+}
+
+export function ToolCallTrace({ toolCalls, debugMode, streaming, defaultCollapsed }: ToolCallTraceProps) {
   if (toolCalls.length === 0) return null;
 
-  const researchCalls = toolCalls.filter((tc) => !PLANNING_TOOLS.has(tc.tool_name));
-  const planningCalls = toolCalls.filter((tc) => PLANNING_TOOLS.has(tc.tool_name));
+  // Completed messages: collapsible flat list
+  if (!streaming) {
+    return (
+      <ToolCallGroup
+        label={`Tool calls (${toolCalls.length})`}
+        toolCalls={toolCalls}
+        debugMode={debugMode}
+        defaultOpen={!defaultCollapsed}
+        count={undefined}
+      />
+    );
+  }
 
-  // No grouping needed if no planning tools were called
-  if (planningCalls.length === 0) {
+  // Streaming: group by stage for live debug visibility
+  const hasStageNames = toolCalls.some((tc) => tc.stage_name);
+  const groups = hasStageNames ? groupByStage(toolCalls) : groupByCategory(toolCalls);
+
+  if (groups.length <= 1) {
     return (
       <Stack gap={2} mt={4}>
         {toolCalls.map((tc, i) => (
-          <ToolCallItem key={i} tc={tc} debugMode={debugMode} streaming={streaming} />
+          <ToolCallItem key={i} tc={tc} debugMode={debugMode} streaming />
         ))}
       </Stack>
     );
@@ -120,24 +158,17 @@ export function ToolCallTrace({ toolCalls, debugMode, streaming, planningCollaps
 
   return (
     <Stack gap={4} mt={4}>
-      {researchCalls.length > 0 && (
+      {groups.map((g, i) => (
         <ToolCallGroup
-          label="Research"
-          toolCalls={researchCalls}
+          key={`${g.stage}-${i}`}
+          label={g.stage || `Step ${i + 1}`}
+          toolCalls={g.calls}
           debugMode={debugMode}
-          streaming={streaming}
-          defaultOpen={!planningCollapsed}
-          count={researchCalls.length}
+          streaming
+          defaultOpen={!defaultCollapsed}
+          count={g.calls.length}
         />
-      )}
-      <ToolCallGroup
-        label="Planning"
-        toolCalls={planningCalls}
-        debugMode={debugMode}
-        streaming={streaming}
-        defaultOpen={!planningCollapsed}
-        count={planningCalls.length}
-      />
+      ))}
     </Stack>
   );
 }

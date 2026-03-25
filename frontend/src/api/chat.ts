@@ -7,7 +7,7 @@ export interface ChatSSEHandlers {
   onToken?: (content: string) => void;
   onThinking?: (content: string) => void;
   onThinkingDone?: () => void;
-  onToolCallStart?: (toolName: string, args: Record<string, string>) => void;
+  onToolCallStart?: (toolName: string, args: Record<string, string>, stageName?: string) => void;
   onToolCallResult?: (toolName: string, result: string) => void;
   onPhase?: (phase: "planning" | "writing") => void;
   onStatus?: (text: string) => void;
@@ -159,6 +159,7 @@ function _streamChat(
               handlers.onToolCallStart?.(
                 parsed.tool_name as string,
                 parsed.arguments as Record<string, string>,
+                parsed.stage_name as string | undefined,
               );
               break;
             case "tool_call_result":

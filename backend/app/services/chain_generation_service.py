@@ -85,6 +85,7 @@ def _make_tool_wrapper(
     queue: asyncio.Queue,
     tool_call_records: list[dict[str, Any]],
     caller_role: str,
+    stage_name: str = "",
 ) -> Callable:
     """Wrap tool callable for SSE emission with visibility filtering."""
     @functools.wraps(fn)
@@ -92,7 +93,9 @@ def _make_tool_wrapper(
         logger.debug("Tool call: %s(%s)", name, ", ".join(f"{k}={v!r}" for k, v in kwargs.items()))
         # Editor+ sees tool call details; players only get status
         if caller_role != "player":
-            await queue.put(sse("tool_call_start", {"tool_name": name, "arguments": kwargs}))
+            await queue.put(sse("tool_call_start", {
+                "tool_name": name, "arguments": kwargs, "stage_name": stage_name,
+            }))
         else:
             await queue.put(sse("status", {"text": f"Using {name}..."}))
 
@@ -104,9 +107,8 @@ def _make_tool_wrapper(
             if caller_role != "player":
                 await queue.put(sse("tool_call_result", {"tool_name": name, "result": error_msg}))
             tool_call_records.append({
-                "tool_name": name,
-                "arguments": kwargs,
-                "result": error_msg,
+                "tool_name": name, "arguments": kwargs,
+                "result": error_msg, "stage_name": stage_name,
             })
             return error_msg
 
@@ -114,9 +116,8 @@ def _make_tool_wrapper(
         if caller_role != "player":
             await queue.put(sse("tool_call_result", {"tool_name": name, "result": result}))
         tool_call_records.append({
-            "tool_name": name,
-            "arguments": kwargs,
-            "result": result,
+            "tool_name": name, "arguments": kwargs,
+            "result": result, "stage_name": stage_name,
         })
         return result
     return wrapper
@@ -282,9 +283,8 @@ async def _run_tool_stage(
     char_stats: dict[str, Any],
     world_stats: dict[str, Any],
     tool_call_records: list[dict[str, Any]],
-    all_thinking_parts: list[str],
-) -> None:
-    """Execute a single tool step in the pipeline."""
+) -> str:
+    """Execute a single tool step. Returns thinking text (may be empty)."""
     phase_label = stage.name or f"Tool step {stage_idx + 1}"
     logger.debug("%s === TOOL STAGE %d: %s ===", lp, stage_idx, phase_label)
     await queue.put(sse("phase", {"phase": "planning"}))
@@ -324,7 +324,7 @@ async def _run_tool_stage(
     # Wrap tools, stream, call LLM
     stage_records: list[dict[str, Any]] = []
     wrapped = {
-        name: _make_tool_wrapper(name, fn, queue, stage_records, caller_role)
+        name: _make_tool_wrapper(name, fn, queue, stage_records, caller_role, stage_name=phase_label)
         for name, fn in tool_callables.items()
     }
     planning_parts: list[str] = []
@@ -358,7 +358,7 @@ async def _run_tool_stage(
 
     all_planning_contexts.append(planning_ctx)
     tool_call_records.extend(stage_records)
-    all_thinking_parts.extend(stage_thinking)
+    return "".join(stage_thinking)
 
 
 async def _run_writer_stage(
@@ -374,9 +374,8 @@ async def _run_writer_stage(
     char_stats: dict[str, Any],
     world_stats: dict[str, Any],
     tool_call_records: list[dict[str, Any]],
-    all_thinking_parts: list[str],
-) -> str:
-    """Execute a single writer step. Returns prose content."""
+) -> tuple[str, str]:
+    """Execute a single writer step. Returns (prose_content, thinking_text)."""
     phase_label = stage.name or "Writing"
     logger.debug("%s === WRITER STAGE %d: %s ===", lp, stage_idx, phase_label)
     await queue.put(sse("phase", {"phase": "writing"}))
@@ -434,7 +433,7 @@ async def _run_writer_stage(
 
     stage_records: list[dict[str, Any]] = []
     wrapped = {
-        name: _make_tool_wrapper(name, fn, queue, stage_records, caller_role)
+        name: _make_tool_wrapper(name, fn, queue, stage_records, caller_role, stage_name=phase_label)
         for name, fn in tool_callables.items()
     }
 
@@ -468,8 +467,7 @@ async def _run_writer_stage(
     )
 
     tool_call_records.extend(stage_records)
-    all_thinking_parts.extend(writing_thinking)
-    return prose
+    return prose, "".join(writing_thinking)
 
 
 async def _finalize_chain(
@@ -483,7 +481,7 @@ async def _finalize_chain(
     world_stats: dict[str, Any],
     all_planning_contexts: list[PlanningContext],
     tool_call_records: list[dict[str, Any]],
-    all_thinking_parts: list[str],
+    thinking_parts: list[dict[str, str]],
     is_regenerate: bool,
 ) -> None:
     """Save message, update session/snapshot, emit done."""
@@ -493,7 +491,7 @@ async def _finalize_chain(
     await queue.put(sse("stat_update", {"stats": {**new_char, **new_world}}))
 
     combined_plan = _combine_planning_contexts(all_planning_contexts)
-    thinking_text = "".join(all_thinking_parts) if all_thinking_parts else None
+    thinking_text = json.dumps(thinking_parts) if thinking_parts else None
     plan_json = combined_plan.model_dump_json() if all_planning_contexts else None
 
     # Save assistant message
@@ -595,7 +593,7 @@ async def _run_chain_generation(
         context = await build_chat_context(chat)
         all_planning_contexts: list[PlanningContext] = []
         tool_call_records: list[dict[str, Any]] = []
-        all_thinking_parts: list[str] = []
+        thinking_parts: list[dict[str, str]] = []
         prose_content = ""
         char_stats = chats_db.parse_stats(chat.character_stats)
         world_stats = chats_db.parse_stats(chat.world_stats)
@@ -603,11 +601,14 @@ async def _run_chain_generation(
         # Run pipeline stages
         for stage_idx, stage in enumerate(pipeline.stages):
             if stage.step_type == "tool":
-                await _run_tool_stage(
+                stage_label = stage.name or f"Tool step {stage_idx + 1}"
+                thinking_text = await _run_tool_stage(
                     lp, stage, stage_idx, chat, context, llm_messages, queue, caller_role,
                     all_planning_contexts, char_stats, world_stats,
-                    tool_call_records, all_thinking_parts,
+                    tool_call_records,
                 )
+                if thinking_text:
+                    thinking_parts.append({"stage_name": stage_label, "content": thinking_text})
                 # Refresh context (move_to_location may have changed it)
                 chat_refreshed = await chats_db.get_session_by_id(session_id)
                 if chat_refreshed:
@@ -615,16 +616,19 @@ async def _run_chain_generation(
                     chat = chat_refreshed
 
             elif stage.step_type == "writer":
-                prose_content = await _run_writer_stage(
+                stage_label = stage.name or "Writing"
+                prose_content, thinking_text = await _run_writer_stage(
                     lp, stage, stage_idx, chat, session_id, context, queue, caller_role,
                     all_planning_contexts, char_stats, world_stats,
-                    tool_call_records, all_thinking_parts,
+                    tool_call_records,
                 )
+                if thinking_text:
+                    thinking_parts.append({"stage_name": stage_label, "content": thinking_text})
 
         await _finalize_chain(
             lp, chat, turn, session_id, queue, prose_content,
             char_stats, world_stats, all_planning_contexts,
-            tool_call_records, all_thinking_parts, is_regenerate,
+            tool_call_records, thinking_parts, is_regenerate,
         )
 
     except Exception as exc:

@@ -42,6 +42,31 @@ interface MessageBubbleProps {
   onSelectVariant?: (index: number) => void;
 }
 
+function ThinkingSection({ label, content }: { label: string; content: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <UnstyledButton onClick={() => setOpen((o) => !o)}>
+        <Group gap={4}>
+          {open ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
+          <Text size="xs" c="dimmed" fw={600}>{label} — Thinking</Text>
+        </Group>
+      </UnstyledButton>
+      <Collapse in={open}>
+        <Text
+          size="xs"
+          c="dimmed"
+          style={{ whiteSpace: "pre-wrap", fontFamily: "monospace", maxHeight: 300, overflow: "auto" }}
+          mt={2}
+          pl="xs"
+        >
+          {content}
+        </Text>
+      </Collapse>
+    </div>
+  );
+}
+
 export const MessageBubble = observer(function MessageBubble({
   message,
   isStreaming,
@@ -87,6 +112,19 @@ export const MessageBubble = observer(function MessageBubble({
   // Resolve display fields: variant (rich types) or message (JSON strings)
   const displayToolCalls = viewedVariant ? viewedVariant.tool_calls : message.tool_calls;
   const displayThinking = viewedVariant ? viewedVariant.thinking_content : message.thinking_content;
+
+  // Parse structured thinking (per-stage) or fall back to flat text
+  let thinkingParts: ThinkingPart[] | null = null;
+  if (debug && displayThinking) {
+    try {
+      const parsed: unknown = JSON.parse(displayThinking);
+      if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0].stage_name === "string") {
+        thinkingParts = parsed as ThinkingPart[];
+      }
+    } catch {
+      // plain text (old format) — thinkingParts stays null
+    }
+  }
 
   async function handleRewind() {
     if (!confirm(`Rewind to turn ${message.turn_number - 1}?`)) return;
@@ -227,28 +265,38 @@ export const MessageBubble = observer(function MessageBubble({
 
         {/* Stored thinking content (debug mode only, loaded messages) */}
         {debug && !isStreaming && displayThinking && (
-          <>
-            <UnstyledButton onClick={() => setThinkOpen((o) => !o)}>
-              <Group gap={4}>
-                <Text size="xs" c="dimmed">Thinking</Text>
-                {thinkOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
-              </Group>
-            </UnstyledButton>
-            <Collapse in={thinkOpen}>
-              <Text
-                size="xs"
-                c="dimmed"
-                style={{ whiteSpace: "pre-wrap", fontFamily: "monospace", maxHeight: 300, overflow: "auto" }}
-              >
-                {displayThinking}
-              </Text>
-            </Collapse>
-          </>
+          thinkingParts ? (
+            // Per-stage structured thinking
+            <Stack gap={4} mt={4}>
+              {thinkingParts.map((tp, i) => (
+                <ThinkingSection key={i} label={tp.stage_name} content={tp.content} />
+              ))}
+            </Stack>
+          ) : (
+            // Legacy flat thinking text
+            <>
+              <UnstyledButton onClick={() => setThinkOpen((o) => !o)}>
+                <Group gap={4}>
+                  <Text size="xs" c="dimmed">Thinking</Text>
+                  {thinkOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
+                </Group>
+              </UnstyledButton>
+              <Collapse in={thinkOpen}>
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  style={{ whiteSpace: "pre-wrap", fontFamily: "monospace", maxHeight: 300, overflow: "auto" }}
+                >
+                  {displayThinking}
+                </Text>
+              </Collapse>
+            </>
+          )
         )}
 
         {/* Tool calls (above content for completed messages) */}
         {!isStreaming && displayToolCalls && displayToolCalls.length > 0 && (
-          <ToolCallTrace toolCalls={displayToolCalls} debugMode={debug} planningCollapsed />
+          <ToolCallTrace toolCalls={displayToolCalls} debugMode={debug} defaultCollapsed />
         )}
 
         {/* Generation plan (debug mode, chain mode) */}

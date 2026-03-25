@@ -22,7 +22,7 @@ class ChatStore {
   // Streaming state
   streamingContent = "";
   streamingThinking = "";
-  streamingToolCalls: Array<{ tool_name: string; arguments: Record<string, string>; result?: string }> = [];
+  streamingToolCalls: Array<{ tool_name: string; arguments: Record<string, string>; result?: string; stage_name?: string }> = [];
   isThinking = false;
 
   // Variant state — index the user is currently viewing (for auto-commit on send)
@@ -177,10 +177,10 @@ class ChatStore {
           onToken: (t) => runInAction(() => { this.streamingContent += t; }),
           onThinking: (t) => runInAction(() => { this.streamingThinking += t; }),
           onThinkingDone: () => runInAction(() => { this.isThinking = false; }),
-          onToolCallStart: (name, args) => {
-            console.debug("[Chat] tool_call_start:", name, args);
+          onToolCallStart: (name, args, stageName) => {
+            console.debug("[Chat] tool_call_start:", name, args, stageName);
             runInAction(() => {
-              this.streamingToolCalls.push({ tool_name: name, arguments: args });
+              this.streamingToolCalls.push({ tool_name: name, arguments: args, stage_name: stageName });
             });
           },
           onToolCallResult: (name, result) => {
@@ -283,9 +283,9 @@ class ChatStore {
         onToken: (t) => runInAction(() => { this.streamingContent += t; }),
         onThinking: (t) => runInAction(() => { this.streamingThinking += t; }),
         onThinkingDone: () => runInAction(() => { this.isThinking = false; }),
-        onToolCallStart: (name, args) =>
+        onToolCallStart: (name, args, stageName) =>
           runInAction(() => {
-            this.streamingToolCalls.push({ tool_name: name, arguments: args });
+            this.streamingToolCalls.push({ tool_name: name, arguments: args, stage_name: stageName });
           }),
         onToolCallResult: (name, result) =>
           runInAction(() => {
@@ -510,9 +510,9 @@ class ChatStore {
         onToken: (t) => runInAction(() => { this.streamingContent += t; }),
         onThinking: (t) => runInAction(() => { this.streamingThinking += t; }),
         onThinkingDone: () => runInAction(() => { this.isThinking = false; }),
-        onToolCallStart: (name, args) =>
+        onToolCallStart: (name, args, stageName) =>
           runInAction(() => {
-            this.streamingToolCalls.push({ tool_name: name, arguments: args });
+            this.streamingToolCalls.push({ tool_name: name, arguments: args, stage_name: stageName });
           }),
         onToolCallResult: (name, result) =>
           runInAction(() => {

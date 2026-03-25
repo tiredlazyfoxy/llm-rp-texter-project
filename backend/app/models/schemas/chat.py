@@ -78,6 +78,7 @@ class ToolCallInfo(BaseModel):
     tool_name: str
     arguments: dict[str, str | None]
     result: str
+    stage_name: str | None = None
 
 
 class ChatMessageResponse(BaseModel):

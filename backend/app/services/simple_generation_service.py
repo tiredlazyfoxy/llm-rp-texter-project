@@ -57,12 +57,15 @@ def _make_tool_wrapper(
     fn: Callable,
     queue: asyncio.Queue,
     tool_call_records: list[dict[str, Any]],
+    stage_name: str = "Generation",
 ) -> Callable:
     """Wrap a tool callable to emit SSE events and record calls."""
     @functools.wraps(fn)
     async def wrapper(**kwargs: Any) -> str:
         logger.debug("Tool call: %s(%s)", name, ", ".join(f"{k}={v!r}" for k, v in kwargs.items()))
-        await queue.put(sse("tool_call_start", {"tool_name": name, "arguments": kwargs}))
+        await queue.put(sse("tool_call_start", {
+            "tool_name": name, "arguments": kwargs, "stage_name": stage_name,
+        }))
         try:
             result = await fn(**kwargs)
         except Exception as exc:
@@ -70,17 +73,15 @@ def _make_tool_wrapper(
             logger.debug("Tool error: %s -> %s", name, error_msg[:200])
             await queue.put(sse("tool_call_result", {"tool_name": name, "result": error_msg}))
             tool_call_records.append({
-                "tool_name": name,
-                "arguments": kwargs,
-                "result": error_msg,
+                "tool_name": name, "arguments": kwargs,
+                "result": error_msg, "stage_name": stage_name,
             })
             return error_msg
         logger.debug("Tool result: %s -> %s", name, result[:200] if isinstance(result, str) else str(result)[:200])
         await queue.put(sse("tool_call_result", {"tool_name": name, "result": result}))
         tool_call_records.append({
-            "tool_name": name,
-            "arguments": kwargs,
-            "result": result,
+            "tool_name": name, "arguments": kwargs,
+            "result": result, "stage_name": stage_name,
         })
         return result
     return wrapper
