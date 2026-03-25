@@ -16,6 +16,8 @@ import {
 import { IconArrowLeft } from "@tabler/icons-react";
 import type { PipelineConfigOptions, UpdateWorldRequest, WorldDetail } from "../../types/world";
 import { LlmChatPanel } from "../components/LlmChatPanel";
+import { PlaceholderSuggestions } from "../components/PlaceholderSuggestions";
+import { usePlaceholderAutocomplete } from "../hooks/usePlaceholderAutocomplete";
 import { getPipelineConfigOptions, getWorld, updateWorld } from "../../api/worlds";
 
 // ---------------------------------------------------------------------------
@@ -73,6 +75,9 @@ export function WorldFieldEditPage() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isPipelinePrompt = fieldName === "system_prompt";
+  const autocomplete = usePlaceholderAutocomplete(
+    configOptions?.placeholders ?? [], textareaRef, content, setContent,
+  );
 
   const load = useCallback(async () => {
     if (!worldId) return;
@@ -186,15 +191,29 @@ export function WorldFieldEditPage() {
 
       <Stack gap="md">
         {/* Field textarea */}
-        <Textarea
-          ref={textareaRef}
-          value={content}
-          onChange={(e) => setContent(e.currentTarget.value)}
-          autosize
-          minRows={4}
-          maxRows={30}
-          styles={{ input: { fontFamily: "monospace" } }}
-        />
+        <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
+          <Textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => {
+              setContent(e.currentTarget.value);
+              if (isPipelinePrompt) autocomplete.onTextChange(e.currentTarget.value, e.currentTarget);
+            }}
+            onKeyDown={isPipelinePrompt ? autocomplete.onKeyDown : undefined}
+            autosize
+            minRows={4}
+            styles={{ input: { fontFamily: "monospace" } }}
+          />
+        </div>
+        {isPipelinePrompt && (
+          <PlaceholderSuggestions
+            visible={autocomplete.visible}
+            suggestions={autocomplete.suggestions}
+            selectedIndex={autocomplete.selectedIndex}
+            position={autocomplete.position}
+            onSelect={autocomplete.onSelect}
+          />
+        )}
 
         {/* Placeholder reference panel (system_prompt only) */}
         {isPipelinePrompt && configOptions && (

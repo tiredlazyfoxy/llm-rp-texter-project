@@ -16,6 +16,8 @@ import {
 import { IconArrowLeft } from "@tabler/icons-react";
 import type { PipelineConfig, PipelineConfigOptions } from "../../types/world";
 import { LlmChatPanel } from "../components/LlmChatPanel";
+import { PlaceholderSuggestions } from "../components/PlaceholderSuggestions";
+import { usePlaceholderAutocomplete } from "../hooks/usePlaceholderAutocomplete";
 import { getPipelineConfigOptions, getWorld, updateWorld } from "../../api/worlds";
 
 // ---------------------------------------------------------------------------
@@ -60,6 +62,9 @@ export function PipelineStageEditPage() {
   const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const autocomplete = usePlaceholderAutocomplete(
+    configOptions?.placeholders ?? [], textareaRef, content, setContent,
+  );
 
   const load = useCallback(async () => {
     if (!worldId) return;
@@ -185,14 +190,26 @@ export function PipelineStageEditPage() {
 
       <Stack gap="md">
         {/* Prompt textarea */}
-        <Textarea
-          ref={textareaRef}
-          value={content}
-          onChange={(e) => setContent(e.currentTarget.value)}
-          autosize
-          minRows={12}
-          maxRows={40}
-          styles={{ input: { fontFamily: "monospace" } }}
+        <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
+          <Textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => {
+              setContent(e.currentTarget.value);
+              autocomplete.onTextChange(e.currentTarget.value, e.currentTarget);
+            }}
+            onKeyDown={autocomplete.onKeyDown}
+            autosize
+            minRows={12}
+            styles={{ input: { fontFamily: "monospace" } }}
+          />
+        </div>
+        <PlaceholderSuggestions
+          visible={autocomplete.visible}
+          suggestions={autocomplete.suggestions}
+          selectedIndex={autocomplete.selectedIndex}
+          position={autocomplete.position}
+          onSelect={autocomplete.onSelect}
         />
 
         {/* Placeholder reference panel */}
