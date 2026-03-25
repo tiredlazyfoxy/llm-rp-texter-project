@@ -45,12 +45,34 @@ _FIELD_ROLES = {
         "This is the first message players see when they start a new chat session. "
         "Available placeholders: `{{character_name}}`, `{{location_name}}`, `{{location_summary}}`."
     ),
+    "pipeline_prompt": (
+        "You are helping write a **pipeline stage prompt** for the RPG world \"{world_name}\". "
+        "This prompt is the system message for a generation step. "
+        "The admin uses {{PLACEHOLDER}} syntax to inject runtime data. "
+        "Each placeholder is an injection point — the code formats the data, the prompt just marks where it goes.\n\n"
+        "Available placeholders:\n"
+        "- {{WORLD_NAME}} — World display name\n"
+        "- {{RULES}} — Numbered world rules\n"
+        "- {{INJECTED_LORE}} — Always-injected lore facts\n"
+        "- {{LOCATION}} — Full location block: name, description, exits, NPCs present\n"
+        "- {{CHARACTER_NAME}} — Player character name\n"
+        "- {{CHARACTER_STATS}} — Character-scope stats: definitions + current values\n"
+        "- {{WORLD_STATS}} — World-scope stats: definitions + current values\n"
+        "- {{USER_INSTRUCTIONS}} — Player instructions\n"
+        "- {{TURN_FACTS}} — Collected context/facts from previous tool steps (chain mode writer only)\n"
+        "- {{TURN_DECISIONS}} — Decisions/outcomes to execute from previous tool steps (chain mode writer only)\n"
+        "- {{TOOLS}} — Auto-generated list of available tools\n\n"
+        "Write the prompt using these placeholders where appropriate. "
+        "Use markdown headers to organize sections. "
+        "Empty placeholders resolve to empty string at runtime."
+    ),
 }
 
 _FIELD_LABELS = {
     "description": "World Description",
     "system_prompt": "System Prompt",
     "initial_message": "Initial Message",
+    "pipeline_prompt": "Pipeline Stage Prompt",
 }
 
 

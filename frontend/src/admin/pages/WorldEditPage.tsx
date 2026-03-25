@@ -10,6 +10,7 @@ import {
   Group,
   Loader,
   Modal,
+  MultiSelect,
   NumberInput,
   Paper,
   Select,
@@ -32,7 +33,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { getCurrentUser } from "../../auth";
-import type { PipelineConfig, PipelineStage, RuleItem, StatDefinitionItem, WorldDetail } from "../../types/world";
+import type { PipelineConfig, PipelineConfigOptions, PipelineStage, RuleItem, StatDefinitionItem, WorldDetail } from "../../types/world";
 import {
   cloneWorld,
   createRule,
@@ -40,6 +41,7 @@ import {
   deleteRule,
   deleteStat,
   deleteWorld,
+  getPipelineConfigOptions,
   getWorld,
   reorderRules,
   updateRule,
@@ -261,7 +263,9 @@ export function WorldEditPage() {
   const [pipeline, setPipeline] = useState("{}");
   const [generationMode, setGenerationMode] = useState("simple");
   const [pipelineConfig, setPipelineConfig] = useState<PipelineConfig>({ stages: [] });
+  const [simpleTools, setSimpleTools] = useState<string[]>([]);
   const [worldStatus, setWorldStatus] = useState("draft");
+  const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
 
   // Resizable textarea heights (persisted to localStorage)
   const LS_HEIGHT = "llmrp_world_editor_height_";
@@ -308,6 +312,7 @@ export function WorldEditPage() {
       setDescription(detail.description);
       setLore(detail.lore);
       setSystemPrompt(detail.system_prompt);
+      try { setSimpleTools(JSON.parse(detail.simple_tools || "[]")); } catch { setSimpleTools([]); }
       setCharacterTemplate(detail.character_template);
       setInitialMessage(detail.initial_message);
       setPipeline(detail.pipeline);
@@ -330,6 +335,7 @@ export function WorldEditPage() {
 
   useEffect(() => {
     loadWorld();
+    getPipelineConfigOptions().then(setConfigOptions).catch(() => {});
   }, [loadWorld]);
 
   const handleSave = async () => {
@@ -343,6 +349,7 @@ export function WorldEditPage() {
         : pipeline;
       await updateWorld(worldId, {
         name, description, lore, system_prompt: systemPrompt,
+        simple_tools: JSON.stringify(simpleTools),
         character_template: characterTemplate, initial_message: initialMessage,
         pipeline: serializedPipeline, generation_mode: generationMode,
         status: worldStatus,
@@ -503,19 +510,37 @@ export function WorldEditPage() {
               if (mode === "chain" && pipelineConfig.stages.length === 0) {
                 setPipelineConfig({
                   stages: [
-                    { step_type: "planning", prompt: "", max_agent_steps: 10 },
-                    { step_type: "writing", prompt: "", max_agent_steps: null },
+                    { step_type: "tool", prompt: "", max_agent_steps: 10, tools: [] },
+                    { step_type: "writer", prompt: "", max_agent_steps: null, tools: [] },
                   ],
                 });
               }
             }}
           />
           {generationMode === "simple" && (
-            <Textarea
-              label={<Group gap={4} wrap="nowrap">System Prompt<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/system_prompt`}><IconSparkles size={12} /></ActionIcon></Group>}
-              value={systemPrompt} onChange={e => setSystemPrompt(e.currentTarget.value)}
-              {...resizable("system_prompt")}
-            />
+            <>
+              <Textarea
+                label={<Group gap={4} wrap="nowrap">System Prompt Template<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/system_prompt`}><IconSparkles size={12} /></ActionIcon></Group>}
+                value={systemPrompt} onChange={e => setSystemPrompt(e.currentTarget.value)}
+                {...resizable("system_prompt")}
+              />
+              {configOptions && (
+                <MultiSelect
+                  label="Enabled Tools"
+                  description="Tools available to the LLM in simple mode. Empty = all tools."
+                  data={Object.entries(
+                          configOptions.tools.reduce<Record<string, { value: string; label: string }[]>>((acc, t) => {
+                            (acc[t.category] ??= []).push({ value: t.name, label: t.name });
+                            return acc;
+                          }, {})
+                        ).map(([group, items]) => ({ group, items }))}
+                  value={simpleTools}
+                  onChange={setSimpleTools}
+                  searchable
+                  clearable
+                />
+              )}
+            </>
           )}
           {generationMode === "chain" && (
             <Stack gap="xs">
@@ -525,8 +550,8 @@ export function WorldEditPage() {
                   size="xs"
                   placeholder="Add stage..."
                   data={[
-                    { value: "planning", label: "Planning" },
-                    { value: "writing", label: "Writing" },
+                    { value: "tool", label: "Tool" },
+                    { value: "writer", label: "Writer" },
                   ]}
                   value={null}
                   onChange={v => {
@@ -534,7 +559,8 @@ export function WorldEditPage() {
                     const newStage: PipelineStage = {
                       step_type: v,
                       prompt: "",
-                      max_agent_steps: v === "planning" ? 10 : null,
+                      max_agent_steps: v === "tool" ? 10 : null,
+                      tools: [],
                     };
                     setPipelineConfig(prev => ({ stages: [...prev.stages, newStage] }));
                   }}
@@ -542,6 +568,21 @@ export function WorldEditPage() {
                   w={160}
                 />
               </Group>
+              {/* Validation warnings */}
+              {pipelineConfig.stages.length > 0 && (() => {
+                const warnings: string[] = [];
+                const last = pipelineConfig.stages[pipelineConfig.stages.length - 1];
+                if (last.step_type !== "writer" && last.step_type !== "writing") warnings.push("Last stage should be a writer step");
+                if (!pipelineConfig.stages.some(s => s.step_type === "writer" || s.step_type === "writing")) warnings.push("Pipeline needs at least one writer stage");
+                pipelineConfig.stages.forEach((s, i) => {
+                  if ((s.step_type === "tool" || s.step_type === "planning") && s.tools.length === 0) warnings.push(`Stage ${i + 1}: no tools selected`);
+                });
+                return warnings.length > 0 ? (
+                  <Alert color="yellow" variant="light">
+                    {warnings.map((w, i) => <Text key={i} size="sm">{w}</Text>)}
+                  </Alert>
+                ) : null;
+              })()}
               {pipelineConfig.stages.length === 0 ? (
                 <Text c="dimmed" size="sm">No stages defined.</Text>
               ) : (
@@ -551,8 +592,8 @@ export function WorldEditPage() {
                     <Group justify="space-between" wrap="nowrap">
                       <Group gap="xs" wrap="nowrap">
                         <Badge size="sm" variant="light" circle>{idx + 1}</Badge>
-                        <Badge size="sm" variant="outline">{stage.step_type}</Badge>
-                        {stage.step_type === "planning" && (
+                        <Badge size="sm" variant="outline" color={(stage.step_type === "tool" || stage.step_type === "planning") ? "violet" : "teal"}>{stage.step_type}</Badge>
+                        {(stage.step_type === "tool" || stage.step_type === "planning") && (
                           <NumberInput
                             size="xs"
                             label="Max steps"
@@ -596,6 +637,26 @@ export function WorldEditPage() {
                         </ActionIcon>
                       </Group>
                     </Group>
+                    {configOptions && (
+                      <MultiSelect
+                        size="xs"
+                        placeholder="Select tools..."
+                        data={Object.entries(
+                          configOptions.tools.reduce<Record<string, { value: string; label: string }[]>>((acc, t) => {
+                            (acc[t.category] ??= []).push({ value: t.name, label: t.name });
+                            return acc;
+                          }, {})
+                        ).map(([group, items]) => ({ group, items }))}
+                        value={stage.tools || []}
+                        onChange={v => {
+                          const stages = [...pipelineConfig.stages];
+                          stages[idx] = { ...stages[idx], tools: v };
+                          setPipelineConfig({ stages });
+                        }}
+                        searchable
+                        clearable
+                      />
+                    )}
                     {stage.prompt ? (
                       <div
                         style={{

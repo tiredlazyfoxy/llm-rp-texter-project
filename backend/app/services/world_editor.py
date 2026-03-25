@@ -191,12 +191,48 @@ async def get_world_detail(world_id: int) -> WorldDetailData:
 
 def _validate_pipeline_json(pipeline_json: str) -> None:
     from app.models.schemas.pipeline import PipelineConfig
+    from app.services.prompts.tool_catalog import ALL_TOOL_NAMES
     try:
-        PipelineConfig.model_validate_json(pipeline_json)
+        config = PipelineConfig.model_validate_json(pipeline_json)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid pipeline config: {e}",
+        )
+    for i, stage in enumerate(config.stages):
+        if stage.step_type not in ("tool", "writer", "planning", "writing"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Stage {i}: invalid step_type '{stage.step_type}'",
+            )
+        invalid = set(stage.tools) - ALL_TOOL_NAMES
+        if invalid:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Stage {i}: unknown tools: {sorted(invalid)}",
+            )
+
+
+def _validate_simple_tools(simple_tools_json: str) -> None:
+    import json as _json
+    from app.services.prompts.tool_catalog import ALL_TOOL_NAMES
+    try:
+        tools = _json.loads(simple_tools_json)
+    except _json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid simple_tools JSON: {e}",
+        )
+    if not isinstance(tools, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="simple_tools must be a JSON array",
+        )
+    invalid = set(tools) - ALL_TOOL_NAMES
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown simple_tools: {sorted(invalid)}",
         )
 
 
@@ -209,6 +245,8 @@ async def create_world(req: CreateWorldRequest, owner_id: int | None = None) -> 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agentic mode is not implemented yet")
     if req.pipeline and req.pipeline != "{}":
         _validate_pipeline_json(req.pipeline)
+    if req.simple_tools and req.simple_tools != "[]":
+        _validate_simple_tools(req.simple_tools)
     now = _now()
     world = World(
         id=generate_id(),
@@ -216,6 +254,7 @@ async def create_world(req: CreateWorldRequest, owner_id: int | None = None) -> 
         description=req.description,
         lore=req.lore,
         system_prompt=req.system_prompt,
+        simple_tools=req.simple_tools,
         character_template=req.character_template,
         initial_message=req.initial_message,
         pipeline=req.pipeline,
@@ -239,6 +278,10 @@ async def update_world(world_id: int, req: UpdateWorldRequest) -> World:
         world.lore = req.lore
     if req.system_prompt is not None:
         world.system_prompt = req.system_prompt
+    if req.simple_tools is not None:
+        if req.simple_tools != "[]":
+            _validate_simple_tools(req.simple_tools)
+        world.simple_tools = req.simple_tools
     if req.character_template is not None:
         world.character_template = req.character_template
     if req.initial_message is not None:

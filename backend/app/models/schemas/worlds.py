@@ -11,6 +11,7 @@ class WorldResponse(BaseModel):
     description: str
     lore: str
     system_prompt: str
+    simple_tools: str
     character_template: str
     initial_message: str
     pipeline: str
@@ -39,6 +40,7 @@ class CreateWorldRequest(BaseModel):
     description: str = ""
     lore: str = ""
     system_prompt: str = ""
+    simple_tools: str = "[]"
     character_template: str = ""
     initial_message: str = ""
     pipeline: str = "{}"
@@ -52,6 +54,7 @@ class UpdateWorldRequest(BaseModel):
     description: str | None = None
     lore: str | None = None
     system_prompt: str | None = None
+    simple_tools: str | None = None
     character_template: str | None = None
     initial_message: str | None = None
     pipeline: str | None = None
@@ -203,3 +206,29 @@ class CreateNpcLocationLinkRequest(BaseModel):
 class ReindexWorldResponse(BaseModel):
     indexed_count: int
     warning: str | None = None
+
+
+# ── Pipeline Config ─────────────────────────────────────────────
+
+class PlaceholderInfoResponse(BaseModel):
+    name: str
+    description: str
+    category: str
+
+
+class ToolCatalogEntryResponse(BaseModel):
+    name: str
+    description: str
+    category: str
+
+
+class DefaultTemplatesResponse(BaseModel):
+    simple: str
+    tool: str
+    writer: str
+
+
+class PipelineConfigOptionsResponse(BaseModel):
+    placeholders: list[PlaceholderInfoResponse]
+    tools: list[ToolCatalogEntryResponse]
+    default_templates: DefaultTemplatesResponse

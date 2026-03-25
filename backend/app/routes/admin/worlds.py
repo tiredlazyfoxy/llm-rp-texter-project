@@ -18,6 +18,7 @@ from app.models.schemas.worlds import (
     NpcLinkInfo,
     NpcLocationLinkResponse,
     NpcLocationLinksListResponse,
+    PipelineConfigOptionsResponse,
     ReindexWorldResponse,
     ReorderRulesRequest,
     RuleResponse,
@@ -68,7 +69,8 @@ router = APIRouter(prefix="/api/admin/worlds", tags=["admin-worlds"])
 def _world_to_response(w: World) -> WorldResponse:
     return WorldResponse(
         id=str(w.id), name=w.name, description=w.description, lore=w.lore,
-        system_prompt=w.system_prompt, character_template=w.character_template,
+        system_prompt=w.system_prompt, simple_tools=w.simple_tools,
+        character_template=w.character_template,
         initial_message=w.initial_message, pipeline=w.pipeline,
         generation_mode=w.generation_mode, agent_config=w.agent_config,
         status=w.status.value, owner_id=str(w.owner_id) if w.owner_id else None,
@@ -188,6 +190,25 @@ async def create_world(req: CreateWorldRequest, caller: User = Depends(_require_
     return _world_to_response(world)
 
 
+@router.get("/pipeline-config", response_model=PipelineConfigOptionsResponse)
+async def get_pipeline_config(_caller: User = Depends(_require_editor)):
+    """Return static pipeline configuration options (placeholders, tools, default templates)."""
+    from app.services.prompts.placeholder_registry import PLACEHOLDER_REGISTRY
+    from app.services.prompts.tool_catalog import TOOL_CATALOG
+    from app.services.prompts.default_templates import (
+        DEFAULT_SIMPLE_PROMPT, DEFAULT_TOOL_PROMPT, DEFAULT_WRITER_PROMPT,
+    )
+    return PipelineConfigOptionsResponse(
+        placeholders=PLACEHOLDER_REGISTRY,  # type: ignore[arg-type]
+        tools=TOOL_CATALOG,  # type: ignore[arg-type]
+        default_templates={
+            "simple": DEFAULT_SIMPLE_PROMPT,
+            "tool": DEFAULT_TOOL_PROMPT,
+            "writer": DEFAULT_WRITER_PROMPT,
+        },
+    )
+
+
 @router.get("/{world_id}", response_model=WorldDetailResponse)
 async def get_world(world_id: int, caller: User = Depends(_require_editor)):
     await _check_world_access(world_id, caller)
@@ -195,7 +216,8 @@ async def get_world(world_id: int, caller: User = Depends(_require_editor)):
     w = detail["world"]
     resp = WorldDetailResponse(
         id=str(w.id), name=w.name, description=w.description, lore=w.lore,
-        system_prompt=w.system_prompt, character_template=w.character_template,
+        system_prompt=w.system_prompt, simple_tools=w.simple_tools,
+        character_template=w.character_template,
         initial_message=w.initial_message, pipeline=w.pipeline,
         generation_mode=w.generation_mode, agent_config=w.agent_config,
         status=w.status.value, owner_id=str(w.owner_id) if w.owner_id else None,

@@ -35,6 +35,7 @@ class World(SQLModel, table=True):
     description: str = Field(default="")
     lore: str = Field(default="")
     system_prompt: str = Field(default="")
+    simple_tools: str = Field(default="[]")  # JSON list of tool names for simple mode
     character_template: str = Field(default="")
     initial_message: str = Field(default="")
     pipeline: str = Field(default="{}")

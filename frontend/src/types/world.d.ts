@@ -6,6 +6,7 @@ export interface WorldItem {
   description: string;
   lore: string;
   system_prompt: string;
+  simple_tools: string;
   character_template: string;
   initial_message: string;
   pipeline: string;
@@ -40,6 +41,7 @@ export interface UpdateWorldRequest {
   description?: string;
   lore?: string;
   system_prompt?: string;
+  simple_tools?: string;
   character_template?: string;
   initial_message?: string;
   pipeline?: string;
@@ -54,10 +56,35 @@ export interface PipelineStage {
   step_type: string;
   prompt: string;
   max_agent_steps: number | null;
+  tools: string[];
 }
 
 export interface PipelineConfig {
   stages: PipelineStage[];
+}
+
+export interface PlaceholderInfo {
+  name: string;
+  description: string;
+  category: string;
+}
+
+export interface ToolCatalogEntry {
+  name: string;
+  description: string;
+  category: string;
+}
+
+export interface DefaultTemplates {
+  simple: string;
+  tool: string;
+  writer: string;
+}
+
+export interface PipelineConfigOptions {
+  placeholders: PlaceholderInfo[];
+  tools: ToolCatalogEntry[];
+  default_templates: DefaultTemplates;
 }
 
 // ── Documents ───────────────────────────────────────────────────

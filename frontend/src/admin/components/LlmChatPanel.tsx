@@ -72,7 +72,7 @@ interface LlmChatPanelProps {
   docId?: string;
   docType?: "location" | "npc" | "lore_fact";
   // World field mode
-  fieldType?: "description" | "system_prompt" | "initial_message";
+  fieldType?: "description" | "system_prompt" | "initial_message" | "pipeline_prompt";
   onApply: (content: string) => void;
   onAppend: (content: string) => void;
 }

@@ -2,9 +2,10 @@ from pydantic import BaseModel
 
 
 class PipelineStage(BaseModel):
-    step_type: str  # "planning" | "writing"
-    prompt: str = ""  # admin free-text, editable via LLM chat
-    max_agent_steps: int | None = None  # only for tool-calling types (planning)
+    step_type: str  # "tool" | "writer" (legacy: "planning" | "writing")
+    prompt: str = ""  # full system prompt template with {PLACEHOLDER} syntax
+    max_agent_steps: int | None = None  # only for "tool" steps
+    tools: list[str] = []  # enabled tool names from tool catalog
 
 
 class PipelineConfig(BaseModel):
