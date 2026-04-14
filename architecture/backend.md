@@ -231,7 +231,7 @@ Each sub-API is a separate FastAPI `APIRouter` mounted on the main app.
 
 **Shared infrastructure** (used by all modes):
 
-- `chat_tools.py` — 8 chat tools (get_location_info, get_npc_info, search, get_lore, web_search, get_memory, add_memory, move_to_location) + 3 planning tools (add_fact, add_decision, update_stat). `get_chat_tools()` returns 8 tools for simple mode; `get_writer_tools()` returns read-only subset (5) for chain writing stage; `get_planning_tools()` returns 3 planning-only tools for chain planning stage
+- `chat_tools.py` — Universal tool registry (`TOOL_REGISTRY`, 12 tools: 8 chat tools, 3 planning tools, 1 director tool). One factory, `build_tools(names, ToolContext)`, binds admin-selected names to whatever state (`world_id`, `session_id`, `planning_context`, `stat_defs`, `char_stats`, `world_stats`, `decision_state`) the caller supplies. Unknown name or unmet `requires` → `ValueError`. No per-stage factories or hardcoded bundles — every stage (simple, chain-tool, chain-writer) honors `stage.tools` verbatim.
 - `chat_context.py` — Loads location, NPCs, rules, stats, lore, memories; formats into prompt-ready strings
 - `stat_validation.py` — Validates stat updates against definitions (int range clamping, enum membership, set filtering)
 - `prompts/chat_system_prompt.py` — Rich system prompt builder with full world context and memory management instructions

@@ -1,41 +1,51 @@
-"""Chat tools — player-facing in-game tools for all generation modes.
+"""Chat tools — universal tool registry for all generation modes.
 
 PURPOSE
-    Tools available to the LLM during chat generation:
-      - 8 chat tools (research/action): get_location_info, get_npc_info, search,
-        get_lore, web_search, get_memory, add_memory, move_to_location
-      - 3 planning tools (chain mode, tool stages with a PlanningContext):
-        add_fact, add_decision, update_stat
-      - 1 director tool (chain mode, tool stages with a DecisionState):
-        set_decision — overwrites a turn-scoped single-decision string
-    Reuses admin_tools search/lore/web implementations.
+    Single source of truth for every tool the LLM may call during chat
+    generation. One registry declares each tool's parameter schema,
+    description, category, and required runtime state. One factory —
+    ``build_tools(names, ctx)`` — returns exactly the tools the caller
+    asked for, binding them to the state present in ``ToolContext``.
+    There are no per-stage tool bundles in code: the admin pipeline
+    editor picks the names for every stage (tool / writer / simple /
+    director), and the caller supplies whatever state it has.
 
 USAGE
-    get_chat_tools(world_id, session_id) -> (tool_definitions, {name: callable})
-    get_tools_by_names(names, world_id, session_id,
-                       planning_context=..., decision_state=...)
-        — gates planning tools on planning_context, director tool on
-          decision_state; both kwargs are optional and silently skipped
-          when their state is not provided.
-    Callables are passed directly to client.chat_with_tools().
+    ctx = ToolContext(world_id=..., session_id=..., planning_context=...,
+                      decision_state=..., stat_defs=..., char_stats=...,
+                      world_stats=...)
+    tool_defs, callables = build_tools(stage.tools, ctx)
+
+    Unknown name           → ValueError.
+    Tool requires state    → ValueError listing the missing keys.
 
 CHANGELOG
-    stage3_step2a — Created
-    stage5_step3  — Added set_decision director tool + DecisionState
+    stage3_step2a — Created (8 chat + 3 planning tools, per-stage factories).
+    stage5_step3  — Added set_decision director tool + DecisionState.
+    stage5_step4  — Unified into a single ToolContext + build_tools factory;
+                    dropped CHAT/PLANNING/DIRECTOR/WRITER tool group constants
+                    and per-stage factories.
 """
+
+from __future__ import annotations
 
 import functools
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
 from llm import pydantic_to_openai_tool
 
 from app.services import admin_tools
+
+if TYPE_CHECKING:
+    from app.models.schemas.pipeline import PlanningContext
+    from app.models.world import WorldStatDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +87,6 @@ class MoveToLocationParams(BaseModel):
     location_name: str
 
 
-# Planning-only param schemas
 class AddFactParams(BaseModel):
     content: str
 
@@ -91,131 +100,19 @@ class UpdateStatParams(BaseModel):
     value: str
 
 
-# Director-only param schema
 class SetDecisionParams(BaseModel):
     content: str
 
 
 class DecisionState:
     """Mutable holder for the director's single-decision output."""
+
     def __init__(self) -> None:
         self.decision: str = ""
 
 
 # ---------------------------------------------------------------------------
-# Tool definitions (OpenAI function-calling format)
-# ---------------------------------------------------------------------------
-
-CHAT_TOOL_DEFINITIONS: list[dict[str, Any]] = [
-    pydantic_to_openai_tool(
-        "get_location_info",
-        (
-            "Look up detailed information about a location in the world. "
-            "Returns the full location description, exits, and NPCs present there."
-        ),
-        GetLocationInfoParams,
-    ),
-    pydantic_to_openai_tool(
-        "get_npc_info",
-        (
-            "Look up detailed information about an NPC in the world. "
-            "Returns the full NPC description and their known locations."
-        ),
-        GetNpcInfoParams,
-    ),
-    pydantic_to_openai_tool(
-        "search",
-        (
-            "Search world knowledge by semantic similarity. "
-            "Returns matching documents (locations, NPCs, or lore facts). "
-            "Use source_type to filter: 'location', 'npc', or 'lore_fact'."
-        ),
-        SearchParams,
-    ),
-    pydantic_to_openai_tool(
-        "get_lore",
-        (
-            "Find the most relevant lore fact for a query. "
-            "Returns the full text of the best matching lore entry."
-        ),
-        GetLoreParams,
-    ),
-    pydantic_to_openai_tool(
-        "web_search",
-        (
-            "Search the web for real-world information not in the world documents. "
-            "Returns titles, URLs, and snippets."
-        ),
-        WebSearchParams,
-    ),
-    pydantic_to_openai_tool(
-        "get_memory",
-        "Retrieve all saved memories for this session.",
-        GetMemoryParams,
-    ),
-    pydantic_to_openai_tool(
-        "add_memory",
-        (
-            "Save an important fact or observation to session memory "
-            "for future reference."
-        ),
-        AddMemoryParams,
-    ),
-    pydantic_to_openai_tool(
-        "move_to_location",
-        (
-            "Move the player to a different location. Use the exact location name "
-            "as shown in exits or search results. Returns the new location's "
-            "description, exits, and NPCs present."
-        ),
-        MoveToLocationParams,
-    ),
-]
-
-
-PLANNING_TOOL_DEFINITIONS: list[dict[str, Any]] = [
-    pydantic_to_openai_tool(
-        "add_fact",
-        (
-            "Record a relevant observation or piece of context that the writing "
-            "agent needs to craft the narrative. Call once per distinct fact."
-        ),
-        AddFactParams,
-    ),
-    pydantic_to_openai_tool(
-        "add_decision",
-        (
-            "Record a specific plot point, action outcome, or NPC reaction "
-            "for this turn. The writing agent will follow these faithfully."
-        ),
-        AddDecisionParams,
-    ),
-    pydantic_to_openai_tool(
-        "update_stat",
-        (
-            "Update a stat value. Validated immediately — you will get an error "
-            "message if the stat name or value is invalid, and can retry."
-        ),
-        UpdateStatParams,
-    ),
-]
-
-
-DIRECTOR_TOOL_DEFINITIONS: list[dict[str, Any]] = [
-    pydantic_to_openai_tool(
-        "set_decision",
-        (
-            "Commit the single short decision (one sentence) describing what "
-            "will happen next turn. Overwrites any previous decision. "
-            "Do not plan details — just the top-level narrative direction."
-        ),
-        SetDecisionParams,
-    ),
-]
-
-
-# ---------------------------------------------------------------------------
-# Implementations
+# Tool implementations (pure, state-free except for the explicit args)
 # ---------------------------------------------------------------------------
 
 async def get_location_info_impl(world_id: int, query: str) -> str:
@@ -229,7 +126,6 @@ async def get_location_info_impl(world_id: int, query: str) -> str:
     if not chunks:
         return "No location found matching that query."
 
-    # Use first unique match
     seen: set[int] = set()
     for chunk in chunks:
         if chunk.source_id in seen:
@@ -242,7 +138,6 @@ async def get_location_info_impl(world_id: int, query: str) -> str:
 
         parts = [f"**Location: {location.name}**\n\n{location.content}"]
 
-        # Exits
         if location.exits:
             try:
                 exit_ids = json.loads(location.exits)
@@ -256,7 +151,6 @@ async def get_location_info_impl(world_id: int, query: str) -> str:
             except (json.JSONDecodeError, ValueError):
                 pass
 
-        # Linked NPCs
         links = await npc_links_db.list_by_location(location.id)
         present_npcs = [lnk for lnk in links if lnk.link_type.value == "present"]
         if present_npcs:
@@ -297,7 +191,6 @@ async def get_npc_info_impl(world_id: int, query: str) -> str:
 
         parts = [f"**NPC: {npc.name}**\n\n{npc.content}"]
 
-        # Location links
         links = await npc_links_db.list_by_npc(npc.id)
         if links:
             loc_parts: list[str] = []
@@ -348,7 +241,6 @@ async def move_to_location_impl(world_id: int, session_id: int, location_name: s
     from app.db import npcs as npcs_db
     from app.services import vector_storage
 
-    # Vector search to resolve location name
     location = None
     chunks = await vector_storage.search(world_id, location_name, source_type="location", limit=1)
     if chunks:
@@ -357,7 +249,6 @@ async def move_to_location_impl(world_id: int, session_id: int, location_name: s
     if location is None:
         return f"Location '{location_name}' not found in this world."
 
-    # Update session
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None:
         return "Session not found."
@@ -365,7 +256,6 @@ async def move_to_location_impl(world_id: int, session_id: int, location_name: s
     chat.modified_at = datetime.now(timezone.utc)
     await chats_db.update_session(chat)
 
-    # Format response (same as get_location_info_impl)
     parts = [f"**Moved to: {location.name}**\n\n{location.content}"]
 
     if location.exits:
@@ -397,10 +287,6 @@ async def move_to_location_impl(world_id: int, session_id: int, location_name: s
     return "\n\n".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
-
 async def _get_injected_ids(world_id: int) -> set[int]:
     """Return IDs of lore facts always injected into context."""
     from app.db import lore_facts
@@ -408,96 +294,133 @@ async def _get_injected_ids(world_id: int) -> set[int]:
     return {f.id for f in facts}
 
 
-def get_chat_tools(
-    world_id: int, session_id: int,
-) -> tuple[list[dict[str, Any]], dict[str, Callable]]:
-    """Return (tool_definitions, {name: async_callable}) bound to world and session."""
+# ---------------------------------------------------------------------------
+# ToolContext — the bundle of runtime state carried by callers
+# ---------------------------------------------------------------------------
 
+@dataclass
+class ToolContext:
+    """Runtime state available to a generation step.
+
+    Callers populate whichever fields they have. The registry's ``requires``
+    list decides whether a tool can be instantiated from this context.
+    """
+
+    world_id: int | None = None
+    session_id: int | None = None
+    planning_context: "PlanningContext | None" = None
+    stat_defs: "list[WorldStatDefinition] | None" = None
+    char_stats: dict[str, Any] | None = None
+    world_stats: dict[str, Any] | None = None
+    decision_state: DecisionState | None = None
+
+    def has(self, key: str) -> bool:
+        return getattr(self, key) is not None
+
+
+# ---------------------------------------------------------------------------
+# Builders — per tool, a closure factory that binds ctx fields
+# ---------------------------------------------------------------------------
+
+def _b_get_location_info(ctx: ToolContext) -> Callable:
+    assert ctx.world_id is not None
+    world_id = ctx.world_id
     async def get_location_info(query: str) -> str:
         return await get_location_info_impl(world_id, query)
+    return functools.wraps(get_location_info_impl)(get_location_info)
 
+
+def _b_get_npc_info(ctx: ToolContext) -> Callable:
+    assert ctx.world_id is not None
+    world_id = ctx.world_id
     async def get_npc_info(query: str) -> str:
         return await get_npc_info_impl(world_id, query)
+    return functools.wraps(get_npc_info_impl)(get_npc_info)
 
+
+def _b_search(ctx: ToolContext) -> Callable:
+    assert ctx.world_id is not None
+    world_id = ctx.world_id
     async def search(query: str, source_type: str | None = None) -> str:
         injected_ids = await _get_injected_ids(world_id)
         return await admin_tools.search_impl(world_id, query, source_type, injected_ids)
+    return functools.wraps(admin_tools.search_impl)(search)
 
+
+def _b_get_lore(ctx: ToolContext) -> Callable:
+    assert ctx.world_id is not None
+    world_id = ctx.world_id
     async def get_lore(query: str) -> str:
         injected_ids = await _get_injected_ids(world_id)
         return await admin_tools.get_lore_impl(world_id, query, injected_ids)
+    return functools.wraps(admin_tools.get_lore_impl)(get_lore)
 
+
+def _b_web_search(_ctx: ToolContext) -> Callable:
     async def web_search(query: str) -> str:
         return await admin_tools.web_search_impl(query)
+    return functools.wraps(admin_tools.web_search_impl)(web_search)
 
+
+def _b_get_memory(ctx: ToolContext) -> Callable:
+    assert ctx.session_id is not None
+    session_id = ctx.session_id
     async def get_memory() -> str:
         return await get_memory_impl(session_id)
+    return functools.wraps(get_memory_impl)(get_memory)
 
+
+def _b_add_memory(ctx: ToolContext) -> Callable:
+    assert ctx.session_id is not None
+    session_id = ctx.session_id
     async def add_memory(content: str) -> str:
         return await add_memory_impl(session_id, content)
+    return functools.wraps(add_memory_impl)(add_memory)
 
+
+def _b_move_to_location(ctx: ToolContext) -> Callable:
+    assert ctx.world_id is not None and ctx.session_id is not None
+    world_id = ctx.world_id
+    session_id = ctx.session_id
     async def move_to_location(location_name: str) -> str:
         return await move_to_location_impl(world_id, session_id, location_name)
-
-    # functools.wraps preserves signatures for chat_with_tools inspect.signature()
-    callables: dict[str, Callable] = {
-        "get_location_info": functools.wraps(get_location_info_impl)(get_location_info),
-        "get_npc_info": functools.wraps(get_npc_info_impl)(get_npc_info),
-        "search": functools.wraps(admin_tools.search_impl)(search),
-        "get_lore": functools.wraps(admin_tools.get_lore_impl)(get_lore),
-        "web_search": functools.wraps(admin_tools.web_search_impl)(web_search),
-        "get_memory": functools.wraps(get_memory_impl)(get_memory),
-        "add_memory": functools.wraps(add_memory_impl)(add_memory),
-        "move_to_location": functools.wraps(move_to_location_impl)(move_to_location),
-    }
-
-    return CHAT_TOOL_DEFINITIONS, callables
+    return functools.wraps(move_to_location_impl)(move_to_location)
 
 
-# Read-only tools available to the writing stage (no state mutations)
-_WRITER_TOOL_NAMES = {"get_location_info", "get_npc_info", "search", "get_lore", "get_memory"}
+def _b_add_fact(ctx: ToolContext) -> Callable:
+    assert ctx.planning_context is not None
+    pc = ctx.planning_context
+    async def add_fact(content: str) -> str:
+        pc.facts.append(content)
+        return f"Fact recorded ({len(pc.facts)} total)."
+    return add_fact
 
 
-def get_writer_tools(
-    world_id: int, session_id: int,
-) -> tuple[list[dict[str, Any]], dict[str, Callable]]:
-    """Return read-only tools for the writing stage (no add_memory, move_to_location, web_search)."""
-    all_defs, all_callables = get_chat_tools(world_id, session_id)
-
-    writer_defs = [d for d in all_defs if d["function"]["name"] in _WRITER_TOOL_NAMES]
-    writer_callables = {k: v for k, v in all_callables.items() if k in _WRITER_TOOL_NAMES}
-
-    return writer_defs, writer_callables
+def _b_add_decision(ctx: ToolContext) -> Callable:
+    assert ctx.planning_context is not None
+    pc = ctx.planning_context
+    async def add_decision(content: str) -> str:
+        pc.decisions.append(content)
+        return f"Decision recorded ({len(pc.decisions)} total)."
+    return add_decision
 
 
-def get_planning_tools(
-    world_id: int,
-    session_id: int,
-    planning_context: "PlanningContext",
-    stat_defs: list["WorldStatDefinition"],
-    char_stats: dict[str, Any],
-    world_stats: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, Callable]]:
-    """Return all 8 chat tools + 3 planning tools for the planning stage.
-
-    Planning tool callables are closures that mutate planning_context and stats dicts.
-    """
-    from app.models.schemas.pipeline import PlanningContext, StatUpdateEntry
-    from app.models.world import WorldStatDefinition
+def _b_update_stat(ctx: ToolContext) -> Callable:
+    from app.models.schemas.pipeline import StatUpdateEntry
     from app.services.stat_validation import validate_and_apply_stat_updates
 
-    chat_defs, chat_callables = get_chat_tools(world_id, session_id)
+    assert (
+        ctx.planning_context is not None
+        and ctx.stat_defs is not None
+        and ctx.char_stats is not None
+        and ctx.world_stats is not None
+    )
+    pc = ctx.planning_context
+    stat_defs = ctx.stat_defs
+    char_stats = ctx.char_stats
+    world_stats = ctx.world_stats
 
-    # Planning tool closures
-    async def add_fact_impl(content: str) -> str:
-        planning_context.facts.append(content)
-        return f"Fact recorded ({len(planning_context.facts)} total)."
-
-    async def add_decision_impl(content: str) -> str:
-        planning_context.decisions.append(content)
-        return f"Decision recorded ({len(planning_context.decisions)} total)."
-
-    async def update_stat_impl(name: str, value: str) -> str:
+    async def update_stat(name: str, value: str) -> str:
         updates = {name: value}
         try:
             new_char, new_world = validate_and_apply_stat_updates(
@@ -506,72 +429,225 @@ def get_planning_tools(
         except Exception as exc:
             return f"Stat update failed: {exc}"
 
-        # Check if the stat was actually applied (validate silently skips invalid)
         if new_char == char_stats and new_world == world_stats:
-            return f"Stat update rejected: '{name}' is not a valid stat or value '{value}' is invalid."
+            return (
+                f"Stat update rejected: '{name}' is not a valid stat or value "
+                f"'{value}' is invalid."
+            )
 
-        # Apply mutations to the shared dicts
         char_stats.update(new_char)
         world_stats.update(new_world)
-        planning_context.stat_updates.append(StatUpdateEntry(name=name, value=value))
+        pc.stat_updates.append(StatUpdateEntry(name=name, value=value))
         return f"Stat updated: {name} = {value}"
 
-    planning_callables: dict[str, Callable] = {
-        "add_fact": add_fact_impl,
-        "add_decision": add_decision_impl,
-        "update_stat": update_stat_impl,
-    }
-
-    all_defs = chat_defs + PLANNING_TOOL_DEFINITIONS
-    all_callables = {**chat_callables, **planning_callables}
-
-    return all_defs, all_callables
+    return update_stat
 
 
-_PLANNING_TOOL_NAMES = {"add_fact", "add_decision", "update_stat"}
-_DIRECTOR_TOOL_NAMES = {"set_decision"}
+def _b_set_decision(ctx: ToolContext) -> Callable:
+    assert ctx.decision_state is not None
+    state = ctx.decision_state
+    async def set_decision(content: str) -> str:
+        state.decision = content
+        return "Decision committed."
+    return set_decision
 
 
-def get_tools_by_names(
-    tool_names: list[str],
-    world_id: int,
-    session_id: int,
-    planning_context: "PlanningContext | None" = None,
-    stat_defs: "list[WorldStatDefinition] | None" = None,
-    char_stats: dict[str, Any] | None = None,
-    world_stats: dict[str, Any] | None = None,
-    decision_state: "DecisionState | None" = None,
-) -> tuple[list[dict[str, Any]], dict[str, Callable]]:
-    """Return a filtered subset of tools by name.
+# ---------------------------------------------------------------------------
+# Registry — single source of truth
+# ---------------------------------------------------------------------------
 
-    Planning tools (add_fact, add_decision, update_stat) are only instantiated
-    when they appear in tool_names AND planning_context is provided.
-    Director tool (set_decision) is only instantiated when it appears in
-    tool_names AND decision_state is provided.
-    """
-    name_set = set(tool_names)
-    needs_planning = bool(name_set & _PLANNING_TOOL_NAMES) and planning_context is not None
+@dataclass(frozen=True)
+class ToolSpec:
+    name: str
+    description: str
+    category: str  # research | action | planning | director
+    params: type[BaseModel]
+    requires: tuple[str, ...]  # ToolContext field names that must be set
+    build: Callable[[ToolContext], Callable]
+    definition: dict[str, Any] = field(init=False, compare=False, hash=False, default=None)  # type: ignore[assignment]
 
-    if needs_planning:
-        all_defs, all_callables = get_planning_tools(
-            world_id, session_id, planning_context,
-            stat_defs or [], char_stats or {}, world_stats or {},
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "definition",
+            pydantic_to_openai_tool(self.name, self.description, self.params),
         )
-    else:
-        all_defs, all_callables = get_chat_tools(world_id, session_id)
 
-    # Attach director tool if requested and state provided
-    if (name_set & _DIRECTOR_TOOL_NAMES) and decision_state is not None:
-        state = decision_state
 
-        async def set_decision_impl(content: str) -> str:
-            state.decision = content
-            return "Decision committed."
+TOOL_REGISTRY: dict[str, ToolSpec] = {
+    spec.name: spec for spec in [
+        ToolSpec(
+            name="get_location_info",
+            description=(
+                "Look up detailed information about a location in the world. "
+                "Returns the full location description, exits, and NPCs present there."
+            ),
+            category="research",
+            params=GetLocationInfoParams,
+            requires=("world_id",),
+            build=_b_get_location_info,
+        ),
+        ToolSpec(
+            name="get_npc_info",
+            description=(
+                "Look up detailed information about an NPC in the world. "
+                "Returns the full NPC description and their known locations."
+            ),
+            category="research",
+            params=GetNpcInfoParams,
+            requires=("world_id",),
+            build=_b_get_npc_info,
+        ),
+        ToolSpec(
+            name="search",
+            description=(
+                "Search world knowledge by semantic similarity. "
+                "Returns matching documents (locations, NPCs, or lore facts). "
+                "Use source_type to filter: 'location', 'npc', or 'lore_fact'."
+            ),
+            category="research",
+            params=SearchParams,
+            requires=("world_id",),
+            build=_b_search,
+        ),
+        ToolSpec(
+            name="get_lore",
+            description=(
+                "Find the most relevant lore fact for a query. "
+                "Returns the full text of the best matching lore entry."
+            ),
+            category="research",
+            params=GetLoreParams,
+            requires=("world_id",),
+            build=_b_get_lore,
+        ),
+        ToolSpec(
+            name="web_search",
+            description=(
+                "Search the web for real-world information not in the world documents. "
+                "Returns titles, URLs, and snippets."
+            ),
+            category="research",
+            params=WebSearchParams,
+            requires=(),
+            build=_b_web_search,
+        ),
+        ToolSpec(
+            name="get_memory",
+            description="Retrieve all saved memories for this session.",
+            category="research",
+            params=GetMemoryParams,
+            requires=("session_id",),
+            build=_b_get_memory,
+        ),
+        ToolSpec(
+            name="add_memory",
+            description=(
+                "Save an important fact or observation to session memory "
+                "for future reference."
+            ),
+            category="action",
+            params=AddMemoryParams,
+            requires=("session_id",),
+            build=_b_add_memory,
+        ),
+        ToolSpec(
+            name="move_to_location",
+            description=(
+                "Move the player to a different location. Use the exact location name "
+                "as shown in exits or search results. Returns the new location's "
+                "description, exits, and NPCs present."
+            ),
+            category="action",
+            params=MoveToLocationParams,
+            requires=("world_id", "session_id"),
+            build=_b_move_to_location,
+        ),
+        ToolSpec(
+            name="add_fact",
+            description=(
+                "Record a relevant observation or piece of context that the writing "
+                "agent needs to craft the narrative. Call once per distinct fact."
+            ),
+            category="planning",
+            params=AddFactParams,
+            requires=("planning_context",),
+            build=_b_add_fact,
+        ),
+        ToolSpec(
+            name="add_decision",
+            description=(
+                "Record a specific plot point, action outcome, or NPC reaction "
+                "for this turn. The writing agent will follow these faithfully."
+            ),
+            category="planning",
+            params=AddDecisionParams,
+            requires=("planning_context",),
+            build=_b_add_decision,
+        ),
+        ToolSpec(
+            name="update_stat",
+            description=(
+                "Update a stat value. Validated immediately — you will get an error "
+                "message if the stat name or value is invalid, and can retry."
+            ),
+            category="planning",
+            params=UpdateStatParams,
+            requires=("planning_context", "stat_defs", "char_stats", "world_stats"),
+            build=_b_update_stat,
+        ),
+        ToolSpec(
+            name="set_decision",
+            description=(
+                "Commit the single short decision (one sentence) describing what "
+                "will happen next turn. Overwrites any previous decision. "
+                "Do not plan details — just the top-level narrative direction."
+            ),
+            category="director",
+            params=SetDecisionParams,
+            requires=("decision_state",),
+            build=_b_set_decision,
+        ),
+    ]
+}
 
-        all_defs = all_defs + DIRECTOR_TOOL_DEFINITIONS
-        all_callables = {**all_callables, "set_decision": set_decision_impl}
 
-    filtered_defs = [d for d in all_defs if d["function"]["name"] in name_set]
-    filtered_callables = {k: v for k, v in all_callables.items() if k in name_set}
+ALL_TOOL_NAMES: tuple[str, ...] = tuple(TOOL_REGISTRY.keys())
 
-    return filtered_defs, filtered_callables
+
+# ---------------------------------------------------------------------------
+# Public factory
+# ---------------------------------------------------------------------------
+
+def build_tools(
+    tool_names: Iterable[str],
+    ctx: ToolContext,
+) -> tuple[list[dict[str, Any]], dict[str, Callable]]:
+    """Instantiate the named tools against the given context.
+
+    - Unknown tool name → ``ValueError``.
+    - Tool with unmet ``requires`` → ``ValueError`` listing missing fields.
+    - Order of returned definitions mirrors the order of ``tool_names``.
+    """
+    defs: list[dict[str, Any]] = []
+    callables: dict[str, Callable] = {}
+    seen: set[str] = set()
+
+    for name in tool_names:
+        if name in seen:
+            continue
+        seen.add(name)
+
+        spec = TOOL_REGISTRY.get(name)
+        if spec is None:
+            raise ValueError(f"Unknown tool '{name}'.")
+
+        missing = [req for req in spec.requires if not ctx.has(req)]
+        if missing:
+            raise ValueError(
+                f"Tool '{name}' requires context fields {missing} which are not set."
+            )
+
+        defs.append(spec.definition)
+        callables[name] = spec.build(ctx)
+
+    return defs, callables

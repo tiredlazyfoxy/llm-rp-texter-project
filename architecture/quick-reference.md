@@ -180,7 +180,7 @@ All document-lookup tools use **free text → vector search → full document** 
 - **add_memory(content)** — Appends a new `ChatMemory` row for the session. LLM is instructed to save story-significant facts (promises, relationship changes, plot developments) as 1-2 short factual sentences.
 - **move_to_location(location_name)** — Resolves location name via vector search, updates `session.current_location_id`, returns new location info (description, exits, NPCs).
 
-Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions, callables)` — all 8 tools for simple mode. `get_writer_tools(world_id, session_id)` → read-only subset (5 tools: get_location_info, get_npc_info, search, get_lore, get_memory) for chain writing stage. `get_planning_tools(session_id)` → 3 planning-only tools for chain planning stage (not available in simple mode or writing stage):
+Tool registration: single `TOOL_REGISTRY` (12 tools) + `build_tools(names, ToolContext)` factory. Each registry entry declares `requires` (which `ToolContext` fields must be set). Admin picks tool names per stage (`stage.tools` / `World.simple_tools`); the generation service constructs a `ToolContext` with the state it has (simple mode: `world_id`+`session_id`; chain tool stage: adds `planning_context`, `stat_defs`, `char_stats`, `world_stats`, `decision_state`; chain writer stage: `world_id`+`session_id` only) and calls `build_tools(stage.tools, ctx)`. Unknown names or unmet requirements raise `ValueError`. Planning/director tools:
 
 - **add_fact(content)** — Records a story/context fact into the planning context.
 - **add_decision(content)** — Records a narrative decision (what happens next) into the planning context.

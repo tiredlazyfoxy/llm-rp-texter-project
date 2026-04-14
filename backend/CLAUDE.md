@@ -39,7 +39,7 @@ backend/
         planning_system_prompt.py   — Planning stage system prompt (chain mode, legacy fallback)
         writing_system_prompt.py    — Writing stage system prompt (chain mode, legacy fallback)
         writing_plan_message.py     — Plan injection template for writer
-      chat_tools.py         — Chat tool implementations (8 chat tools + 3 planning tools + set_decision director tool) + factories: get_chat_tools(), get_writer_tools(), get_planning_tools(), get_tools_by_names() (gates planning/director tools on state kwargs)
+      chat_tools.py         — Universal tool registry (TOOL_REGISTRY, 12 tools) + ToolContext + build_tools(names, ctx). No per-stage factories — every caller selects tools by name and passes the state it has; missing required state → ValueError.
       chat_context.py       — Context builder for rich system prompts
       stat_validation.py    — Stat update validation against definitions
       chat_service.py       — Chat CRUD (sessions, messages, memories, rewind, edit/delete messages)

@@ -38,7 +38,7 @@ from app.services.chat_agent_service import (
     sse,
 )
 from app.services.chat_context import ChatContext, build_chat_context
-from app.services.chat_tools import DecisionState, get_planning_tools, get_tools_by_names, get_writer_tools
+from app.services.chat_tools import DecisionState, ToolContext, build_tools
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts.planning_system_prompt import build_planning_system_prompt
 from app.services.prompts.prompt_injection import (
@@ -47,6 +47,7 @@ from app.services.prompts.prompt_injection import (
     format_facts,
     resolve_prompt_template,
 )
+from app.services.chat_tools import TOOL_REGISTRY
 from app.services.prompts.tool_catalog import ALL_TOOL_NAMES
 from app.services.prompts.writing_plan_message import build_writing_plan_message
 from app.services.prompts.writing_system_prompt import build_writing_system_prompt
@@ -258,7 +259,12 @@ def _combine_planning_contexts(contexts: list[PlanningContext]) -> GenerationPla
 
 
 def _migrate_legacy_stages(pipeline: PipelineConfig) -> None:
-    """On-read migration: 'planning' → 'tool', 'writing' → 'writer'."""
+    """On-read migration: 'planning' → 'tool', 'writing' → 'writer'.
+
+    Legacy stages with no ``tools`` list get seeded with the full catalog so
+    admins landing on the editor see something to work with. New-style stages
+    always honor ``stage.tools`` verbatim.
+    """
     for stage in pipeline.stages:
         if stage.step_type == "planning":
             stage.step_type = "tool"
@@ -267,7 +273,14 @@ def _migrate_legacy_stages(pipeline: PipelineConfig) -> None:
         elif stage.step_type == "writing":
             stage.step_type = "writer"
             if not stage.tools:
-                stage.tools = ["get_location_info", "get_npc_info", "search", "get_lore", "get_memory"]
+                # Writer stage has no planning/director state — seed with the
+                # subset of catalog tools whose requirements are satisfied by
+                # (world_id, session_id) alone.
+                available = {"world_id", "session_id"}
+                stage.tools = [
+                    n for n, spec in TOOL_REGISTRY.items()
+                    if set(spec.requires) <= available
+                ]
 
 
 # ---------------------------------------------------------------------------
@@ -298,20 +311,18 @@ async def _run_tool_stage(
 
     planning_ctx = PlanningContext()
 
-    # Get tools
-    if stage.tools:
-        tool_defs, tool_callables = get_tools_by_names(
-            stage.tools, chat.world_id, chat.id,
-            planning_context=planning_ctx,
-            stat_defs=context["stat_defs_list"],
-            char_stats=char_stats, world_stats=world_stats,
-            decision_state=decision_state,
-        )
-    else:
-        tool_defs, tool_callables = get_planning_tools(
-            chat.world_id, chat.id, planning_ctx,
-            context["stat_defs_list"], char_stats, world_stats,
-        )
+    # Get tools — admin selection drives names; all required state is
+    # available in this stage, so any catalog tool is fair game.
+    tool_ctx = ToolContext(
+        world_id=chat.world_id,
+        session_id=chat.id,
+        planning_context=planning_ctx,
+        stat_defs=context["stat_defs_list"],
+        char_stats=char_stats,
+        world_stats=world_stats,
+        decision_state=decision_state,
+    )
+    tool_defs, tool_callables = build_tools(stage.tools or [], tool_ctx)
 
     # Resolve prompt
     tools_desc = build_tools_description([d["function"]["name"] for d in tool_defs])
@@ -437,11 +448,10 @@ async def _run_writer_stage(
             detail=f"No model configured for writer stage {stage_idx}",
         )
 
-    # Get writer tools
-    if stage.tools:
-        tool_defs, tool_callables = get_tools_by_names(stage.tools, chat.world_id, chat.id)
-    else:
-        tool_defs, tool_callables = get_writer_tools(chat.world_id, chat.id)
+    # Get writer tools — admin selection drives names; writer has no
+    # planning/director state, so only world/session-bound tools are valid.
+    tool_ctx = ToolContext(world_id=chat.world_id, session_id=chat.id)
+    tool_defs, tool_callables = build_tools(stage.tools or [], tool_ctx)
 
     stage_records: list[dict[str, Any]] = []
     wrapped = {
