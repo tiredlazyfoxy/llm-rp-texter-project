@@ -1,0 +1,112 @@
+# Stage 5 Step 3 — Director Stage
+
+## Context
+
+The chat generation pipeline currently flows: **collection (tool steps) → planning (tool steps) → writer**. Planning produces a list of facts and decisions, which can be verbose and diffuse. We want to introduce an optional **Director** stage that runs after data collection and produces a single, short **decision** — one sentence describing what will happen next turn. The planning stage then unfolds this decision into concrete actions (facts, stat updates, etc.), and the writer renders the prose.
+
+The director stage must be **optional**. Both pipelines must remain valid:
+
+- `collect → plan → write` (existing)
+- `collect → director → plan → write` (new)
+
+Because Stage 5 Step 1 introduced admin-configurable per-stage pipelines with a placeholder registry and tool catalog, the director is **not a new stage type** — it is just a regular `tool` stage configured with the `set_decision` tool and a director-flavored prompt. All we add is: one new tool, one new placeholder, a small bit of orchestrator plumbing to capture/forward the decision, and a convenience default prompt template for admins.
+
+## Goals
+
+1. Add a turn-scoped `director_decision: str` carried by the generation orchestrator.
+2. Add a `set_decision(content: str)` tool that overwrites that value.
+3. Register a `{DECISION}` placeholder usable in any stage prompt (primarily planning, optionally writer).
+4. Provide a `DEFAULT_DIRECTOR_PROMPT` template admins can pick when building a pipeline (no new `step_type`).
+5. Both flows validate and execute end-to-end.
+
+Out of scope: admin-UI changes to add a dedicated "director" default-template button (user will handle as a follow-up step 4: tooling + test).
+
+## Design
+
+### 1. Decision storage (turn-scoped, transient)
+
+File: [backend/app/services/chain_generation_service.py](backend/app/services/chain_generation_service.py)
+
+- Declare `director_decision: str = ""` local inside `_run_chain_generation()` before the stage loop.
+- No change to `ChatContext` ([backend/app/services/chat_context.py](backend/app/services/chat_context.py)) — that TypedDict is for world/location data, not per-turn flow state.
+- No change to `PlanningContext` — decision is a single-value turn-level state, not a per-stage accumulator.
+- Not persisted on the `Turn` record (transient). No DB schema change, no JSONL import/export update.
+- If multiple stages call `set_decision`, last write wins.
+
+### 2. The `set_decision` tool
+
+File: [backend/app/services/chat_tools.py](backend/app/services/chat_tools.py)
+
+- Pydantic param model `SetDecisionParams(content: str)`.
+- Small mutable holder `DecisionState` (single `decision: str` attribute), mirroring how `PlanningContext` is captured by planning tool closures.
+- Closure factory `make_set_decision(state: DecisionState)` whose handler sets `state.decision = content` (overwrite).
+- Extend `get_tools_by_names(...)` with a new optional `decision_state: DecisionState | None = None` kwarg, gating the `set_decision` closure instantiation the same way `planning_context` gates the planning tools.
+
+### 3. `{DECISION}` placeholder
+
+- [backend/app/services/prompts/placeholder_registry.py](backend/app/services/prompts/placeholder_registry.py): append `{"name": "DECISION", "category": "Pipeline"}`.
+- [backend/app/services/prompts/prompt_injection.py](backend/app/services/prompts/prompt_injection.py): no new formatter — value is the raw string (empty string when absent). Existing `resolve_prompt_template()` already handles it.
+- [backend/app/services/chain_generation_service.py](backend/app/services/chain_generation_service.py): in `_build_placeholder_values()` (or the equivalent assembly site), include `DECISION=director_decision`.
+
+If the pipeline has no director stage, `{DECISION}` resolves to empty string — templates that reference it degrade gracefully.
+
+### 4. Tool catalog entry
+
+File: [backend/app/services/prompts/tool_catalog.py](backend/app/services/prompts/tool_catalog.py)
+
+- Register `{"name": "set_decision", "category": "director"}` (new category) so the admin UI can group it.
+
+### 5. Orchestrator plumbing (no new step_type)
+
+The director runs through the existing `_run_tool_stage()` path. No changes to `PipelineStage.step_type`, no new runner.
+
+In `_run_chain_generation()`:
+
+- Construct a `DecisionState()` and thread it through `get_tools_by_names(..., decision_state=state)` for each tool stage (cheap — `set_decision` closure is only attached if the stage listed it in `stage.tools`).
+- After each tool stage returns, if `state.decision` is non-empty, copy it into the turn-level `director_decision`. This keeps the feature stage-agnostic: any tool stage acts as the director simply by including `set_decision` in its tools list.
+- Include `DECISION=director_decision` in placeholder values for subsequent stages.
+
+Result: the same `_run_tool_stage` handles research, planning, and director stages — differentiated only by prompt template and selected tools.
+
+### 6. Default template
+
+Add `DEFAULT_DIRECTOR_PROMPT` alongside existing defaults (`DEFAULT_SIMPLE_PROMPT` / `DEFAULT_TOOL_PROMPT` / `DEFAULT_WRITER_PROMPT`). Expose via [backend/app/routes/admin/worlds.py](backend/app/routes/admin/worlds.py) `pipeline-config` endpoint under `default_templates["director"]`.
+
+Prompt instruction sketch: "You are the director. Use `set_decision` to commit exactly one short sentence describing what happens next turn. Do not plan details."
+
+Ships with **empty tools list** — admin explicitly selects `set_decision` (and anything else) when adding the stage to a world.
+
+## Files to modify
+
+- [backend/app/services/chat_tools.py](backend/app/services/chat_tools.py) — `SetDecisionParams`, `DecisionState`, `make_set_decision`, extend `get_tools_by_names` with `decision_state` kwarg.
+- [backend/app/services/prompts/tool_catalog.py](backend/app/services/prompts/tool_catalog.py) — register `set_decision`.
+- [backend/app/services/prompts/placeholder_registry.py](backend/app/services/prompts/placeholder_registry.py) — register `DECISION`.
+- [backend/app/services/chain_generation_service.py](backend/app/services/chain_generation_service.py) — turn-local `director_decision`, `DecisionState` threading, placeholder assembly.
+- Default-prompts module (wherever `DEFAULT_TOOL_PROMPT` lives) — add `DEFAULT_DIRECTOR_PROMPT`.
+- [backend/app/routes/admin/worlds.py](backend/app/routes/admin/worlds.py) — add `"director"` to `default_templates`.
+
+## Reused existing pieces
+
+- `PlanningContext` closure-capture pattern → mirrored by `DecisionState`.
+- `get_tools_by_names()` optional-kwarg gating → extended with `decision_state`.
+- `resolve_prompt_template()` in [prompt_injection.py](backend/app/services/prompts/prompt_injection.py) → no change.
+- `PipelineStage` schema → unchanged.
+- Admin `pipeline-config` endpoint → one additional default-template key.
+
+## Verification
+
+1. **Placeholder**: `"Decision: {DECISION}"` resolves to empty when no stage called `set_decision`, and to the committed text when one did.
+2. **Flow A** (no director): pipeline `tool → tool → writer` with no `set_decision` tool anywhere. Run a turn end-to-end; verify prose generation unchanged.
+3. **Flow B** (with director): pipeline `tool(collect) → tool(director, tools=[set_decision]) → tool(plan) → writer` where the plan stage prompt includes `{DECISION}`. Verify:
+   - director stage calls `set_decision`;
+   - plan stage's resolved prompt contains the decision text;
+   - writer produces prose consistent with the decision.
+4. **Admin API**: `GET /admin/pipeline-config` returns `set_decision` in `tools`, `DECISION` in `placeholders`, and `"director"` in `default_templates`.
+5. **SSE**: director-as-tool-stage streams via standard tool-stage events; confirm UI groups `set_decision` tool calls under that stage index.
+
+## Resolved decisions
+
+- **Not a new step_type**: director is a regular `tool` stage distinguished only by prompt and tool selection.
+- **Director tools**: admin-configured, empty default.
+- **Decision storage**: turn-level local in `_run_chain_generation`. One per turn; last write wins.
+- **Persistence**: transient only.
