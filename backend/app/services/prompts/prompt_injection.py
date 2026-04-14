@@ -61,12 +61,13 @@ def build_tools_description(tool_names: list[str]) -> str:
     if not groups:
         return ""
 
-    # Order: research, action, planning
-    category_order = ["research", "action", "planning"]
+    # Order: research, action, planning, director
+    category_order = ["research", "action", "planning", "director"]
     category_titles = {
         "research": "### Research Tools",
         "action": "### Action Tools",
         "planning": "### Planning Tools",
+        "director": "### Director Tools",
     }
 
     parts: list[str] = []

@@ -226,6 +226,7 @@ class DefaultTemplatesResponse(BaseModel):
     simple: str
     tool: str
     writer: str
+    director: str
 
 
 class PipelineConfigOptionsResponse(BaseModel):

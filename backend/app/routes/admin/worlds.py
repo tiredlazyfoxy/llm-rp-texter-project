@@ -196,7 +196,10 @@ async def get_pipeline_config(_caller: User = Depends(_require_editor)):
     from app.services.prompts.placeholder_registry import PLACEHOLDER_REGISTRY
     from app.services.prompts.tool_catalog import TOOL_CATALOG
     from app.services.prompts.default_templates import (
-        DEFAULT_SIMPLE_PROMPT, DEFAULT_TOOL_PROMPT, DEFAULT_WRITER_PROMPT,
+        DEFAULT_DIRECTOR_PROMPT,
+        DEFAULT_SIMPLE_PROMPT,
+        DEFAULT_TOOL_PROMPT,
+        DEFAULT_WRITER_PROMPT,
     )
     return PipelineConfigOptionsResponse(
         placeholders=PLACEHOLDER_REGISTRY,  # type: ignore[arg-type]
@@ -205,6 +208,7 @@ async def get_pipeline_config(_caller: User = Depends(_require_editor)):
             "simple": DEFAULT_SIMPLE_PROMPT,
             "tool": DEFAULT_TOOL_PROMPT,
             "writer": DEFAULT_WRITER_PROMPT,
+            "director": DEFAULT_DIRECTOR_PROMPT,
         },
     )
 

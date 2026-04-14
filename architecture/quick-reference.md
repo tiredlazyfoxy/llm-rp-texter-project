@@ -185,8 +185,9 @@ Tool registration: `get_chat_tools(world_id, session_id)` → `(tool_definitions
 - **add_fact(content)** — Records a story/context fact into the planning context.
 - **add_decision(content)** — Records a narrative decision (what happens next) into the planning context.
 - **update_stat(name, value)** — Records a stat change into the planning context.
+- **set_decision(content)** — Director-only. Overwrites a turn-level single-decision string (one sentence describing what happens next turn). Attached only to tool stages that request it and receive a `DecisionState`. Surfaced to later stages via the `{DECISION}` placeholder.
 
-`PlanningContext` is built incrementally by tool calls during the planning stage, then converted to `GenerationPlanOutput` for persistence in `chat_messages.generation_plan`.
+`PlanningContext` is built incrementally by tool calls during the planning stage, then converted to `GenerationPlanOutput` for persistence in `chat_messages.generation_plan`. The director's `{DECISION}` is transient (turn-scoped, not persisted).
 
 **Lore injection filter:** `get_lore` skips lore facts already injected into the system prompt (same logic as admin `get_lore` — avoids duplicating context).
 
@@ -280,10 +281,11 @@ Editor+ toggle in user settings. Controls UI visibility of tool call details, th
 - Stage 3 Step 3: User UI (debug mode, message edit/delete, thinking_content storage, SSE phase/status, hidden stats filtering) — done
 
 - Stage 5 Step 1: Admin-configurable prompt templates — placeholder registry, tool catalog, per-stage tool selection, admin UI (placeholder panel, autocomplete, stage names) — done
+- Stage 5 Step 2: Prompt injection engine — `{PLACEHOLDER}` resolution, generation services refactored to dynamic pipeline — done
+- Stage 5 Step 3: Director stage — optional tool stage that commits a single `{DECISION}` via `set_decision` for downstream stages (`plans/stage5_step3_director_stage.md`) — done
 
 ## Backlog
 
-- Stage 5 Step 2: Prompt injection engine — resolve `{PLACEHOLDER}` in templates at runtime, refactor generation services (`plans/stage5_step2_prompt_injection_engine.md`)
 - Agent flow — sub-agent orchestration design (`plans/backlog.agent_flow.md`)
 - Agent mode — agentic generation mode design (`plans/backlog.agent_mode.md`)
 - Split research/planning — separate research and planning stages (`plans/backlog.split_research_planning.md`)

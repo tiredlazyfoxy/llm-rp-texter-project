@@ -1,16 +1,27 @@
 """Chat tools — player-facing in-game tools for all generation modes.
 
 PURPOSE
-    Eight tools available to the LLM during chat generation.
-    Reuses admin_tools search/lore/web implementations. Adds location/NPC
-    info lookup, location movement, and session memory management.
+    Tools available to the LLM during chat generation:
+      - 8 chat tools (research/action): get_location_info, get_npc_info, search,
+        get_lore, web_search, get_memory, add_memory, move_to_location
+      - 3 planning tools (chain mode, tool stages with a PlanningContext):
+        add_fact, add_decision, update_stat
+      - 1 director tool (chain mode, tool stages with a DecisionState):
+        set_decision — overwrites a turn-scoped single-decision string
+    Reuses admin_tools search/lore/web implementations.
 
 USAGE
     get_chat_tools(world_id, session_id) -> (tool_definitions, {name: callable})
+    get_tools_by_names(names, world_id, session_id,
+                       planning_context=..., decision_state=...)
+        — gates planning tools on planning_context, director tool on
+          decision_state; both kwargs are optional and silently skipped
+          when their state is not provided.
     Callables are passed directly to client.chat_with_tools().
 
 CHANGELOG
     stage3_step2a — Created
+    stage5_step3  — Added set_decision director tool + DecisionState
 """
 
 import functools
@@ -78,6 +89,17 @@ class AddDecisionParams(BaseModel):
 class UpdateStatParams(BaseModel):
     name: str
     value: str
+
+
+# Director-only param schema
+class SetDecisionParams(BaseModel):
+    content: str
+
+
+class DecisionState:
+    """Mutable holder for the director's single-decision output."""
+    def __init__(self) -> None:
+        self.decision: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +197,19 @@ PLANNING_TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "message if the stat name or value is invalid, and can retry."
         ),
         UpdateStatParams,
+    ),
+]
+
+
+DIRECTOR_TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    pydantic_to_openai_tool(
+        "set_decision",
+        (
+            "Commit the single short decision (one sentence) describing what "
+            "will happen next turn. Overwrites any previous decision. "
+            "Do not plan details — just the top-level narrative direction."
+        ),
+        SetDecisionParams,
     ),
 ]
 
@@ -494,6 +529,7 @@ def get_planning_tools(
 
 
 _PLANNING_TOOL_NAMES = {"add_fact", "add_decision", "update_stat"}
+_DIRECTOR_TOOL_NAMES = {"set_decision"}
 
 
 def get_tools_by_names(
@@ -504,13 +540,14 @@ def get_tools_by_names(
     stat_defs: "list[WorldStatDefinition] | None" = None,
     char_stats: dict[str, Any] | None = None,
     world_stats: dict[str, Any] | None = None,
+    decision_state: "DecisionState | None" = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Callable]]:
     """Return a filtered subset of tools by name.
 
     Planning tools (add_fact, add_decision, update_stat) are only instantiated
     when they appear in tool_names AND planning_context is provided.
-    If planning tools are requested but planning_context is None, they are
-    silently skipped.
+    Director tool (set_decision) is only instantiated when it appears in
+    tool_names AND decision_state is provided.
     """
     name_set = set(tool_names)
     needs_planning = bool(name_set & _PLANNING_TOOL_NAMES) and planning_context is not None
@@ -522,6 +559,17 @@ def get_tools_by_names(
         )
     else:
         all_defs, all_callables = get_chat_tools(world_id, session_id)
+
+    # Attach director tool if requested and state provided
+    if (name_set & _DIRECTOR_TOOL_NAMES) and decision_state is not None:
+        state = decision_state
+
+        async def set_decision_impl(content: str) -> str:
+            state.decision = content
+            return "Decision committed."
+
+        all_defs = all_defs + DIRECTOR_TOOL_DEFINITIONS
+        all_callables = {**all_callables, "set_decision": set_decision_impl}
 
     filtered_defs = [d for d in all_defs if d["function"]["name"] in name_set]
     filtered_callables = {k: v for k, v in all_callables.items() if k in name_set}

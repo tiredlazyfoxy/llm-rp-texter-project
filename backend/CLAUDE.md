@@ -32,14 +32,14 @@ backend/
       db_import_export.py — gzipped JSONL per table
       db_management.py    — DB introspection service (status, schema drift, create tables)
       prompts/           — LLM prompt package (one documented file per prompt, stage-4 docstring)
-        placeholder_registry.py     — Static registry of 11 prompt placeholders ({WORLD_NAME}, {RULES}, etc.)
-        tool_catalog.py             — Static registry of 11 tools with name, description, category
-        default_templates.py        — Default prompt templates (simple, tool, writer) using {PLACEHOLDER} syntax
+        placeholder_registry.py     — Static registry of prompt placeholders ({WORLD_NAME}, {RULES}, {DECISION}, …)
+        tool_catalog.py             — Static registry of tools with name, description, category (research/action/planning/director)
+        default_templates.py        — Default prompt templates (simple, tool, writer, director) using {PLACEHOLDER} syntax
         world_field_editor_system_prompt.py — System prompt for LLM-assisted field editing
         planning_system_prompt.py   — Planning stage system prompt (chain mode, legacy fallback)
         writing_system_prompt.py    — Writing stage system prompt (chain mode, legacy fallback)
         writing_plan_message.py     — Plan injection template for writer
-      chat_tools.py         — Chat tool implementations (8 chat tools + 3 planning tools) + factories: get_chat_tools(), get_writer_tools(), get_planning_tools()
+      chat_tools.py         — Chat tool implementations (8 chat tools + 3 planning tools + set_decision director tool) + factories: get_chat_tools(), get_writer_tools(), get_planning_tools(), get_tools_by_names() (gates planning/director tools on state kwargs)
       chat_context.py       — Context builder for rich system prompts
       stat_validation.py    — Stat update validation against definitions
       chat_service.py       — Chat CRUD (sessions, messages, memories, rewind, edit/delete messages)

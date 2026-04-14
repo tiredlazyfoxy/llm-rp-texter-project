@@ -14,7 +14,7 @@ from typing import TypedDict
 class ToolCatalogEntry(TypedDict):
     name: str
     description: str
-    category: str  # "research", "action", "planning"
+    category: str  # "research", "action", "planning", "director"
 
 
 TOOL_CATALOG: list[ToolCatalogEntry] = [
@@ -32,6 +32,8 @@ TOOL_CATALOG: list[ToolCatalogEntry] = [
     {"name": "add_fact", "description": "Record a context fact for the writing agent", "category": "planning"},
     {"name": "add_decision", "description": "Record a narrative decision for the writing agent", "category": "planning"},
     {"name": "update_stat", "description": "Update a stat value (validated immediately)", "category": "planning"},
+    # Director (chain mode — single top-level decision for the turn)
+    {"name": "set_decision", "description": "Commit one short sentence describing what happens next turn (overwrites)", "category": "director"},
 ]
 
 ALL_TOOL_NAMES: set[str] = {t["name"] for t in TOOL_CATALOG}

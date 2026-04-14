@@ -38,7 +38,7 @@ from app.services.chat_agent_service import (
     sse,
 )
 from app.services.chat_context import ChatContext, build_chat_context
-from app.services.chat_tools import get_planning_tools, get_tools_by_names, get_writer_tools
+from app.services.chat_tools import DecisionState, get_planning_tools, get_tools_by_names, get_writer_tools
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts.planning_system_prompt import build_planning_system_prompt
 from app.services.prompts.prompt_injection import (
@@ -182,7 +182,8 @@ def _create_filtered_thinking_callback(
 # ---------------------------------------------------------------------------
 
 def _build_placeholder_values(
-    context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str, tools_desc: str,
+    context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
+    tools_desc: str, decision: str = "",
 ) -> dict[str, str]:
     """Build the common placeholder kwargs for resolve_prompt_template."""
     return {
@@ -196,16 +197,18 @@ def _build_placeholder_values(
         "USER_INSTRUCTIONS": chat.user_instructions or "",
         "TURN_FACTS": turn_facts,
         "TURN_DECISIONS": turn_decisions,
+        "DECISION": decision,
         "TOOLS": tools_desc,
     }
 
 
 def _resolve_tool_prompt(
-    stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str, tools_desc: str,
+    stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
+    tools_desc: str, decision: str = "",
 ) -> str:
     """Resolve tool-step system prompt: template or legacy fallback."""
     if stage.prompt and stage.prompt.strip():
-        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc)
+        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc, decision)
         return resolve_prompt_template(stage.prompt, **values)
     return build_planning_system_prompt(
         world_name=context["world"].name,
@@ -227,11 +230,12 @@ def _resolve_tool_prompt(
 
 def _resolve_writer_prompt(
     stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
+    decision: str = "",
 ) -> str:
     """Resolve writer-step system prompt: template or legacy fallback."""
     if stage.prompt and stage.prompt.strip():
         tools_desc = build_tools_description(stage.tools)
-        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc)
+        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc, decision)
         return resolve_prompt_template(stage.prompt, **values)
     return build_writing_system_prompt(
         world_name=context["world"].name,
@@ -283,6 +287,8 @@ async def _run_tool_stage(
     char_stats: dict[str, Any],
     world_stats: dict[str, Any],
     tool_call_records: list[dict[str, Any]],
+    decision_state: DecisionState,
+    current_decision: str,
 ) -> str:
     """Execute a single tool step. Returns thinking text (may be empty)."""
     phase_label = stage.name or f"Tool step {stage_idx + 1}"
@@ -299,6 +305,7 @@ async def _run_tool_stage(
             planning_context=planning_ctx,
             stat_defs=context["stat_defs_list"],
             char_stats=char_stats, world_stats=world_stats,
+            decision_state=decision_state,
         )
     else:
         tool_defs, tool_callables = get_planning_tools(
@@ -310,7 +317,9 @@ async def _run_tool_stage(
     tools_desc = build_tools_description([d["function"]["name"] for d in tool_defs])
     prev_facts = format_facts(all_planning_contexts)
     prev_decisions = format_decisions(all_planning_contexts)
-    system_prompt = _resolve_tool_prompt(stage, context, chat, prev_facts, prev_decisions, tools_desc)
+    system_prompt = _resolve_tool_prompt(
+        stage, context, chat, prev_facts, prev_decisions, tools_desc, current_decision,
+    )
     logger.debug("%s Tool prompt: %d chars", lp, len(system_prompt))
 
     # Model
@@ -374,6 +383,7 @@ async def _run_writer_stage(
     char_stats: dict[str, Any],
     world_stats: dict[str, Any],
     tool_call_records: list[dict[str, Any]],
+    current_decision: str,
 ) -> tuple[str, str]:
     """Execute a single writer step. Returns (prose_content, thinking_text)."""
     phase_label = stage.name or "Writing"
@@ -384,7 +394,9 @@ async def _run_writer_stage(
     # Resolve prompt
     all_facts = format_facts(all_planning_contexts)
     all_decisions_str = format_decisions(all_planning_contexts)
-    system_prompt = _resolve_writer_prompt(stage, context, chat, all_facts, all_decisions_str)
+    system_prompt = _resolve_writer_prompt(
+        stage, context, chat, all_facts, all_decisions_str, current_decision,
+    )
 
     # Build writer messages: summaries + clean history + plan
     writer_messages: list[dict[str, str]] = []
@@ -597,16 +609,22 @@ async def _run_chain_generation(
         prose_content = ""
         char_stats = chats_db.parse_stats(chat.character_stats)
         world_stats = chats_db.parse_stats(chat.world_stats)
+        director_decision: str = ""
 
         # Run pipeline stages
         for stage_idx, stage in enumerate(pipeline.stages):
             if stage.step_type == "tool":
                 stage_label = stage.name or f"Tool step {stage_idx + 1}"
+                stage_decision_state = DecisionState()
                 thinking_text = await _run_tool_stage(
                     lp, stage, stage_idx, chat, context, llm_messages, queue, caller_role,
                     all_planning_contexts, char_stats, world_stats,
                     tool_call_records,
+                    stage_decision_state, director_decision,
                 )
+                if stage_decision_state.decision:
+                    director_decision = stage_decision_state.decision
+                    logger.debug("%s Director decision committed: %s", lp, director_decision[:200])
                 if thinking_text:
                     thinking_parts.append({"stage_name": stage_label, "content": thinking_text})
                 # Refresh context (move_to_location may have changed it)
@@ -620,7 +638,7 @@ async def _run_chain_generation(
                 prose_content, thinking_text = await _run_writer_stage(
                     lp, stage, stage_idx, chat, session_id, context, queue, caller_role,
                     all_planning_contexts, char_stats, world_stats,
-                    tool_call_records,
+                    tool_call_records, director_decision,
                 )
                 if thinking_text:
                     thinking_parts.append({"stage_name": stage_label, "content": thinking_text})

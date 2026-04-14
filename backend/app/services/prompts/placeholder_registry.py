@@ -36,6 +36,7 @@ PLACEHOLDER_REGISTRY: list[PlaceholderInfo] = [
     # Pipeline
     {"name": "TURN_FACTS", "description": "Collected context/facts from previous tool steps. Only meaningful for writer step in chain mode.", "category": "Pipeline"},
     {"name": "TURN_DECISIONS", "description": "Decisions/outcomes to execute from previous tool steps. Only meaningful for writer step in chain mode.", "category": "Pipeline"},
+    {"name": "DECISION", "description": "Short single-sentence decision committed by the director stage via set_decision. Empty string if no director stage ran.", "category": "Pipeline"},
     {"name": "TOOLS", "description": "Auto-generated list of available tools for this step with descriptions.", "category": "Pipeline"},
 ]
 
