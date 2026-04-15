@@ -333,8 +333,8 @@ async def _run_tool_stage(
     )
     logger.debug("%s Tool prompt: %d chars", lp, len(system_prompt))
 
-    # Model
-    model_id = chat.tool_model_id or chat.text_model_id
+    # Model — stage override takes precedence over session defaults
+    model_id = stage.model_id or chat.tool_model_id or chat.text_model_id
     if not model_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -440,8 +440,8 @@ async def _run_writer_stage(
         lp, len(system_prompt), len(plan_message), len(writer_messages),
     )
 
-    # Model
-    model_id = chat.text_model_id
+    # Model — stage override takes precedence over session default
+    model_id = stage.model_id or chat.text_model_id
     if not model_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -623,6 +623,9 @@ async def _run_chain_generation(
 
         # Run pipeline stages
         for stage_idx, stage in enumerate(pipeline.stages):
+            if not stage.enabled:
+                logger.debug("%s Stage %d (%s) disabled, skipping", lp, stage_idx, stage.name or stage.step_type)
+                continue
             if stage.step_type == "tool":
                 stage_label = stage.name or f"Tool step {stage_idx + 1}"
                 stage_decision_state = DecisionState()

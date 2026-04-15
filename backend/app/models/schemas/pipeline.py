@@ -7,6 +7,8 @@ class PipelineStage(BaseModel):
     prompt: str = ""  # full system prompt template with {PLACEHOLDER} syntax
     max_agent_steps: int | None = None  # only for "tool" steps
     tools: list[str] = []  # enabled tool names from tool catalog
+    enabled: bool = True  # disabled stages are skipped at runtime
+    model_id: str | None = None  # overrides session model for this stage
 
 
 class PipelineConfig(BaseModel):

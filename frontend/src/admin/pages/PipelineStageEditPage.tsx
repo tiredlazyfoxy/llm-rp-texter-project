@@ -3,16 +3,20 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
   Container,
   Group,
   Loader,
   Paper,
+  Select,
   Stack,
   Text,
   Textarea,
   Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
+import { fetchEnabledModels } from "../../api/llmChat";
+import type { EnabledModelInfo } from "../../types/llmServer";
 import type { PipelineConfig, PipelineConfigOptions } from "../../types/world";
 import { LlmChatPanel } from "../components/LlmChatPanel";
 import { PlaceholderPanel } from "../components/PlaceholderPanel";
@@ -50,7 +54,10 @@ export function PipelineStageEditPage() {
   const [stepType, setStepType] = useState("");
   const [stageName, setStageName] = useState("");
   const [stageTools, setStageTools] = useState<string[]>([]);
+  const [stageEnabled, setStageEnabled] = useState(true);
+  const [stageModelId, setStageModelId] = useState<string | null>(null);
   const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
+  const [enabledModels, setEnabledModels] = useState<EnabledModelInfo[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const autocomplete = usePlaceholderAutocomplete(
@@ -80,6 +87,8 @@ export function PipelineStageEditPage() {
       setStepType(stage.step_type);
       setStageName(stage.name || "");
       setStageTools(stage.tools || []);
+      setStageEnabled(stage.enabled !== false);
+      setStageModelId(stage.model_id ?? null);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -89,6 +98,7 @@ export function PipelineStageEditPage() {
 
   useEffect(() => {
     void load();
+    fetchEnabledModels().then(setEnabledModels).catch(() => {});
   }, [load]);
 
   const handleApply = async () => {
@@ -98,7 +108,9 @@ export function PipelineStageEditPage() {
     try {
       const updated: PipelineConfig = {
         stages: pipelineConfig.stages.map((s, i) =>
-          i === stageIndex ? { ...s, prompt: content } : s
+          i === stageIndex
+            ? { ...s, prompt: content, enabled: stageEnabled, model_id: stageModelId }
+            : s
         ),
       };
       await updateWorld(worldId, { pipeline: JSON.stringify(updated) });
@@ -136,7 +148,11 @@ export function PipelineStageEditPage() {
     setContent(template);
   };
 
-  const isDirty = content !== originalContent;
+  const originalStage = pipelineConfig.stages[stageIndex];
+  const isDirty =
+    content !== originalContent ||
+    (originalStage && (originalStage.enabled !== false) !== stageEnabled) ||
+    (originalStage && (originalStage.model_id ?? null) !== stageModelId);
 
   if (loading) {
     return (
@@ -176,6 +192,27 @@ export function PipelineStageEditPage() {
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
       {success && <Alert color="green" mb="md">{success}</Alert>}
+
+      <Paper p="sm" withBorder mb="md">
+        <Group gap="md" wrap="nowrap">
+          <Checkbox
+            label="Stage enabled"
+            checked={stageEnabled}
+            onChange={e => setStageEnabled(e.currentTarget.checked)}
+          />
+          <Select
+            label="Model override"
+            description="Leave empty to use the session model"
+            placeholder="Session model"
+            data={enabledModels.map(m => ({ value: m.model_id, label: m.model_id }))}
+            value={stageModelId}
+            onChange={setStageModelId}
+            searchable
+            clearable
+            w={320}
+          />
+        </Group>
+      </Paper>
 
       <Stack gap="md">
         {/* Prompt textarea */}

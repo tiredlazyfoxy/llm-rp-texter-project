@@ -33,6 +33,8 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { getCurrentUser } from "../../auth";
+import { fetchEnabledModels } from "../../api/llmChat";
+import type { EnabledModelInfo } from "../../types/llmServer";
 import type { PipelineConfig, PipelineConfigOptions, PipelineStage, RuleItem, StatDefinitionItem, WorldDetail } from "../../types/world";
 import {
   cloneWorld,
@@ -266,6 +268,7 @@ export function WorldEditPage() {
   const [simpleTools, setSimpleTools] = useState<string[]>([]);
   const [worldStatus, setWorldStatus] = useState("draft");
   const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
+  const [enabledModels, setEnabledModels] = useState<EnabledModelInfo[]>([]);
 
   // Resizable textarea heights (persisted to localStorage)
   const LS_HEIGHT = "llmrp_world_editor_height_";
@@ -336,6 +339,7 @@ export function WorldEditPage() {
   useEffect(() => {
     loadWorld();
     getPipelineConfigOptions().then(setConfigOptions).catch(() => {});
+    fetchEnabledModels().then(setEnabledModels).catch(() => {});
   }, [loadWorld]);
 
   const handleSave = async () => {
@@ -510,8 +514,8 @@ export function WorldEditPage() {
               if (mode === "chain" && pipelineConfig.stages.length === 0) {
                 setPipelineConfig({
                   stages: [
-                    { step_type: "tool", name: "", prompt: "", max_agent_steps: 10, tools: [] },
-                    { step_type: "writer", name: "", prompt: "", max_agent_steps: null, tools: [] },
+                    { step_type: "tool", name: "", prompt: "", max_agent_steps: 10, tools: [], enabled: true, model_id: null },
+                    { step_type: "writer", name: "", prompt: "", max_agent_steps: null, tools: [], enabled: true, model_id: null },
                   ],
                 });
               }
@@ -562,6 +566,8 @@ export function WorldEditPage() {
                       prompt: "",
                       max_agent_steps: v === "tool" ? 10 : null,
                       tools: [],
+                      enabled: true,
+                      model_id: null,
                     };
                     if (v === "tool") {
                       // Insert before writer stage if one exists
@@ -599,12 +605,25 @@ export function WorldEditPage() {
               {pipelineConfig.stages.length === 0 ? (
                 <Text c="dimmed" size="sm">No stages defined.</Text>
               ) : (
-                pipelineConfig.stages.map((stage, idx) => (
-                  <Paper key={idx} p="xs" withBorder>
+                pipelineConfig.stages.map((stage, idx) => {
+                  const stageEnabled = stage.enabled !== false;
+                  return (
+                  <Paper key={idx} p="xs" withBorder style={{ opacity: stageEnabled ? 1 : 0.55 }}>
                     <Stack gap={4}>
                     <Group justify="space-between" wrap="nowrap">
                       <Group gap="xs" wrap="nowrap">
+                        <Checkbox
+                          size="xs"
+                          checked={stageEnabled}
+                          onChange={e => {
+                            const stages = [...pipelineConfig.stages];
+                            stages[idx] = { ...stages[idx], enabled: e.currentTarget.checked };
+                            setPipelineConfig({ stages });
+                          }}
+                          title={stageEnabled ? "Disable stage" : "Enable stage"}
+                        />
                         <Badge size="sm" variant="light" circle>{idx + 1}</Badge>
+                        {!stageEnabled && <Badge size="sm" variant="filled" color="gray">Disabled</Badge>}
                         {(stage.step_type === "tool" || stage.step_type === "planning") ? (
                           <>
                             <TextInput
@@ -616,6 +635,7 @@ export function WorldEditPage() {
                                 stages[idx] = { ...stages[idx], name: e.currentTarget.value };
                                 setPipelineConfig({ stages });
                               }}
+                              styles={stageEnabled ? undefined : { input: { textDecoration: "line-through" } }}
                               w={150}
                             />
                             <NumberInput
@@ -635,8 +655,23 @@ export function WorldEditPage() {
                             />
                           </>
                         ) : (
-                          <Badge size="sm" variant="outline" color="teal">{stage.step_type}</Badge>
+                          <Badge size="sm" variant="outline" color="teal" style={stageEnabled ? undefined : { textDecoration: "line-through" }}>{stage.step_type}</Badge>
                         )}
+                        <Select
+                          size="xs"
+                          placeholder="Session model"
+                          title="Override model for this stage"
+                          data={enabledModels.map(m => ({ value: m.model_id, label: m.model_id }))}
+                          value={stage.model_id ?? null}
+                          onChange={v => {
+                            const stages = [...pipelineConfig.stages];
+                            stages[idx] = { ...stages[idx], model_id: v };
+                            setPipelineConfig({ stages });
+                          }}
+                          searchable
+                          clearable
+                          w={200}
+                        />
                       </Group>
                       <Group gap={4} wrap="nowrap">
                         <ActionIcon variant="subtle" size="sm" disabled={idx === 0} onClick={() => {
@@ -709,7 +744,8 @@ export function WorldEditPage() {
                     )}
                     </Stack>
                   </Paper>
-                ))
+                  );
+                })
               )}
             </Stack>
           )}

@@ -58,6 +58,8 @@ export interface PipelineStage {
   prompt: string;
   max_agent_steps: number | null;
   tools: string[];
+  enabled: boolean;
+  model_id: string | null;
 }
 
 export interface PipelineConfig {
