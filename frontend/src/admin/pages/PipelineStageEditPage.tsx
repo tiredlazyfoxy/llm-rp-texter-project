@@ -193,27 +193,6 @@ export function PipelineStageEditPage() {
       {error && <Alert color="red" mb="md">{error}</Alert>}
       {success && <Alert color="green" mb="md">{success}</Alert>}
 
-      <Paper p="sm" withBorder mb="md">
-        <Group gap="md" wrap="nowrap">
-          <Checkbox
-            label="Stage enabled"
-            checked={stageEnabled}
-            onChange={e => setStageEnabled(e.currentTarget.checked)}
-          />
-          <Select
-            label="Model override"
-            description="Leave empty to use the session model"
-            placeholder="Session model"
-            data={enabledModels.map(m => ({ value: m.model_id, label: m.model_id }))}
-            value={stageModelId}
-            onChange={setStageModelId}
-            searchable
-            clearable
-            w={320}
-          />
-        </Group>
-      </Paper>
-
       <Stack gap="md">
         {/* Prompt textarea */}
         <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
@@ -258,6 +237,27 @@ export function PipelineStageEditPage() {
             </Group>
           </Paper>
         )}
+
+        {/* Stage controls: enabled + model override */}
+        <Paper p="sm" withBorder>
+          <Stack gap="xs">
+            <Checkbox
+              label="Stage enabled"
+              checked={stageEnabled}
+              onChange={e => setStageEnabled(e.currentTarget.checked)}
+            />
+            <Select
+              label="Model override"
+              description="Leave empty to use the session model"
+              placeholder="Session model"
+              data={enabledModels.map(m => ({ value: m.model_id, label: m.model_id }))}
+              value={stageModelId}
+              onChange={setStageModelId}
+              searchable
+              clearable
+            />
+          </Stack>
+        </Paper>
 
         {/* LLM chat panel */}
         <LlmChatPanel
