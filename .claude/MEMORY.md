@@ -12,9 +12,6 @@
 - Frontend: Vite multi-page app (same port 8094), separate entry points for user and admin
 - **DB import/export**: All DB models must have gzipped JSONL import/export — always update when models change
 
-## User Preferences
-- **No Co-Authored-By lines in commits** — do not add Claude co-author attribution (legal/copyright concerns)
-
 ## Architecture Docs
 - `architecture/README.md` — Project overview
 - `architecture/system-overview.md` — System diagram and sub-APIs

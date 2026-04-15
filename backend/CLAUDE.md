@@ -1,3 +1,9 @@
+# Rules
+
+- **No Co-Authored-By lines in commits** — do not add Claude co-author attribution (legal/copyright concerns)
+- Use all git calls, except commit withot confirmation on commit scenario
+- use any non-chaning commans: read, search, grep,, etc commands inside the project folder without confirmation
+
 # Backend
 
 FastAPI application — Python 3.13, SQLite, SQLModel ORM.
