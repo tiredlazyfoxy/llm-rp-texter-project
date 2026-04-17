@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActionIcon, Badge, Group, Loader, Text, Textarea, Tooltip } from "@mantine/core";
 import { IconArrowBackUp, IconGripHorizontal, IconLanguage, IconPlayerStop, IconRefresh, IconSend } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import { translateTextChat } from "../../api/chat";
 import { useTranslation } from "../../hooks/useTranslation";
+import { extractUserInstructions } from "../../utils/oocParser";
 import { chatStore } from "../stores/ChatStore";
 
 const STORAGE_KEY = "chatInputHeight";
@@ -50,6 +51,8 @@ export const ChatInput = observer(function ChatInput() {
     document.addEventListener("pointerup", onUp);
   }
 
+  const oocPreview = useMemo(() => extractUserInstructions(value).userInstructions, [value]);
+
   const getValue = useCallback(() => value, [value]);
   const { isTranslating, canRevert, translateError, handleTranslate, handleRevert, onInputChange, clearTranslateError } = useTranslation({
     getValue,
@@ -60,7 +63,8 @@ export const ChatInput = observer(function ChatInput() {
   async function handleSend() {
     const text = value.trim();
     if (!text || chatStore.isSending) return;
-    await chatStore.sendMessage(text);
+    const { content, userInstructions } = extractUserInstructions(text);
+    await chatStore.sendMessage(content, userInstructions ?? undefined);
   }
 
   async function handleRegenerate() {
@@ -90,6 +94,14 @@ export const ChatInput = observer(function ChatInput() {
       </div>
 
       <div style={{ padding: "0 12px 8px", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {oocPreview && (
+          <Text
+            size="xs" c="dimmed" fs="italic" mb={4}
+            style={{ borderLeft: "2px solid var(--mantine-color-violet-7)", paddingLeft: 8 }}
+          >
+            OOC: {oocPreview}
+          </Text>
+        )}
         {translateError && (
           <Text size="xs" c="red" mb={4} onClick={clearTranslateError} style={{ cursor: "pointer" }}>
             {translateError}

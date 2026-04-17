@@ -74,6 +74,17 @@ async def init_db() -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
+    # Lightweight migrations for columns added after initial schema
+    from sqlalchemy import text
+    async with _engine.begin() as conn:
+        try:
+            await conn.execute(text(
+                "ALTER TABLE chat_messages ADD COLUMN user_instructions TEXT"
+            ))
+            logger.info("Migration: added user_instructions column to chat_messages")
+        except Exception:
+            pass  # column already exists
+
 
 async def get_standalone_session() -> AsyncSession:
     """Create a standalone session (internal to db layer only)."""

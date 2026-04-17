@@ -32,7 +32,7 @@ PLACEHOLDER_REGISTRY: list[PlaceholderInfo] = [
     {"name": "CHARACTER_STATS", "description": "Character-scope stats: definitions and current values, code-formatted.", "category": "Stats"},
     {"name": "WORLD_STATS", "description": "World-scope stats: definitions and current values, code-formatted.", "category": "Stats"},
     # Context
-    {"name": "USER_INSTRUCTIONS", "description": "Player-set custom instructions", "category": "Context"},
+    {"name": "USER_INSTRUCTIONS", "description": "Per-turn player OOC instructions from (( )) notation in message", "category": "Context"},
     # Pipeline
     {"name": "TURN_FACTS", "description": "Collected context/facts from previous tool steps. Only meaningful for writer step in chain mode.", "category": "Pipeline"},
     {"name": "TURN_DECISIONS", "description": "Decisions/outcomes to execute from previous tool steps. Only meaningful for writer step in chain mode.", "category": "Pipeline"},

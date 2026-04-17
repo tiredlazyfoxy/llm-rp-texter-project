@@ -24,6 +24,7 @@ class CreateChatRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     content: str
     variant_index: int | None = None
+    user_instructions: str | None = None
 
 
 class ContinueRequest(BaseModel):
@@ -37,7 +38,6 @@ class RewindRequest(BaseModel):
 class UpdateChatSettingsRequest(BaseModel):
     tool_model: ModelConfig | None = None
     text_model: ModelConfig | None = None
-    user_instructions: str | None = None
 
 
 class ChatSessionResponse(BaseModel):
@@ -54,7 +54,6 @@ class ChatSessionResponse(BaseModel):
     status: str
     tool_model: ModelConfig
     text_model: ModelConfig
-    user_instructions: str
     created_at: str
     modified_at: str
 
@@ -89,6 +88,7 @@ class ChatMessageResponse(BaseModel):
     tool_calls: list[ToolCallInfo] | None
     generation_plan: str | None = None
     thinking_content: str | None = None
+    user_instructions: str | None = None
     is_active_variant: bool
     created_at: str
 

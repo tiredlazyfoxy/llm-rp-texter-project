@@ -8,7 +8,6 @@ import {
   Stack,
   Switch,
   Text,
-  Textarea,
 } from "@mantine/core";
 import { observer } from "mobx-react-lite";
 import { chatStore } from "../stores/ChatStore";
@@ -81,7 +80,6 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, o
   const session = chatStore.currentChat?.session;
   const [toolModel, setToolModel] = useState<ModelConfig>(session?.tool_model ?? { model_id: null, temperature: 0.7, repeat_penalty: 1.0, top_p: 1.0 });
   const [textModel, setTextModel] = useState<ModelConfig>(session?.text_model ?? { model_id: null, temperature: 0.7, repeat_penalty: 1.0, top_p: 1.0 });
-  const [instructions, setInstructions] = useState(session?.user_instructions ?? "");
   const [availableModels, setAvailableModels] = useState<EnabledModelInfo[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -89,7 +87,6 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, o
     if (opened && session) {
       setToolModel(session.tool_model);
       setTextModel(session.text_model);
-      setInstructions(session.user_instructions);
       authRequest<{ models: EnabledModelInfo[] }>("/api/chats/models")
         .then((res) => setAvailableModels(res.models))
         .catch(() => {});
@@ -100,7 +97,7 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, o
     setSaving(true);
     saveToolModel(toolModel);
     saveTextModel(textModel);
-    await chatStore.updateSettings({ tool_model: toolModel, text_model: textModel, user_instructions: instructions });
+    await chatStore.updateSettings({ tool_model: toolModel, text_model: textModel });
     setSaving(false);
     onClose();
   }
@@ -128,15 +125,6 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, o
           availableModels={availableModels}
         />
         <Divider />
-        <Textarea
-          label="User instructions"
-          description="Appended to the system prompt"
-          value={instructions}
-          onChange={(e) => setInstructions(e.target.value)}
-          minRows={3}
-          maxRows={8}
-          autosize
-        />
         <Button onClick={handleSave} loading={saving}>Save</Button>
 
         {(getCurrentUser()?.role === "editor" || getCurrentUser()?.role === "admin") && (

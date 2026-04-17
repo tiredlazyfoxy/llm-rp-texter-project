@@ -132,7 +132,9 @@ export const MessageBubble = observer(function MessageBubble({
   }
 
   async function handleEdit() {
-    setEditValue(message.content);
+    // Prepend existing OOC instructions so they're editable
+    const oocPrefix = message.user_instructions ? `((${message.user_instructions}))\n` : "";
+    setEditValue(oocPrefix + message.content);
     setEditing(true);
   }
 
@@ -376,6 +378,16 @@ export const MessageBubble = observer(function MessageBubble({
           <div className="md-body" style={{ fontSize: "var(--mantine-font-size-sm)" }}>
             <ReactMarkdown>{content}</ReactMarkdown>
           </div>
+        )}
+
+        {/* OOC user instructions — below content, separated */}
+        {isUser && message.user_instructions && !editing && (
+          <Text
+            size="xs" c="dark.2" fs="italic" mt={6} pt={6}
+            style={{ borderTop: "1px solid var(--mantine-color-dark-4)", opacity: 0.7 }}
+          >
+            {message.user_instructions}
+          </Text>
         )}
 
         {/* Action buttons */}

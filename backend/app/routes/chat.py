@@ -130,6 +130,7 @@ async def send_message(
     generator = await chat_agent_service.generate_response(
         int(chat_id), caller.id, req.content, caller_role=caller.role.value,
         variant_index=req.variant_index,
+        user_instructions=req.user_instructions,
     )
     return StreamingResponse(generator, media_type="text/event-stream")
 
@@ -201,7 +202,7 @@ async def update_settings(
     caller: User = Depends(_require_player),
 ) -> dict:
     await chat_service.update_settings(
-        int(chat_id), caller.id, req.tool_model, req.text_model, req.user_instructions
+        int(chat_id), caller.id, req.tool_model, req.text_model,
     )
     return {"ok": True}
 

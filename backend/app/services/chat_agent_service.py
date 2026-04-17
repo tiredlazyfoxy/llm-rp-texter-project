@@ -193,6 +193,7 @@ async def generate_response(
     user_message: str,
     caller_role: str = "player",
     variant_index: int | None = None,
+    user_instructions: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Dispatch to mode-specific generation service."""
     chat = await chats_db.get_session_by_id(session_id)
@@ -213,6 +214,7 @@ async def generate_response(
         return chain_generation_service.generate_chain_response(
             session_id, user_id, user_message, caller_role,
             variant_index=variant_index,
+            user_instructions=user_instructions,
         )
     elif mode == "agentic":
         raise HTTPException(
@@ -224,6 +226,7 @@ async def generate_response(
         return simple_generation_service.generate_simple_response(
             session_id, user_id, user_message,
             variant_index=variant_index,
+            user_instructions=user_instructions,
         )
 
 

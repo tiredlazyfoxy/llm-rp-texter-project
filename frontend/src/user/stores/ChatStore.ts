@@ -1,5 +1,6 @@
 import { makeAutoObservable, observable, runInAction } from "mobx";
 import * as chatApi from "../../api/chat";
+import { extractUserInstructions } from "../../utils/oocParser";
 
 class ChatStore {
   publicWorlds: WorldInfo[] = [];
@@ -179,7 +180,7 @@ class ChatStore {
     return session.id;
   }
 
-  async sendMessage(content: string): Promise<void> {
+  async sendMessage(content: string, userInstructions?: string): Promise<void> {
     if (!this.currentChat || this.isSending) return;
     const chatId = this.currentChat.session.id;
 
@@ -203,6 +204,7 @@ class ChatStore {
 
     const req: SendMessageRequest = { content };
     if (variantIdx !== null) req.variant_index = variantIdx;
+    if (userInstructions) req.user_instructions = userInstructions;
 
     await new Promise<void>((resolve) => {
       this._abortController = chatApi.sendMessage(
@@ -228,9 +230,12 @@ class ChatStore {
           onUserAck: (ack) =>
             runInAction(() => {
               if (this.currentChat) {
-                // Avoid duplicate if message already exists (e.g. after edit+resend)
-                const exists = this.currentChat.messages.some((m) => m.id === ack.id);
-                if (!exists) {
+                // Update existing message (e.g. after edit+resend) or add new
+                const existing = this.currentChat.messages.find((m) => m.id === ack.id);
+                if (existing) {
+                  existing.content = content;
+                  existing.user_instructions = userInstructions ?? null;
+                } else {
                   this.currentChat.messages.push({
                     id: ack.id,
                     role: "user",
@@ -239,6 +244,7 @@ class ChatStore {
                     tool_calls: null,
                     generation_plan: null,
                     thinking_content: null,
+                    user_instructions: userInstructions ?? null,
                     is_active_variant: true,
                     created_at: ack.created_at,
                   });
@@ -393,8 +399,6 @@ class ChatStore {
       if (!this.currentChat) return;
       if (req.tool_model) this.currentChat.session.tool_model = req.tool_model;
       if (req.text_model) this.currentChat.session.text_model = req.text_model;
-      if (req.user_instructions !== undefined)
-        this.currentChat.session.user_instructions = req.user_instructions;
     });
   }
 
@@ -498,14 +502,16 @@ class ChatStore {
 
   // ------- Message management actions -------
 
-  async editMessage(messageId: string, newContent: string): Promise<void> {
+  async editMessage(messageId: string, rawContent: string): Promise<void> {
     if (!this.currentChat) return;
     const chatId = this.currentChat.session.id;
     try {
-      const detail = await chatApi.editMessage(chatId, messageId, newContent);
+      // Parse OOC instructions from edited text
+      const { content, userInstructions } = extractUserInstructions(rawContent);
+      const detail = await chatApi.editMessage(chatId, messageId, content);
       runInAction(() => { this._mergeChatDetail(detail); });
       // Re-generate with the edited content
-      await this.sendMessage(newContent);
+      await this.sendMessage(content, userInstructions ?? undefined);
     } catch (e) {
       runInAction(() => { this.error = String(e); });
     }

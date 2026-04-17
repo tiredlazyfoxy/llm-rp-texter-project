@@ -98,6 +98,7 @@ async def _run_generation(
     llm_messages: list[dict[str, str]],
     queue: asyncio.Queue,
     is_regenerate: bool = False,
+    user_instructions: str | None = None,
 ) -> None:
     """Run the LLM generation with tools, stat validation, and persistence."""
     try:
@@ -156,7 +157,7 @@ async def _run_generation(
                 CHARACTER_NAME=chat.character_name,
                 CHARACTER_STATS=context["character_stats"],
                 WORLD_STATS=context["world_stats"],
-                USER_INSTRUCTIONS=chat.user_instructions or "",
+                USER_INSTRUCTIONS=user_instructions or "",
                 TURN_FACTS="",
                 TURN_DECISIONS="",
                 TOOLS=tools_desc,
@@ -176,7 +177,7 @@ async def _run_generation(
                 character_name=chat.character_name,
                 character_description=chat.character_description,
                 injected_lore=context["injected_lore"],
-                user_instructions=chat.user_instructions,
+                user_instructions=user_instructions or "",
                 memories=context["memories"],
             )
         logger.debug("%s System prompt: %d chars", lp, len(system_prompt))
@@ -322,6 +323,7 @@ def generate_simple_response(
     user_id: int,
     user_message: str,
     variant_index: int | None = None,
+    user_instructions: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Simple mode generation: single LLM call with tools and rich context."""
 
@@ -350,6 +352,10 @@ def generate_simple_response(
         existing = await chats_db.get_user_message_at_turn(session_id, turn)
         if existing and existing.content == user_message:
             user_msg = existing
+            # Update user_instructions if changed (e.g. edit & resend with new OOC)
+            if existing.user_instructions != user_instructions:
+                existing.user_instructions = user_instructions
+                await chats_db.update_message(existing)
         else:
             user_msg = ChatMessage(
                 id=snowflake_svc.generate_id(),
@@ -357,6 +363,7 @@ def generate_simple_response(
                 role="user",
                 content=user_message,
                 turn_number=turn,
+                user_instructions=user_instructions,
                 is_active_variant=True,
                 created_at=now(),
             )
@@ -375,7 +382,8 @@ def generate_simple_response(
         # Run generation in background task with queue
         queue: asyncio.Queue[str | None] = asyncio.Queue()
         task = asyncio.create_task(
-            _run_generation(chat, turn, session_id, llm_messages, queue)
+            _run_generation(chat, turn, session_id, llm_messages, queue,
+                            user_instructions=user_instructions)
         )
 
         try:
@@ -438,6 +446,7 @@ def regenerate_simple_response(
         # Reload user message for this turn
         user_msg = await chats_db.get_user_message_at_turn(session_id, turn)
         user_content = user_msg.content if user_msg else ""
+        user_instructions = user_msg.user_instructions if user_msg else None
 
         # Restore stats and location from previous snapshot
         prev_snap = await chats_db.get_snapshot_at_turn(session_id, turn - 1)
@@ -471,7 +480,8 @@ def regenerate_simple_response(
         # Run generation
         queue: asyncio.Queue[str | None] = asyncio.Queue()
         task = asyncio.create_task(
-            _run_generation(chat, turn, session_id, llm_messages, queue, is_regenerate=True)
+            _run_generation(chat, turn, session_id, llm_messages, queue,
+                            is_regenerate=True, user_instructions=user_instructions)
         )
 
         try:

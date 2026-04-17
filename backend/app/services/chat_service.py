@@ -83,6 +83,7 @@ def _msg_to_response(m: ChatMessage) -> ChatMessageResponse:
         tool_calls=_parse_tool_calls(m.tool_calls),
         generation_plan=m.generation_plan,
         thinking_content=m.thinking_content,
+        user_instructions=m.user_instructions,
         is_active_variant=m.is_active_variant,
         created_at=m.created_at.isoformat(),
     )
@@ -211,7 +212,6 @@ async def _build_session_response(
         status=session.status,
         tool_model=_model_config_from_session_tool(session),
         text_model=_model_config_from_session_text(session),
-        user_instructions=session.user_instructions,
         created_at=session.created_at.isoformat(),
         modified_at=session.modified_at.isoformat(),
     )
@@ -494,7 +494,6 @@ async def update_settings(
     user_id: int,
     tool_model: ModelConfig | None,
     text_model: ModelConfig | None,
-    user_instructions: str | None,
 ) -> None:
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None or chat.user_id != user_id:
@@ -509,8 +508,6 @@ async def update_settings(
         chat.text_temperature = text_model.temperature
         chat.text_repeat_penalty = text_model.repeat_penalty
         chat.text_top_p = text_model.top_p
-    if user_instructions is not None:
-        chat.user_instructions = user_instructions
     chat.modified_at = _now()
     await chats_db.update_session(chat)
 

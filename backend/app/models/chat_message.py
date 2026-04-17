@@ -15,5 +15,6 @@ class ChatMessage(SQLModel, table=True):
     generation_plan: str | None = Field(default=None)
     thinking_content: str | None = Field(default=None)
     summary_id: int | None = Field(default=None, foreign_key="chat_summaries.id", index=True)
+    user_instructions: str | None = Field(default=None)
     is_active_variant: bool = Field(default=True)
     created_at: datetime

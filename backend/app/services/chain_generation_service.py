@@ -184,7 +184,7 @@ def _create_filtered_thinking_callback(
 
 def _build_placeholder_values(
     context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
-    tools_desc: str, decision: str = "",
+    tools_desc: str, decision: str = "", user_instructions: str | None = None,
 ) -> dict[str, str]:
     """Build the common placeholder kwargs for resolve_prompt_template."""
     return {
@@ -195,7 +195,7 @@ def _build_placeholder_values(
         "CHARACTER_NAME": chat.character_name,
         "CHARACTER_STATS": context["character_stats"],
         "WORLD_STATS": context["world_stats"],
-        "USER_INSTRUCTIONS": chat.user_instructions or "",
+        "USER_INSTRUCTIONS": user_instructions or "",
         "TURN_FACTS": turn_facts,
         "TURN_DECISIONS": turn_decisions,
         "DECISION": decision,
@@ -205,11 +205,11 @@ def _build_placeholder_values(
 
 def _resolve_tool_prompt(
     stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
-    tools_desc: str, decision: str = "",
+    tools_desc: str, decision: str = "", user_instructions: str | None = None,
 ) -> str:
     """Resolve tool-step system prompt: template or legacy fallback."""
     if stage.prompt and stage.prompt.strip():
-        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc, decision)
+        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc, decision, user_instructions)
         return resolve_prompt_template(stage.prompt, **values)
     return build_planning_system_prompt(
         world_name=context["world"].name,
@@ -223,7 +223,7 @@ def _resolve_tool_prompt(
         current_stats=context["current_stats"],
         character_name=chat.character_name,
         character_description=chat.character_description,
-        user_instructions=chat.user_instructions or "",
+        user_instructions=user_instructions or "",
         lore_parts=context["injected_lore"],
         admin_prompt="",
     )
@@ -231,12 +231,12 @@ def _resolve_tool_prompt(
 
 def _resolve_writer_prompt(
     stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
-    decision: str = "",
+    decision: str = "", user_instructions: str | None = None,
 ) -> str:
     """Resolve writer-step system prompt: template or legacy fallback."""
     if stage.prompt and stage.prompt.strip():
         tools_desc = build_tools_description(stage.tools)
-        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc, decision)
+        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc, decision, user_instructions)
         return resolve_prompt_template(stage.prompt, **values)
     return build_writing_system_prompt(
         world_name=context["world"].name,
@@ -245,7 +245,7 @@ def _resolve_writer_prompt(
         character_description=chat.character_description,
         lore_parts=context["injected_lore"],
         admin_prompt="",
-        user_instructions=chat.user_instructions or "",
+        user_instructions=user_instructions or "",
     )
 
 
@@ -302,6 +302,7 @@ async def _run_tool_stage(
     tool_call_records: list[dict[str, Any]],
     decision_state: DecisionState,
     current_decision: str,
+    user_instructions: str | None = None,
 ) -> str:
     """Execute a single tool step. Returns thinking text (may be empty)."""
     phase_label = stage.name or f"Tool step {stage_idx + 1}"
@@ -330,6 +331,7 @@ async def _run_tool_stage(
     prev_decisions = format_decisions(all_planning_contexts)
     system_prompt = _resolve_tool_prompt(
         stage, context, chat, prev_facts, prev_decisions, tools_desc, current_decision,
+        user_instructions=user_instructions,
     )
     logger.debug("%s Tool prompt: %d chars", lp, len(system_prompt))
 
@@ -395,6 +397,7 @@ async def _run_writer_stage(
     world_stats: dict[str, Any],
     tool_call_records: list[dict[str, Any]],
     current_decision: str,
+    user_instructions: str | None = None,
 ) -> tuple[str, str]:
     """Execute a single writer step. Returns (prose_content, thinking_text)."""
     phase_label = stage.name or "Writing"
@@ -407,6 +410,7 @@ async def _run_writer_stage(
     all_decisions_str = format_decisions(all_planning_contexts)
     system_prompt = _resolve_writer_prompt(
         stage, context, chat, all_facts, all_decisions_str, current_decision,
+        user_instructions=user_instructions,
     )
 
     # Build writer messages: summaries + clean history + plan
@@ -591,6 +595,7 @@ async def _run_chain_generation(
     queue: asyncio.Queue,
     caller_role: str,
     is_regenerate: bool = False,
+    user_instructions: str | None = None,
 ) -> None:
     """Run the dynamic N-step chain pipeline: tool steps → writer step."""
     try:
@@ -634,6 +639,7 @@ async def _run_chain_generation(
                     all_planning_contexts, char_stats, world_stats,
                     tool_call_records,
                     stage_decision_state, director_decision,
+                    user_instructions=user_instructions,
                 )
                 if stage_decision_state.decision:
                     director_decision = stage_decision_state.decision
@@ -652,6 +658,7 @@ async def _run_chain_generation(
                     lp, stage, stage_idx, chat, session_id, context, queue, caller_role,
                     all_planning_contexts, char_stats, world_stats,
                     tool_call_records, director_decision,
+                    user_instructions=user_instructions,
                 )
                 if thinking_text:
                     thinking_parts.append({"stage_name": stage_label, "content": thinking_text})
@@ -679,6 +686,7 @@ def generate_chain_response(
     user_message: str,
     caller_role: str,
     variant_index: int | None = None,
+    user_instructions: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Chain mode generation: planning → writing pipeline."""
 
@@ -709,6 +717,10 @@ def generate_chain_response(
         existing = await chats_db.get_user_message_at_turn(session_id, turn)
         if existing and existing.content == user_message:
             user_msg = existing
+            # Update user_instructions if changed (e.g. edit & resend with new OOC)
+            if existing.user_instructions != user_instructions:
+                existing.user_instructions = user_instructions
+                await chats_db.update_message(existing)
         else:
             user_msg = ChatMessage(
                 id=snowflake_svc.generate_id(),
@@ -716,6 +728,7 @@ def generate_chain_response(
                 role="user",
                 content=user_message,
                 turn_number=turn,
+                user_instructions=user_instructions,
                 is_active_variant=True,
                 created_at=now(),
             )
@@ -736,6 +749,7 @@ def generate_chain_response(
         task = asyncio.create_task(
             _run_chain_generation(
                 chat, turn, session_id, llm_messages, queue, caller_role,
+                user_instructions=user_instructions,
             )
         )
 
@@ -801,6 +815,7 @@ def regenerate_chain_response(
         # Reload user message for this turn
         user_msg = await chats_db.get_user_message_at_turn(session_id, turn)
         user_content = user_msg.content if user_msg else ""
+        user_instructions = user_msg.user_instructions if user_msg else None
 
         # Restore stats and location from previous snapshot
         prev_snap = await chats_db.get_snapshot_at_turn(session_id, turn - 1)
@@ -835,7 +850,7 @@ def regenerate_chain_response(
         task = asyncio.create_task(
             _run_chain_generation(
                 chat, turn, session_id, llm_messages, queue, caller_role,
-                is_regenerate=True,
+                is_regenerate=True, user_instructions=user_instructions,
             )
         )
 

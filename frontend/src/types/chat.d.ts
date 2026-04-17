@@ -30,7 +30,6 @@ interface ChatSession {
   status: "active" | "archived";
   tool_model: ModelConfig;
   text_model: ModelConfig;
-  user_instructions: string;
   created_at: string;
   modified_at: string;
 }
@@ -38,7 +37,6 @@ interface ChatSession {
 interface UpdateChatSettingsRequest {
   tool_model?: ModelConfig;
   text_model?: ModelConfig;
-  user_instructions?: string;
 }
 
 interface ChatMessage {
@@ -49,6 +47,7 @@ interface ChatMessage {
   tool_calls: ToolCallInfo[] | null;
   generation_plan: string | null;
   thinking_content: string | null;
+  user_instructions: string | null;
   is_active_variant: boolean;
   created_at: string;
 }
@@ -147,6 +146,7 @@ interface CreateChatRequest {
 interface SendMessageRequest {
   content: string;
   variant_index?: number;
+  user_instructions?: string;
 }
 
 interface ContinueRequest {
