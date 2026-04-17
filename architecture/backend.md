@@ -252,4 +252,4 @@ Prompts combine three layers:
 
 1. **Coded part** — structural instructions, tool usage guidance (hardcoded in the prompt file). Note: planning prompt instructs the LLM to use `add_fact`/`add_decision`/`update_stat` tools for structured output — it does not include JSON output instructions.
 2. **Admin part** — world-specific free text (from `World.system_prompt` or `PipelineStage.prompt`)
-3. **Player part** — `session.user_instructions` (player's recommendations/feedback, always included when non-empty)
+3. **Player part** — per-turn OOC instructions from `(( ))` notation in user messages, stored as `message.user_instructions`, injected via `{USER_INSTRUCTIONS}` placeholder (always included when non-empty)

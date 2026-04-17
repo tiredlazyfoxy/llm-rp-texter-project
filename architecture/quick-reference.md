@@ -36,9 +36,9 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 ### Stage 2 — Chat System
 
-**chat_sessions**: id, user_id, world_id, current_location_id, character_name, character_description, character_stats (JSON), world_stats (JSON), current_turn, status (active/archived), tool_model_id, tool_temperature, tool_repeat_penalty, tool_top_p, text_model_id, text_temperature, text_repeat_penalty, text_top_p, user_instructions, created_at, modified_at
+**chat_sessions**: id, user_id, world_id, current_location_id, character_name, character_description, character_stats (JSON), world_stats (JSON), current_turn, status (active/archived), tool_model_id, tool_temperature, tool_repeat_penalty, tool_top_p, text_model_id, text_temperature, text_repeat_penalty, text_top_p, user_instructions (deprecated — now per-message), generation_variants (JSON), created_at, modified_at
 
-**chat_messages**: id, session_id, role (user/assistant/system), content, turn_number, tool_calls (JSON array), generation_plan (JSON, nullable — GenerationPlanOutput from chain mode), thinking_content (text, nullable — stored reasoning for debug), summary_id (FK to summaries, null if not summarized), is_active_variant, created_at
+**chat_messages**: id, session_id, role (user/assistant/system), content, turn_number, tool_calls (JSON array), generation_plan (JSON, nullable — GenerationPlanOutput from chain mode), thinking_content (text, nullable — stored reasoning for debug), user_instructions (text, nullable — per-turn OOC instructions extracted from `(( ))` notation), summary_id (FK to summaries, null if not summarized), is_active_variant, created_at
 
 **chat_state_snapshots**: id, session_id, turn_number, location_id, character_stats (JSON), world_stats (JSON), created_at
 
@@ -104,7 +104,7 @@ CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All requi
 | POST | `/api/chats/:id/rewind` | Rewind to target turn |
 | PUT | `/api/chats/:id/messages/:msg_id` | Edit user message content, delete assistant at that turn + all after, rewind to turn-1 |
 | DELETE | `/api/chats/:id/messages/:msg_id` | Delete message + everything after it (user: whole turn+after; assistant: keep user msg, delete turn+1 onward) |
-| PUT | `/api/chats/:id/settings` | Update model config, user_instructions |
+| PUT | `/api/chats/:id/settings` | Update model config |
 | PUT | `/api/chats/:id/archive` | Archive chat (read-only) |
 | DELETE | `/api/chats/:id` | Delete chat and all related data |
 
@@ -122,13 +122,16 @@ Used for chat message generation and regeneration.
 | `tool_call_result` | `{"tool_name": "...", "result": "..."}` | Tool returned | Editor+ only |
 | `user_ack` | `{"id": "...", "turn_number": N, "created_at": "..."}` | User message saved to DB | All |
 | `token` | `{"content": "...delta..."}` | Content token delta | All |
-| `stat_update` | `{"stats": {"name": value, ...}}` | Stats changed | All |
+| `stat_update` | `{"character_stats": {...}, "world_stats": {...}, "turn_number": N}` | Stats changed | All |
+| `variants_update` | `{"variants": GenerationVariant[]}` | Updated variants list (regeneration only) | All |
 | `done` | `{"message": ChatMessageResponse}` | Final message | All |
 | `error` | `{"detail": "..."}` | Error | All |
 
 Simple mode order: `user_ack` -> `status*` -> `thinking*` -> `tool_call_start` -> `tool_call_result` -> `token*` -> `stat_update?` -> `done`
 
 Chain mode order: `user_ack` -> `phase("planning")` -> `status*` -> `tool_call*` -> `stat_update` -> `phase("writing")` -> `status` -> `token*` -> `done`
+
+Regeneration adds `variants_update` after `done` with the updated variants list.
 
 **Visibility filtering**: Backend filters events by `caller_role`. Players receive only All-visibility events. Editors+ receive everything. Frontend debug toggle controls whether editor-only events are displayed or hidden in the UI.
 
@@ -204,12 +207,15 @@ Tool registration: single `TOOL_REGISTRY` (12 tools) + `build_tools(names, ToolC
 ## Regeneration & Variants
 
 - Variants stored as JSON array on `chat_sessions.generation_variants` (`GenerationVariant[]`)
-- Regenerate: serialize current assistant message → move to `generation_variants` → delete from DB → generate new
+- Each variant stores: content, tool_calls, generation_plan, thinking_content, character_stats, world_stats, location_id, location_name
+- Regenerate: serialize current assistant message + stats → move to `generation_variants` → delete from DB → restore previous snapshot → generate new
 - Only one active assistant message per turn in DB; old ones stored in session JSON
 - Inline `< N/M >` switcher in message bubble (variants + current = total)
-- Continue (explicit): "Use this" icon on old variant → restore as DB message, clear variants
+- Switching variants updates the stats panel to show that variant's stats (`displaySnapshot`)
+- Continue (explicit): "Use this" icon on old variant → restore as DB message + stats, clear variants
 - Continue (implicit): sending a new message auto-commits viewed variant; server clears variants on send
 - `POST /continue` accepts `{ variant_index: int }` (index into variants array)
+- SSE: `variants_update` event sent after regeneration with the updated variants list (avoids full chat reload)
 
 ## Summarization (stage2_step4)
 

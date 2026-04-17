@@ -62,7 +62,7 @@ frontend/
 - **UI Library**: Mantine 7.17+ (@mantine/core, @mantine/form, @mantine/hooks)
 - **State**: MobX 6.13+ (observable stores)
 - **Routing**: History API
-- **SSE**: fetch + ReadableStream (not EventSource — needs POST + auth headers). Events: token, thinking, tool_call_start/result, phase, status, stat_update, done, error. Backend filters editor-only events by caller_role.
+- **SSE**: fetch + ReadableStream (not EventSource — needs POST + auth headers). Events: token, thinking, tool_call_start/result, phase, status, stat_update, variants_update, user_ack, done, error. Backend filters editor-only events by caller_role.
 
 ## Typing
 
