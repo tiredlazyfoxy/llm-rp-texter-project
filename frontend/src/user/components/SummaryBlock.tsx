@@ -1,5 +1,5 @@
 import { ActionIcon, Card, Group, Loader, Stack, Text, Tooltip } from "@mantine/core";
-import { IconChevronDown, IconChevronUp, IconRefresh } from "@tabler/icons-react";
+import { IconArrowBackUp, IconChevronDown, IconChevronUp, IconRefresh } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import ReactMarkdown from "react-markdown";
 import { chatStore } from "../stores/ChatStore";
@@ -7,12 +7,14 @@ import { MessageBubble } from "./MessageBubble";
 
 interface SummaryBlockProps {
   summary: ChatSummary;
+  isLast?: boolean;
 }
 
-export const SummaryBlock = observer(function SummaryBlock({ summary }: SummaryBlockProps) {
+export const SummaryBlock = observer(function SummaryBlock({ summary, isLast }: SummaryBlockProps) {
   const isExpanded = chatStore.expandedSummaryMessages.has(summary.id);
   const expandedMessages = chatStore.expandedSummaryMessages.get(summary.id);
   const isRegenerating = chatStore.isRegeneratingSummary === summary.id;
+  const isBusy = chatStore.isCompacting || chatStore.isSending;
 
   async function handleExpand() {
     if (isExpanded) {
@@ -24,6 +26,11 @@ export const SummaryBlock = observer(function SummaryBlock({ summary }: SummaryB
 
   async function handleRegenerate() {
     await chatStore.regenerateSummary(summary.id);
+  }
+
+  async function handleUnsummarize() {
+    if (!confirm("Undo this summary and restore the original messages?")) return;
+    await chatStore.unsummarizeLast(summary.id);
   }
 
   return (
@@ -65,6 +72,19 @@ export const SummaryBlock = observer(function SummaryBlock({ summary }: SummaryB
                 {isRegenerating ? <Loader size={12} /> : <IconRefresh size={14} />}
               </ActionIcon>
             </Tooltip>
+            {isLast && (
+              <Tooltip label="Undo summary">
+                <ActionIcon
+                  variant="subtle"
+                  size="xs"
+                  color="yellow"
+                  onClick={handleUnsummarize}
+                  disabled={isRegenerating || isBusy}
+                >
+                  <IconArrowBackUp size={14} />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
         </Group>
 

@@ -177,6 +177,7 @@ class RegenerateRequest(BaseModel):
 
 class CompactRequest(BaseModel):
     up_to_message_id: str
+    variant_index: int | None = None
 
 
 class CompactResponse(BaseModel):

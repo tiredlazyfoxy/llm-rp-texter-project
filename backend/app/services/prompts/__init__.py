@@ -3,6 +3,8 @@
 from app.services.prompts.document_editor_system_prompt import build_document_editor_system
 from app.services.prompts.world_field_editor_system_prompt import build_world_field_editor_system
 from app.services.prompts.chat_summarization_prompt import (
+    MEMORY_EXTRACTION_SYSTEM_PROMPT,
+    MEMORY_EXTRACTION_USER_PROMPT_TEMPLATE,
     SUMMARIZE_SYSTEM_PROMPT,
     SUMMARIZE_USER_PROMPT_TEMPLATE,
 )
@@ -22,6 +24,8 @@ __all__ = [
     "build_rich_chat_system_prompt",
     "build_document_editor_system",
     "build_world_field_editor_system",
+    "MEMORY_EXTRACTION_SYSTEM_PROMPT",
+    "MEMORY_EXTRACTION_USER_PROMPT_TEMPLATE",
     "SUMMARIZE_SYSTEM_PROMPT",
     "SUMMARIZE_USER_PROMPT_TEMPLATE",
     "build_planning_system_prompt",

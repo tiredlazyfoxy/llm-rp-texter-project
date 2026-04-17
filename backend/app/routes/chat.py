@@ -15,7 +15,6 @@ from app.models.schemas.chat import (
     ChatSessionResponse,
     ChatSummaryResponse,
     CompactRequest,
-    CompactResponse,
     ContinueRequest,
     CreateChatRequest,
     EditMessageRequest,
@@ -251,26 +250,27 @@ async def delete_memory(
 # Summaries / compaction
 # ---------------------------------------------------------------------------
 
-@router.post("/{chat_id}/compact", response_model=CompactResponse)
+@router.post("/{chat_id}/compact")
 async def compact_chat(
     chat_id: str,
     req: CompactRequest,
     caller: User = Depends(_require_player),
-) -> CompactResponse:
-    summary, count = await summarization_service.compact_messages(
+) -> StreamingResponse:
+    generator = summarization_service.compact_messages_stream(
         int(chat_id), int(req.up_to_message_id), caller.id,
+        variant_index=req.variant_index,
     )
-    return CompactResponse(
-        summary=ChatSummaryResponse(
-            id=str(summary.id),
-            start_message_id=str(summary.start_message_id),
-            end_message_id=str(summary.end_message_id),
-            start_turn=summary.start_turn,
-            end_turn=summary.end_turn,
-            content=summary.content,
-            created_at=summary.created_at.isoformat(),
-        ),
-        updated_message_count=count,
+    return StreamingResponse(generator, media_type="text/event-stream")
+
+
+@router.delete("/{chat_id}/summaries/{summary_id}", response_model=list[ChatMessageResponse])
+async def unsummarize_last(
+    chat_id: str,
+    summary_id: str,
+    caller: User = Depends(_require_player),
+) -> list[ChatMessageResponse]:
+    return await summarization_service.unsummarize_last(
+        int(chat_id), int(summary_id), caller.id,
     )
 
 

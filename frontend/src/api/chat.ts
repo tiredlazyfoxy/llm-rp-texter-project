@@ -79,10 +79,100 @@ export async function deleteChatMemory(chatId: string, memoryId: string): Promis
   await authRequest(`/api/chats/${chatId}/memories/${memoryId}`, { method: "DELETE" });
 }
 
-export async function compactChat(chatId: string, req: CompactRequest): Promise<CompactResponse> {
-  return authRequest<CompactResponse>(`/api/chats/${chatId}/compact`, {
-    method: "POST",
-    body: JSON.stringify(req),
+export interface CompactSSEHandlers {
+  onPhase?: (phase: string) => void;
+  onToken?: (content: string) => void;
+  onToolCallStart?: (toolName: string, args: Record<string, string>, stageName?: string) => void;
+  onToolCallResult?: (toolName: string, result: string) => void;
+  onDone?: (response: CompactResponse) => void;
+  onError?: (detail: string) => void;
+}
+
+export function compactChatStream(
+  chatId: string,
+  req: CompactRequest,
+  handlers: CompactSSEHandlers,
+): AbortController {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const res = await fetch(`/api/chats/${chatId}/compact`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(req),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        handlers.onError?.(err.detail || res.statusText);
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop()!;
+
+        for (const part of parts) {
+          if (!part.trim()) continue;
+          let eventType = "message";
+          let data = "";
+          for (const line of part.split("\n")) {
+            if (line.startsWith("event: ")) eventType = line.slice(7).trim();
+            else if (line.startsWith("data: ")) data = line.slice(6);
+          }
+          if (!data) continue;
+          const parsed = JSON.parse(data) as Record<string, unknown>;
+          switch (eventType) {
+            case "phase":
+              handlers.onPhase?.(parsed.phase as string);
+              break;
+            case "token":
+              handlers.onToken?.(parsed.content as string);
+              break;
+            case "tool_call_start":
+              handlers.onToolCallStart?.(
+                parsed.tool_name as string,
+                parsed.arguments as Record<string, string>,
+                parsed.stage_name as string | undefined,
+              );
+              break;
+            case "tool_call_result":
+              handlers.onToolCallResult?.(parsed.tool_name as string, parsed.result as string);
+              break;
+            case "compact_done":
+              handlers.onDone?.({
+                summary: parsed.summary as ChatSummary,
+                updated_message_count: parsed.updated_message_count as number,
+              });
+              break;
+            case "error":
+              handlers.onError?.(parsed.detail as string);
+              break;
+          }
+        }
+      }
+    } catch (err) {
+      if ((err as DOMException).name !== "AbortError") {
+        handlers.onError?.(err instanceof Error ? err.message : "Stream failed");
+      }
+    }
+  })();
+
+  return controller;
+}
+
+export async function unsummarizeLast(chatId: string, summaryId: string): Promise<ChatMessage[]> {
+  return authRequest<ChatMessage[]>(`/api/chats/${chatId}/summaries/${summaryId}`, {
+    method: "DELETE",
   });
 }
 

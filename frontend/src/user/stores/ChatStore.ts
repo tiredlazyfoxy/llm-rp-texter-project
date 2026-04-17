@@ -17,6 +17,11 @@ class ChatStore {
   isCompacting = false;
   isRegeneratingSummary: string | null = null;
 
+  // Compact streaming state
+  compactPhase: string | null = null;
+  compactToolCalls: Array<{ tool_name: string; arguments: Record<string, string>; result?: string; stage_name?: string }> = [];
+  compactStreamingContent = "";
+
   // Pending user input (kept until backend ack, restored on error)
   pendingInput = "";
 
@@ -491,34 +496,97 @@ class ChatStore {
 
   // ------- Summary / compaction actions -------
 
-  async compactUpTo(messageId: string): Promise<void> {
+  async compactUpTo(messageId: string, variantIndex?: number): Promise<void> {
     if (!this.currentChat || this.isCompacting) return;
     const chatId = this.currentChat.session.id;
-    runInAction(() => { this.isCompacting = true; });
-    try {
-      const resp = await chatApi.compactChat(chatId, { up_to_message_id: messageId });
-      runInAction(() => {
-        this.summaries.push(resp.summary);
-        // Remove compacted messages from the active messages list
-        if (this.currentChat) {
-          const endMsgId = resp.summary.end_message_id;
-          const startMsgId = resp.summary.start_message_id;
-          let removing = false;
-          this.currentChat.messages = this.currentChat.messages.filter((m) => {
-            if (m.id === startMsgId) removing = true;
-            if (removing) {
-              const isEnd = m.id === endMsgId;
-              if (isEnd) removing = false;
-              return false; // remove
+    runInAction(() => {
+      this.isCompacting = true;
+      this.compactPhase = null;
+      this.compactToolCalls = [];
+      this.compactStreamingContent = "";
+    });
+
+    const req: CompactRequest = { up_to_message_id: messageId };
+    if (variantIndex != null) req.variant_index = variantIndex;
+
+    await new Promise<void>((resolve) => {
+      chatApi.compactChatStream(chatId, req, {
+        onPhase: (phase) => runInAction(() => { this.compactPhase = phase; }),
+        onToken: (content) => runInAction(() => { this.compactStreamingContent += content; }),
+        onToolCallStart: (name, args, stageName) =>
+          runInAction(() => {
+            this.compactToolCalls.push({ tool_name: name, arguments: args, stage_name: stageName });
+          }),
+        onToolCallResult: (name, result) =>
+          runInAction(() => {
+            const tc = this.compactToolCalls.find((t) => t.tool_name === name && !t.result);
+            if (tc) tc.result = result;
+          }),
+        onDone: (resp) => {
+          runInAction(() => {
+            this.summaries.push(resp.summary);
+            if (this.currentChat) {
+              const endMsgId = resp.summary.end_message_id;
+              const startMsgId = resp.summary.start_message_id;
+              let removing = false;
+              this.currentChat.messages = this.currentChat.messages.filter((m) => {
+                if (m.id === startMsgId) removing = true;
+                if (removing) {
+                  const isEnd = m.id === endMsgId;
+                  if (isEnd) removing = false;
+                  return false;
+                }
+                return true;
+              });
+              // Clear variants if summary covers the current turn (prevents fallback rendering)
+              if (resp.summary.end_turn >= this.currentChat.session.current_turn) {
+                this.currentChat.variants.length = 0;
+              }
             }
-            return true;
+            this.isCompacting = false;
+            this.compactPhase = null;
+            this.compactToolCalls = [];
+            this.compactStreamingContent = "";
           });
-        }
+          this.loadMemories().catch(() => {});
+          resolve();
+        },
+        onError: (detail) => {
+          runInAction(() => {
+            this.error = detail;
+            this.isCompacting = false;
+            this.compactPhase = null;
+            this.compactToolCalls = [];
+            this.compactStreamingContent = "";
+          });
+          resolve();
+        },
       });
+    });
+  }
+
+  async unsummarizeLast(summaryId: string): Promise<void> {
+    if (!this.currentChat) return;
+    const chatId = this.currentChat.session.id;
+    try {
+      const restoredMessages = await chatApi.unsummarizeLast(chatId, summaryId);
+      runInAction(() => {
+        // Remove summary
+        this.summaries = this.summaries.filter((s) => s.id !== summaryId);
+        // Insert restored messages sorted by turn_number
+        if (this.currentChat) {
+          const msgs = this.currentChat.messages;
+          for (const rm of restoredMessages) {
+            msgs.push(rm);
+          }
+          msgs.sort((a, b) => a.turn_number - b.turn_number);
+        }
+        // Clear expanded state for this summary
+        this.expandedSummaryMessages.delete(summaryId);
+      });
+      this.loadMemories().catch(() => {});
     } catch (e) {
       runInAction(() => { this.error = String(e); });
-    } finally {
-      runInAction(() => { this.isCompacting = false; });
     }
   }
 

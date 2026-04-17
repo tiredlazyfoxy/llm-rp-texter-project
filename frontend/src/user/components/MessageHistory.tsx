@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
-import { ActionIcon, Alert, Button, Divider, Group, Stack, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Alert, Button, Card, Divider, Group, Loader, Stack, Text, Tooltip } from "@mantine/core";
 import { IconAlertTriangle, IconFold, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
+import ReactMarkdown from "react-markdown";
 import { chatStore } from "../stores/ChatStore";
 import { MessageBubble } from "./MessageBubble";
 import { SummaryBlock } from "./SummaryBlock";
+import { ToolCallTrace } from "./ToolCallTrace";
 
 function isSummaryItem(item: ChatSummary | ChatMessage): item is ChatSummary {
   return "start_turn" in item && "end_turn" in item && "start_message_id" in item;
@@ -33,6 +35,13 @@ export const MessageHistory = observer(function MessageHistory() {
     }
   }, [chatStore.streamingContent, chatStore.streamingToolCalls.length]);
 
+  // Scroll during compaction streaming
+  useEffect(() => {
+    if (chatStore.isCompacting) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatStore.compactStreamingContent, chatStore.compactToolCalls.length]);
+
   // Scroll on error
   useEffect(() => {
     if (chatStore.error) {
@@ -47,9 +56,11 @@ export const MessageHistory = observer(function MessageHistory() {
     chatStore.streamingToolCalls = [];
   }
 
-  async function handleCompact(messageId: string) {
+  async function handleCompact(messageId: string, turnNumber: number) {
     if (!confirm("Summarize all messages up to this point?")) return;
-    await chatStore.compactUpTo(messageId);
+    // Pass variant index when compacting the current turn
+    const variantIdx = turnNumber === currentTurn ? chatStore.viewingVariantIndex ?? undefined : undefined;
+    await chatStore.compactUpTo(messageId, variantIdx);
   }
 
   let prevTurn = 0;
@@ -58,9 +69,11 @@ export const MessageHistory = observer(function MessageHistory() {
     <Stack gap="md" p="md" style={{ flex: 1, overflowY: "auto" }}>
       {items.map((item) => {
         if (isSummaryItem(item)) {
+          // isLast = this is the last summary in the summaries array
+          const lastSummaryId = chatStore.summaries[chatStore.summaries.length - 1]?.id;
           const el = (
             <div key={`summary-${item.id}`}>
-              <SummaryBlock summary={item} />
+              <SummaryBlock summary={item} isLast={item.id === lastSummaryId} />
             </div>
           );
           prevTurn = item.end_turn;
@@ -73,7 +86,7 @@ export const MessageHistory = observer(function MessageHistory() {
 
         const showCompact =
           msg.role === "assistant" &&
-          msg.turn_number < currentTurn &&
+          msg.turn_number <= currentTurn &&
           !chatStore.isCompacting;
 
         return (
@@ -103,7 +116,7 @@ export const MessageHistory = observer(function MessageHistory() {
                   size="xs"
                   color="gray"
                   mt={2}
-                  onClick={() => handleCompact(msg.id)}
+                  onClick={() => handleCompact(msg.id, msg.turn_number)}
                   loading={chatStore.isCompacting}
                 >
                   <IconFold size={12} />
@@ -113,6 +126,52 @@ export const MessageHistory = observer(function MessageHistory() {
           </div>
         );
       })}
+
+      {/* Compact progress indicator */}
+      {chatStore.isCompacting && (
+        <Card
+          withBorder
+          padding="sm"
+          radius="md"
+          style={{
+            backgroundColor: "var(--mantine-color-dark-7)",
+            borderColor: "var(--mantine-color-dark-4)",
+            flexShrink: 0,
+          }}
+        >
+          <Group gap="xs" mb={chatStore.compactStreamingContent ? "xs" : 0}>
+            <Loader size={14} />
+            <Text size="xs" fw={600} c="dimmed">
+              {chatStore.compactPhase === "summarization"
+                ? "Writing summary..."
+                : chatStore.compactPhase === "memory_extraction"
+                  ? "Extracting memories..."
+                  : "Starting compaction..."}
+            </Text>
+          </Group>
+
+          {/* Debug: show memory extraction tool calls */}
+          {chatStore.debugMode && chatStore.compactToolCalls.length > 0 && (
+            <ToolCallTrace
+              toolCalls={chatStore.compactToolCalls.map((tc) => ({
+                tool_name: tc.tool_name,
+                arguments: tc.arguments as Record<string, string | null>,
+                result: tc.result ?? "",
+                stage_name: tc.stage_name,
+              }))}
+              debugMode
+              streaming
+            />
+          )}
+
+          {/* Streaming summary text */}
+          {chatStore.compactStreamingContent && (
+            <div className="md-body" style={{ fontSize: "var(--mantine-font-size-xs)" }}>
+              <ReactMarkdown>{chatStore.compactStreamingContent}</ReactMarkdown>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Fallback: if variants exist but no assistant message at current turn (error/deleted), show last variant */}
       {!isSending && chatStore.hasMultipleVariants && currentTurn > 0

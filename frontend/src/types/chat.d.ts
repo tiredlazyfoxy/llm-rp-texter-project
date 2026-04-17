@@ -183,6 +183,7 @@ interface ChatSummary {
 
 interface CompactRequest {
   up_to_message_id: string;
+  variant_index?: number;
 }
 
 interface CompactResponse {
