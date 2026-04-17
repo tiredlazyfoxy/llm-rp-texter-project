@@ -12,13 +12,33 @@ function isSummaryItem(item: ChatSummary | ChatMessage): item is ChatSummary {
 
 export const MessageHistory = observer(function MessageHistory() {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prevLengthRef = useRef(0);
   const items = chatStore.displayItems;
   const isSending = chatStore.isSending;
   const currentTurn = chatStore.currentChat?.session.current_turn ?? 0;
 
+  // Scroll when new messages are added (not on delete/rewind)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [items.length, chatStore.streamingContent, chatStore.streamingToolCalls.length, chatStore.error, chatStore.isSending]);
+    const prev = prevLengthRef.current;
+    prevLengthRef.current = items.length;
+    if (items.length > prev) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [items.length]);
+
+  // Scroll during active streaming
+  useEffect(() => {
+    if (chatStore.isSending) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatStore.streamingContent, chatStore.streamingToolCalls.length]);
+
+  // Scroll on error
+  useEffect(() => {
+    if (chatStore.error) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatStore.error]);
 
   function dismissError() {
     chatStore.error = null;

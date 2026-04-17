@@ -35,6 +35,37 @@ class ChatStore {
 
   private _abortController: AbortController | null = null;
 
+  /** Patch currentChat in place instead of replacing it.
+   *  Preserves MobX observable identity so only changed properties trigger re-renders. */
+  private _mergeChatDetail(detail: ChatDetail): void {
+    const current = this.currentChat;
+    if (!current) { this.currentChat = detail; return; }
+
+    // Merge session fields in place
+    Object.assign(current.session, detail.session);
+
+    // Reconcile messages: reuse existing objects by id to keep references stable
+    const existingById = new Map(current.messages.map(m => [m.id, m]));
+    current.messages.length = 0;
+    for (const msg of detail.messages) {
+      const existing = existingById.get(msg.id);
+      if (existing) {
+        Object.assign(existing, msg);
+        current.messages.push(existing);
+      } else {
+        current.messages.push(msg);
+      }
+    }
+
+    // Variants/snapshots change fully — replace
+    current.variants = detail.variants;
+    current.snapshots = detail.snapshots;
+
+    // Summaries
+    this.summaries = detail.summaries ?? [];
+    this.expandedSummaryMessages.clear();
+  }
+
   constructor() {
     makeAutoObservable(this);
     this.debugMode = localStorage.getItem("chatDebugMode") === "true";
@@ -128,9 +159,13 @@ class ChatStore {
     try {
       const detail = await chatApi.getChatDetail(chatId);
       runInAction(() => {
-        this.currentChat = detail;
-        this.summaries = detail.summaries ?? [];
-        this.expandedSummaryMessages.clear();
+        if (this.currentChat?.session.id === chatId) {
+          this._mergeChatDetail(detail);
+        } else {
+          this.currentChat = detail;
+          this.summaries = detail.summaries ?? [];
+          this.expandedSummaryMessages.clear();
+        }
       });
     } catch (e) {
       runInAction(() => { this.error = String(e); });
@@ -348,17 +383,19 @@ class ChatStore {
   async rewindToTurn(turn: number): Promise<void> {
     if (!this.currentChat) return;
     const detail = await chatApi.rewindChat(this.currentChat.session.id, { target_turn: turn });
-    runInAction(() => {
-      this.currentChat = detail;
-      this.summaries = detail.summaries ?? [];
-      this.expandedSummaryMessages.clear();
-    });
+    runInAction(() => { this._mergeChatDetail(detail); });
   }
 
   async updateSettings(req: UpdateChatSettingsRequest): Promise<void> {
     if (!this.currentChat) return;
     await chatApi.updateChatSettings(this.currentChat.session.id, req);
-    await this.loadChatDetail(this.currentChat.session.id);
+    runInAction(() => {
+      if (!this.currentChat) return;
+      if (req.tool_model) this.currentChat.session.tool_model = req.tool_model;
+      if (req.text_model) this.currentChat.session.text_model = req.text_model;
+      if (req.user_instructions !== undefined)
+        this.currentChat.session.user_instructions = req.user_instructions;
+    });
   }
 
   async archiveChat(): Promise<void> {
@@ -466,11 +503,7 @@ class ChatStore {
     const chatId = this.currentChat.session.id;
     try {
       const detail = await chatApi.editMessage(chatId, messageId, newContent);
-      runInAction(() => {
-        this.currentChat = detail;
-        this.summaries = detail.summaries ?? [];
-        this.expandedSummaryMessages.clear();
-      });
+      runInAction(() => { this._mergeChatDetail(detail); });
       // Re-generate with the edited content
       await this.sendMessage(newContent);
     } catch (e) {
@@ -483,11 +516,7 @@ class ChatStore {
     const chatId = this.currentChat.session.id;
     try {
       const detail = await chatApi.deleteMessage(chatId, messageId);
-      runInAction(() => {
-        this.currentChat = detail;
-        this.summaries = detail.summaries ?? [];
-        this.expandedSummaryMessages.clear();
-      });
+      runInAction(() => { this._mergeChatDetail(detail); });
     } catch (e) {
       runInAction(() => { this.error = String(e); });
     }
