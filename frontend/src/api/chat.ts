@@ -11,8 +11,9 @@ export interface ChatSSEHandlers {
   onToolCallResult?: (toolName: string, result: string) => void;
   onPhase?: (phase: "planning" | "writing") => void;
   onStatus?: (text: string) => void;
-  onStatUpdate?: (stats: Record<string, number | string | string[]>) => void;
+  onStatUpdate?: (data: { character_stats: Record<string, number | string | string[]>; world_stats: Record<string, number | string | string[]>; turn_number: number }) => void;
   onUserAck?: (ack: { id: string; turn_number: number; created_at: string }) => void;
+  onVariantsUpdate?: (variants: GenerationVariant[]) => void;
   onDone?: (message: ChatMessage) => void;
   onError?: (detail: string) => void;
 }
@@ -175,8 +176,16 @@ function _streamChat(
               handlers.onStatus?.(parsed.text as string);
               break;
             case "stat_update":
-              console.debug("[SSE] stat_update:", parsed.stats);
-              handlers.onStatUpdate?.(parsed.stats as Record<string, number | string | string[]>);
+              console.debug("[SSE] stat_update:", parsed);
+              handlers.onStatUpdate?.({
+                character_stats: parsed.character_stats as Record<string, number | string | string[]>,
+                world_stats: parsed.world_stats as Record<string, number | string | string[]>,
+                turn_number: parsed.turn_number as number,
+              });
+              break;
+            case "variants_update":
+              console.debug("[SSE] variants_update:", parsed.variants);
+              handlers.onVariantsUpdate?.(parsed.variants as GenerationVariant[]);
               break;
             case "user_ack":
               console.debug("[SSE] user_ack:", parsed);

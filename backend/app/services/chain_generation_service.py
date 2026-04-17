@@ -514,7 +514,11 @@ async def _finalize_chain(
     new_char, new_world = char_stats, world_stats
     logger.debug("%s Stats after pipeline: char=%s, world=%s", lp, new_char, new_world)
 
-    await queue.put(sse("stat_update", {"stats": {**new_char, **new_world}}))
+    await queue.put(sse("stat_update", {
+        "character_stats": new_char,
+        "world_stats": new_world,
+        "turn_number": turn,
+    }))
 
     combined_plan = _combine_planning_contexts(all_planning_contexts)
     thinking_text = json.dumps(thinking_parts) if thinking_parts else None
@@ -860,6 +864,15 @@ def regenerate_chain_response(
                 if item is None:
                     break
                 yield item
+
+            # Send updated variants after generation completes
+            updated_chat = await chats_db.get_session_by_id(session_id)
+            if updated_chat:
+                from app.services.chat_service import _load_variants
+                final_variants = _load_variants(updated_chat)
+                yield sse("variants_update", {
+                    "variants": [v.model_dump() for v in final_variants],
+                })
         finally:
             if not task.done():
                 task.cancel()

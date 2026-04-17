@@ -58,12 +58,42 @@ class ChatStore {
       }
     }
 
-    // Variants/snapshots change fully — replace
-    current.variants = detail.variants;
-    current.snapshots = detail.snapshots;
+    // Reconcile variants by index (append-only, order stable)
+    const oldVarLen = current.variants.length;
+    for (let i = 0; i < detail.variants.length; i++) {
+      if (i < oldVarLen) {
+        Object.assign(current.variants[i], detail.variants[i]);
+      } else {
+        current.variants.push(detail.variants[i]);
+      }
+    }
+    current.variants.length = detail.variants.length;
 
-    // Summaries
-    this.summaries = detail.summaries ?? [];
+    // Reconcile snapshots by turn_number
+    const existingSnapByTurn = new Map(current.snapshots.map(s => [s.turn_number, s]));
+    current.snapshots.length = 0;
+    for (const snap of detail.snapshots) {
+      const existing = existingSnapByTurn.get(snap.turn_number);
+      if (existing) {
+        Object.assign(existing, snap);
+        current.snapshots.push(existing);
+      } else {
+        current.snapshots.push(snap);
+      }
+    }
+
+    // Reconcile summaries by id
+    const existingSumById = new Map(this.summaries.map(s => [s.id, s]));
+    this.summaries.length = 0;
+    for (const sum of (detail.summaries ?? [])) {
+      const existing = existingSumById.get(sum.id);
+      if (existing) {
+        Object.assign(existing, sum);
+        this.summaries.push(existing);
+      } else {
+        this.summaries.push(sum);
+      }
+    }
     this.expandedSummaryMessages.clear();
   }
 
@@ -137,6 +167,25 @@ class ChatStore {
     return this.currentSnapshot;
   }
 
+  /** Apply a stat_update SSE event: upsert snapshot at the given turn. */
+  private _applyStatUpdate(data: { character_stats: Record<string, number | string | string[]>; world_stats: Record<string, number | string | string[]>; turn_number: number }): void {
+    if (!this.currentChat) return;
+    const snaps = this.currentChat.snapshots;
+    const existing = snaps.find((s) => s.turn_number === data.turn_number);
+    if (existing) {
+      existing.character_stats = data.character_stats;
+      existing.world_stats = data.world_stats;
+    } else {
+      snaps.push({
+        turn_number: data.turn_number,
+        location_id: this.currentChat.session.current_location_id ?? null,
+        location_name: null,
+        character_stats: data.character_stats,
+        world_stats: data.world_stats,
+      });
+    }
+  }
+
   async loadPublicWorlds(): Promise<void> {
     try {
       const worlds = await chatApi.listPublicWorlds();
@@ -199,7 +248,7 @@ class ChatStore {
       this.currentStatus = null;
       this.viewingVariantIndex = null;
       // Clear variants immediately — server clears them on send
-      if (this.currentChat) this.currentChat.variants = [];
+      if (this.currentChat) this.currentChat.variants.length = 0;
     });
 
     const req: SendMessageRequest = { content };
@@ -253,18 +302,13 @@ class ChatStore {
             }),
           onPhase: (phase) => runInAction(() => { this.currentPhase = phase; }),
           onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
-          onStatUpdate: (stats) => runInAction(() => {
-            if (this.currentChat) {
-              const snap = this.currentSnapshot;
-              if (snap) Object.assign(snap.character_stats, stats);
-            }
-          }),
+          onStatUpdate: (data) => runInAction(() => { this._applyStatUpdate(data); }),
           onDone: (message) => {
             console.debug("[Chat] done, message:", message.id);
             runInAction(() => {
               if (this.currentChat) {
                 this.currentChat.messages.push(message);
-                this.currentChat.variants = [];
+                this.currentChat.variants.length = 0;
                 this.currentChat.session.current_turn = message.turn_number;
               }
               this.pendingInput = "";
@@ -335,9 +379,21 @@ class ChatStore {
           }),
         onPhase: (phase) => runInAction(() => { this.currentPhase = phase; }),
         onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
-        onStatUpdate: () => {},
+        onStatUpdate: (data) => runInAction(() => { this._applyStatUpdate(data); }),
+        onVariantsUpdate: (variants) => runInAction(() => {
+          if (!this.currentChat) return;
+          const cur = this.currentChat.variants;
+          const oldLen = cur.length;
+          for (let i = 0; i < variants.length; i++) {
+            if (i < oldLen) {
+              Object.assign(cur[i], variants[i]);
+            } else {
+              cur.push(variants[i]);
+            }
+          }
+          cur.length = variants.length;
+        }),
         onDone: (message) => {
-          const reloadId = this.currentChat?.session.id;
           runInAction(() => {
             if (this.currentChat) {
               // Replace old assistant message at this turn with the new one
@@ -358,8 +414,6 @@ class ChatStore {
             this.currentStatus = null;
             this.viewingVariantIndex = null;
           });
-          // Reload to get updated variants from server
-          if (reloadId) this.loadChatDetail(reloadId);
           this.loadMemories().catch(() => {});
           resolve();
         },
@@ -556,7 +610,20 @@ class ChatStore {
           }),
         onPhase: (phase) => runInAction(() => { this.currentPhase = phase; }),
         onStatus: (text) => runInAction(() => { this.currentStatus = text; }),
-        onStatUpdate: () => {},
+        onStatUpdate: (data) => runInAction(() => { this._applyStatUpdate(data); }),
+        onVariantsUpdate: (variants) => runInAction(() => {
+          if (!this.currentChat) return;
+          const cur = this.currentChat.variants;
+          const oldLen = cur.length;
+          for (let i = 0; i < variants.length; i++) {
+            if (i < oldLen) {
+              Object.assign(cur[i], variants[i]);
+            } else {
+              cur.push(variants[i]);
+            }
+          }
+          cur.length = variants.length;
+        }),
         onDone: (_message) => {
           // Reload full detail since rewind may have changed state
           this.loadChatDetail(chatId).then(() => resolve());

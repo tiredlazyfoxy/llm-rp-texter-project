@@ -87,6 +87,8 @@ export const MessageHistory = observer(function MessageHistory() {
             )}
             <MessageBubble
               message={msg}
+              isSending={isSending}
+              currentTurn={currentTurn}
               {...(msg.role === "assistant" && msg.turn_number === currentTurn && chatStore.hasMultipleVariants
                 ? {
                     variants: chatStore.latestTurnVariants,
@@ -127,12 +129,15 @@ export const MessageHistory = observer(function MessageHistory() {
             tool_calls: last.tool_calls,
             generation_plan: last.generation_plan ? JSON.stringify(last.generation_plan) : null,
             thinking_content: last.thinking_content,
+            user_instructions: null,
             is_active_variant: false,
             created_at: last.created_at,
           };
           return (
             <MessageBubble
               message={fallbackMsg}
+              isSending={isSending}
+              currentTurn={currentTurn}
               variants={vs}
               onSelectVariant={(index: number) => chatStore.continueWithVariant(index)}
             />
@@ -149,10 +154,13 @@ export const MessageHistory = observer(function MessageHistory() {
             tool_calls: null,
             generation_plan: null,
             thinking_content: null,
+            user_instructions: null,
             is_active_variant: true,
             created_at: new Date().toISOString(),
           }}
           isStreaming
+          isSending={isSending}
+          currentTurn={currentTurn}
           streamingContent={chatStore.streamingContent}
           streamingThinking={chatStore.streamingThinking}
           streamingToolCalls={chatStore.streamingToolCalls}

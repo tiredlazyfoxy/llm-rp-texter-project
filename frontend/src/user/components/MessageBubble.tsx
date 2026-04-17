@@ -40,6 +40,8 @@ interface MessageBubbleProps {
   streamingToolCalls?: StreamingToolCall[];
   variants?: GenerationVariant[];
   onSelectVariant?: (index: number) => void;
+  isSending?: boolean;
+  currentTurn?: number;
 }
 
 function ThinkingSection({ label, content }: { label: string; content: string }) {
@@ -75,6 +77,8 @@ export const MessageBubble = observer(function MessageBubble({
   streamingToolCalls,
   variants,
   onSelectVariant,
+  isSending: isSendingProp,
+  currentTurn: currentTurnProp,
 }: MessageBubbleProps) {
   const [thinkOpen, setThinkOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
@@ -107,7 +111,7 @@ export const MessageBubble = observer(function MessageBubble({
     : viewedVariant ? viewedVariant.content : message.content;
   const debug = chatStore.debugMode;
   const isSummarized = false; // Messages in active list are not summarized
-  const currentTurn = chatStore.currentChat?.session.current_turn ?? 0;
+  const currentTurn = currentTurnProp ?? 0;
 
   // Resolve display fields: variant (rich types) or message (JSON strings)
   const displayToolCalls = viewedVariant ? viewedVariant.tool_calls : message.tool_calls;
@@ -183,7 +187,7 @@ export const MessageBubble = observer(function MessageBubble({
   }
 
   const showActions = !isStreaming && !isSystem && !isSummarized;
-  const actionsDisabled = chatStore.isSending;
+  const actionsDisabled = isSendingProp ?? false;
 
   return (
     <Stack
