@@ -57,7 +57,7 @@ def validate_and_apply_stat_updates(
             logger.warning("Stat update skipped: unknown stat '%s'", name)
             continue
 
-        validated = _validate_value(stat_def, value)
+        validated = validate_single_value(stat_def, value)
         if validated is None:
             continue
 
@@ -67,7 +67,7 @@ def validate_and_apply_stat_updates(
     return new_char, new_world
 
 
-def _validate_value(
+def validate_single_value(
     stat_def: WorldStatDefinition, value: Any
 ) -> int | str | list[str] | None:
     """Validate a single stat value. Returns validated value or None if invalid."""

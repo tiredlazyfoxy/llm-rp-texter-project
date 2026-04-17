@@ -407,7 +407,7 @@ def _b_add_decision(ctx: ToolContext) -> Callable:
 
 def _b_update_stat(ctx: ToolContext) -> Callable:
     from app.models.schemas.pipeline import StatUpdateEntry
-    from app.services.stat_validation import validate_and_apply_stat_updates
+    from app.services.stat_validation import validate_single_value
 
     assert (
         ctx.planning_context is not None
@@ -420,25 +420,42 @@ def _b_update_stat(ctx: ToolContext) -> Callable:
     char_stats = ctx.char_stats
     world_stats = ctx.world_stats
 
+    defs_by_name = {d.name: d for d in stat_defs}
+
     async def update_stat(name: str, value: str) -> str:
-        updates = {name: value}
-        try:
-            new_char, new_world = validate_and_apply_stat_updates(
-                updates, stat_defs, char_stats, world_stats,
-            )
-        except Exception as exc:
-            return f"Stat update failed: {exc}"
-
-        if new_char == char_stats and new_world == world_stats:
+        # Phase 1: check stat name exists
+        stat_def = defs_by_name.get(name)
+        if stat_def is None:
+            valid_names = sorted(defs_by_name.keys())
             return (
-                f"Stat update rejected: '{name}' is not a valid stat or value "
-                f"'{value}' is invalid."
+                f"Stat update rejected: '{name}' is not a recognized stat. "
+                f"Valid stats: {', '.join(valid_names)}"
             )
 
-        char_stats.update(new_char)
-        world_stats.update(new_world)
-        pc.stat_updates.append(StatUpdateEntry(name=name, value=value))
-        return f"Stat updated: {name} = {value}"
+        # Phase 2: validate value
+        validated = validate_single_value(stat_def, value)
+        if validated is None:
+            stat_type = stat_def.stat_type.value
+            if stat_type == "int":
+                hint = "Expected integer"
+                if stat_def.min_value is not None or stat_def.max_value is not None:
+                    hint += f" in range [{stat_def.min_value}, {stat_def.max_value}]"
+            elif stat_type == "enum":
+                hint = f"Expected one of: {stat_def.enum_values}"
+            elif stat_type == "set":
+                hint = f"Expected list from: {stat_def.enum_values}"
+            else:
+                hint = f"Unknown stat type '{stat_type}'"
+            return (
+                f"Stat update rejected: value '{value}' is invalid for "
+                f"'{name}' ({stat_type}). {hint}"
+            )
+
+        # Phase 3: apply
+        target = char_stats if stat_def.scope.value == "character" else world_stats
+        target[name] = validated
+        pc.stat_updates.append(StatUpdateEntry(name=name, value=str(validated)))
+        return f"Stat updated: {name} = {validated}"
 
     return update_stat
 
