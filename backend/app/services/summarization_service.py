@@ -348,6 +348,12 @@ async def compact_messages_stream(
         msg_ids = [m.id for m in candidates]
         count = await chats_db.set_summary_id_on_messages(msg_ids, summary.id)
 
+        # 9b. If we summarized through the current turn, clear variants (persist to DB)
+        if last_msg.turn_number >= chat.current_turn:
+            chat.generation_variants = "[]"
+            chat.modified_at = _now()
+            await chats_db.update_session(chat)
+
         logger.info("Created summary %s covering turns %d-%d (%d messages)",
                      summary.id, summary.start_turn, summary.end_turn, count)
 
