@@ -234,7 +234,7 @@ async def add_memory_impl(session_id: int, content: str) -> str:
 
 
 async def move_to_location_impl(world_id: int, session_id: int, location_name: str) -> str:
-    """Resolve location name → ID, update session, return new location info."""
+    """Resolve location name → ID, update session, return new location info as JSON."""
     from app.db import chats as chats_db
     from app.db import locations as locations_db
     from app.db import npc_links as npc_links_db
@@ -247,44 +247,51 @@ async def move_to_location_impl(world_id: int, session_id: int, location_name: s
         location = await locations_db.get_by_id(chunks[0].source_id)
 
     if location is None:
-        return f"Location '{location_name}' not found in this world."
+        return json.dumps({"status": "ERROR", "reason": f"Location '{location_name}' not found in this world."})
 
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None:
-        return "Session not found."
-    chat.current_location_id = location.id
-    chat.modified_at = datetime.now(timezone.utc)
-    await chats_db.update_session(chat)
+        return json.dumps({"status": "ERROR", "reason": "Session not found."})
 
-    parts = [f"**Moved to: {location.name}**\n\n{location.content}"]
-
+    # Build location info (reused for both OK and REJECTED)
+    exit_names: list[str] = []
     if location.exits:
         try:
             exit_ids = json.loads(location.exits)
-            exit_names: list[str] = []
             for eid in exit_ids:
                 loc = await locations_db.get_by_id(int(eid))
                 if loc:
                     exit_names.append(loc.name)
-            if exit_names:
-                parts.append(f"**Exits:** {', '.join(exit_names)}")
         except (json.JSONDecodeError, ValueError):
             pass
 
+    npcs_list: list[dict[str, str]] = []
     links = await npc_links_db.list_by_location(location.id)
     present_npcs = [lnk for lnk in links if lnk.link_type.value == "present"]
-    if present_npcs:
-        npc_parts: list[str] = []
-        for link in present_npcs:
-            npc = await npcs_db.get_by_id(link.npc_id)
-            if npc:
-                brief = npc.content.split("\n\n")[0] if npc.content else ""
-                npc_parts.append(f"- {npc.name}: {brief}")
-        if npc_parts:
-            parts.append("**NPCs here:**\n" + "\n".join(npc_parts))
+    for link in present_npcs:
+        npc = await npcs_db.get_by_id(link.npc_id)
+        if npc:
+            brief = npc.content.split("\n\n")[0] if npc.content else ""
+            npcs_list.append({"name": npc.name, "brief": brief})
+
+    location_info = {
+        "name": location.name,
+        "description": location.content or "",
+        "exits": exit_names,
+        "npcs": npcs_list,
+    }
+
+    # Check if already at this location
+    if chat.current_location_id == location.id:
+        logger.info("Player already at '%s' (id=%d) in session %d", location.name, location.id, session_id)
+        return json.dumps({"status": "REJECTED", "reason": f"Player is already at '{location.name}'. No move needed.", "location": location_info})
+
+    chat.current_location_id = location.id
+    chat.modified_at = datetime.now(timezone.utc)
+    await chats_db.update_session(chat)
 
     logger.info("Player moved to '%s' (id=%d) in session %d", location.name, location.id, session_id)
-    return "\n\n".join(parts)
+    return json.dumps({"status": "OK", "location": location_info})
 
 
 async def _get_injected_ids(world_id: int) -> set[int]:
@@ -422,15 +429,22 @@ def _b_update_stat(ctx: ToolContext) -> Callable:
 
     defs_by_name = {d.name: d for d in stat_defs}
 
+    def _all_stats() -> dict[str, str]:
+        merged: dict[str, str] = {}
+        merged.update({k: str(v) for k, v in char_stats.items()})
+        merged.update({k: str(v) for k, v in world_stats.items()})
+        return merged
+
     async def update_stat(name: str, value: str) -> str:
         # Phase 1: check stat name exists
         stat_def = defs_by_name.get(name)
         if stat_def is None:
             valid_names = sorted(defs_by_name.keys())
-            return (
-                f"Stat update rejected: '{name}' is not a recognized stat. "
-                f"Valid stats: {', '.join(valid_names)}"
-            )
+            return json.dumps({
+                "status": "ERROR",
+                "reason": f"Stat '{name}' is not recognized. Valid stats: {', '.join(valid_names)}",
+                "all_stats": _all_stats(),
+            })
 
         # Phase 2: validate value
         validated = validate_single_value(stat_def, value)
@@ -446,16 +460,30 @@ def _b_update_stat(ctx: ToolContext) -> Callable:
                 hint = f"Expected list from: {stat_def.enum_values}"
             else:
                 hint = f"Unknown stat type '{stat_type}'"
-            return (
-                f"Stat update rejected: value '{value}' is invalid for "
-                f"'{name}' ({stat_type}). {hint}"
-            )
+            return json.dumps({
+                "status": "ERROR",
+                "reason": f"Value '{value}' is invalid for '{name}' ({stat_type}). {hint}",
+                "all_stats": _all_stats(),
+            })
 
-        # Phase 3: apply
+        # Phase 3: check if value is already set
         target = char_stats if stat_def.scope.value == "character" else world_stats
+        old_value = target.get(name)
+        if old_value is not None and str(old_value) == str(validated):
+            return json.dumps({
+                "status": "REJECTED",
+                "reason": f"Stat '{name}' already has value '{validated}'. No change needed.",
+                "all_stats": _all_stats(),
+            })
+
+        # Phase 4: apply
         target[name] = validated
         pc.stat_updates.append(StatUpdateEntry(name=name, value=str(validated)))
-        return f"Stat updated: {name} = {validated}"
+        return json.dumps({
+            "status": "OK",
+            "updated_stat": {"name": name, "old_value": str(old_value) if old_value is not None else None, "new_value": str(validated)},
+            "all_stats": _all_stats(),
+        })
 
     return update_stat
 
@@ -571,8 +599,9 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
             name="move_to_location",
             description=(
                 "Move the player to a different location. Use the exact location name "
-                "as shown in exits or search results. Returns the new location's "
-                "description, exits, and NPCs present."
+                "as shown in exits or search results. Returns JSON with status "
+                "(OK/REJECTED/ERROR) and location details (description, exits, NPCs). "
+                "REJECTED means the player is already there — do not retry."
             ),
             category="action",
             params=MoveToLocationParams,
@@ -604,8 +633,9 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         ToolSpec(
             name="update_stat",
             description=(
-                "Update a stat value. Validated immediately — you will get an error "
-                "message if the stat name or value is invalid, and can retry."
+                "Update a stat value. Returns JSON with status (OK/REJECTED/ERROR), "
+                "the updated stat details, and a snapshot of all current stat values. "
+                "REJECTED means the stat already has that value — do not retry."
             ),
             category="planning",
             params=UpdateStatParams,

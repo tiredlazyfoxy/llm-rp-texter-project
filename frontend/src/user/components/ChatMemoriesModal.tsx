@@ -56,7 +56,7 @@ const ChatMemoriesModal = observer(function ChatMemoriesModal({ opened, onClose 
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Chat Memory" size="md">
+    <Modal opened={opened} onClose={onClose} title="Chat Memory" size="70%">
       {memories.length === 0 ? (
         <Text c="dimmed" size="sm" ta="center" py="lg">
           No memories yet
@@ -65,7 +65,7 @@ const ChatMemoriesModal = observer(function ChatMemoriesModal({ opened, onClose 
         <Stack gap="xs">
           {memories.map((mem) => {
             const isExpanded = expanded.has(mem.id);
-            const preview = mem.content.length > 120 ? mem.content.slice(0, 120) + "…" : mem.content;
+            const preview = mem.content.length > 400 ? mem.content.slice(0, 400) + "…" : mem.content;
 
             return (
               <div
