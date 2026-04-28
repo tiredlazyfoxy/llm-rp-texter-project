@@ -1,0 +1,463 @@
+# Stage 5 Step 1: Admin-Configurable Prompt Templates — Data Model + Admin UI
+
+## Goal
+
+Replace hardcoded prompt builders with admin-configurable prompt templates using `{PLACEHOLDER}` syntax. Applies to **both** simple mode and chain mode. Each generation step gets a full prompt template written by the admin, plus admin-selectable tools.
+
+## Current State
+
+### Simple Mode
+
+- `World.system_prompt` — admin free-text, appended at the end of the hardcoded `build_rich_chat_system_prompt()`
+- Tools: hardcoded to all 8 chat tools (`get_chat_tools()`)
+- Prompt builder: `backend/app/services/prompts/chat_system_prompt.py` → `build_rich_chat_system_prompt()` (15 parameters, hardcoded sections)
+
+### Chain Mode
+
+- `PipelineStage.step_type` — `"planning" | "writing"` (two hardcoded types)
+- `PipelineStage.prompt` — admin free-text, appended at end of hardcoded builders
+- Planning prompt: `backend/app/services/prompts/planning_system_prompt.py` → `build_planning_system_prompt()` (14 params)
+- Writing prompt: `backend/app/services/prompts/writing_system_prompt.py` → `build_writing_system_prompt()` (7 params)
+- Tools: hardcoded — planning gets all 11 (8 chat + 3 planning), writing gets 5 read-only
+
+### Admin UI
+
+- `frontend/src/admin/pages/WorldEditPage.tsx` — simple: textarea for system_prompt; chain: pipeline stage list with planning/writing types
+- `frontend/src/admin/pages/PipelineStageEditPage.tsx` — textarea + LlmChatPanel for stage prompt editing, uses `fieldType="system_prompt"`
+
+---
+
+## Changes
+
+### 1. Data Model — PipelineStage
+
+**File**: `backend/app/models/schemas/pipeline.py`
+
+```python
+class PipelineStage(BaseModel):
+    step_type: str  # "tool" | "writer"  (was: "planning" | "writing")
+    prompt: str = ""  # full system prompt template with {PLACEHOLDER} syntax
+    max_agent_steps: int | None = None  # only for "tool" steps
+    tools: list[str] = []  # enabled tool names for this step (NEW)
+```
+
+- `step_type` values change from `"planning"/"writing"` to `"tool"/"writer"`
+- `prompt` semantics change: now IS the full system prompt, not appended text
+- New `tools` field: list of tool names from the tool catalog
+
+`PipelineConfig`, `PlanningContext`, `GenerationPlanOutput`, `StatUpdateEntry` — unchanged.
+
+### 2. Data Model — World
+
+**File**: `backend/app/models/world.py`
+
+Add new field:
+
+```python
+class World(SQLModel, table=True):
+    # ... existing fields ...
+    simple_tools: str = Field(default="[]")  # JSON list of tool names for simple mode
+```
+
+- `system_prompt` — semantics change: now full prompt template with `{PLACEHOLDER}` syntax (was: appended text)
+- `simple_tools` — NEW: JSON list of enabled tool names for simple mode (e.g. `'["get_location_info","search","add_memory"]'`)
+- DB migration: new column with default `"[]"`, no data migration needed (empty = fallback to all tools)
+
+### 3. Placeholder Registry
+
+**New file**: `backend/app/services/prompts/placeholder_registry.py`
+
+Static registry of all available placeholders. Each placeholder is an injection point — the code builds the formatted text, the admin just specifies WHERE to inject it in the prompt.
+
+Used by:
+
+- Backend: prompt injection service (resolves values) — Step 2
+- API: exposed endpoint for frontend reference list
+- Admin editor system prompt: documents available placeholders
+
+```python
+class PlaceholderInfo(TypedDict):
+    name: str           # e.g. "WORLD_NAME"
+    description: str    # human-readable for admin UI
+    category: str       # "World", "Location", "Character", "Stats", "Context", "Pipeline"
+
+PLACEHOLDER_REGISTRY: list[PlaceholderInfo] = [
+    # World
+    {"name": "WORLD_NAME", "description": "World display name", "category": "World"},
+    {"name": "RULES", "description": "Numbered world rules list", "category": "World"},
+    {"name": "INJECTED_LORE", "description": "Always-injected lore facts (sorted by weight)", "category": "World"},
+    # Location — code formats: name, description, exits, NPCs present
+    {"name": "LOCATION", "description": "Full current location block: name, description, exits, and NPCs present. Code-formatted from session's current_location_id.", "category": "Location"},
+    # Character
+    {"name": "CHARACTER_NAME", "description": "Player character name", "category": "Character"},
+    # Stats — code formats: definitions + current values per scope
+    {"name": "CHARACTER_STATS", "description": "Character-scope stats: definitions and current values, code-formatted.", "category": "Stats"},
+    {"name": "WORLD_STATS", "description": "World-scope stats: definitions and current values, code-formatted.", "category": "Stats"},
+    # Context
+    {"name": "USER_INSTRUCTIONS", "description": "Player-set custom instructions", "category": "Context"},
+    # Pipeline
+    {"name": "TURN_FACTS", "description": "Collected context/facts from previous tool steps. Only meaningful for writer step in chain mode.", "category": "Pipeline"},
+    {"name": "TURN_DECISIONS", "description": "Decisions/outcomes to execute from previous tool steps. Only meaningful for writer step in chain mode.", "category": "Pipeline"},
+    {"name": "TOOLS", "description": "Auto-generated list of available tools for this step with descriptions.", "category": "Pipeline"},
+]
+
+VALID_PLACEHOLDERS: set[str] = {p["name"] for p in PLACEHOLDER_REGISTRY}
+```
+
+**11 placeholders total.** Each is a code-formatted injection point — admin writes the prompt structure, placeholders mark where runtime data goes.
+
+### 4. Tool Catalog
+
+**New file**: `backend/app/services/prompts/tool_catalog.py`
+
+Static registry of all available tools. Used by:
+
+- Admin UI: tool selection checkboxes/chips
+- `{TOOLS}` placeholder resolution
+- Validation of `PipelineStage.tools` and `World.simple_tools`
+
+```python
+class ToolCatalogEntry(TypedDict):
+    name: str
+    description: str
+    category: str  # "research", "action", "planning"
+
+TOOL_CATALOG: list[ToolCatalogEntry] = [
+    # Research
+    {"name": "get_location_info", "description": "Look up location details, exits, and NPCs present", "category": "research"},
+    {"name": "get_npc_info", "description": "Look up NPC details and their locations", "category": "research"},
+    {"name": "search", "description": "Semantic search across world knowledge (locations, NPCs, lore)", "category": "research"},
+    {"name": "get_lore", "description": "Find the most relevant lore fact for a query", "category": "research"},
+    {"name": "web_search", "description": "Search the web for real-world information", "category": "research"},
+    {"name": "get_memory", "description": "Retrieve all saved session memories", "category": "research"},
+    # Action
+    {"name": "add_memory", "description": "Save an important fact to session memory", "category": "action"},
+    {"name": "move_to_location", "description": "Move the player to a different location", "category": "action"},
+    # Planning (chain mode tool steps)
+    {"name": "add_fact", "description": "Record a context fact for the writing agent", "category": "planning"},
+    {"name": "add_decision", "description": "Record a narrative decision for the writing agent", "category": "planning"},
+    {"name": "update_stat", "description": "Update a stat value (validated immediately)", "category": "planning"},
+]
+
+ALL_TOOL_NAMES: set[str] = {t["name"] for t in TOOL_CATALOG}
+```
+
+### 5. API Endpoint — Pipeline Config Options
+
+**File**: `backend/app/routes/admin/worlds.py`
+
+New endpoint returning static config data for the admin UI:
+
+```
+GET /api/admin/worlds/pipeline-config
+```
+
+Response:
+
+```json
+{
+  "placeholders": [
+    {"name": "WORLD_NAME", "description": "World display name", "category": "World"},
+    ...
+  ],
+  "tools": [
+    {"name": "get_location_info", "description": "...", "category": "research"},
+    ...
+  ]
+}
+```
+
+Requires editor+ role. No world context needed — purely static data.
+
+### 6. Frontend Types
+
+**File**: `frontend/src/types/world.d.ts`
+
+Update `PipelineStage`:
+
+```typescript
+interface PipelineStage {
+  step_type: string;  // "tool" | "writer"
+  prompt: string;
+  max_agent_steps: number | null;
+  tools: string[];  // NEW — enabled tool names
+}
+```
+
+Add new types:
+
+```typescript
+interface PlaceholderInfo {
+  name: string;
+  description: string;
+  category: string;
+}
+
+interface ToolCatalogEntry {
+  name: string;
+  description: string;
+  category: string;
+}
+
+interface PipelineConfigOptions {
+  placeholders: PlaceholderInfo[];
+  tools: ToolCatalogEntry[];
+}
+```
+
+Update `WorldDetail` — add `simple_tools: string` field.
+
+### 7. Frontend API
+
+**File**: `frontend/src/api/worlds.ts`
+
+```typescript
+export async function getPipelineConfigOptions(): Promise<PipelineConfigOptions> {
+  const res = await authFetch("/api/admin/worlds/pipeline-config");
+  if (!res.ok) throw new Error("Failed to load pipeline config options");
+  return res.json();
+}
+```
+
+### 8. WorldEditPage — Simple Mode Section
+
+**File**: `frontend/src/admin/pages/WorldEditPage.tsx`
+
+When `generationMode === "simple"`:
+
+**Current**: Single textarea for `system_prompt` with AI edit sparkles button.
+
+**New**:
+
+- **System Prompt textarea** — same textarea, but label updated to clarify it's a prompt template
+- **AI Edit button** — navigates to `/admin/worlds/:id/field/pipeline_prompt` (was `system_prompt`)
+- **Tool Selection** — `MultiSelect` or `Checkbox.Group` below the textarea
+  - Load options from `getPipelineConfigOptions()` on mount
+  - Grouped by category (research / action / planning)
+  - Planning tools (add_fact, add_decision, update_stat) shown with note: "Used in chain mode tool steps. In simple mode, LLM manages stats via [STAT_UPDATE] blocks."
+  - Value: parsed from `simple_tools` JSON field
+  - On change: serialize to JSON, save to state
+- **"Load Default Template" button** — fills textarea with DEFAULT_SIMPLE_PROMPT (fetched from a static endpoint or embedded as a constant)
+
+### 9. WorldEditPage — Chain Mode Section
+
+**File**: `frontend/src/admin/pages/WorldEditPage.tsx`
+
+**Step type changes**:
+
+- "Add stage" dropdown options: `"tool"` and `"writer"` (was: `"planning"` and `"writing"`)
+- Default pipeline when switching to chain:
+  ```typescript
+  [
+    { step_type: "tool", prompt: "", max_agent_steps: 10, tools: [] },
+    { step_type: "writer", prompt: "", max_agent_steps: null, tools: [] },
+  ]
+  ```
+- Badge colors: `"tool"` → violet, `"writer"` → teal
+
+**Tool selection per stage**:
+
+- Each stage card shows a `MultiSelect` for tool selection
+- Same tool catalog, grouped by category
+- Planning tools highlighted with category label
+- Value: `stage.tools` array
+
+**Validation warnings** (inline alerts, non-blocking):
+
+- Last stage is not `"writer"` → warning: "Writer must be the last stage"
+- A `"tool"` step has no tools selected → warning: "No tools selected for this step"
+- No `"writer"` stage exists → warning: "Pipeline needs a writer stage to produce output"
+
+**Max steps**: shown only for `"tool"` steps (same as current for "planning").
+
+### 10. PipelineStageEditPage — Placeholder Reference Panel
+
+**File**: `frontend/src/admin/pages/PipelineStageEditPage.tsx`
+
+Major additions to the pipeline stage prompt editor:
+
+**Placeholder reference panel** (below textarea or as a collapsible sidebar):
+
+- Load from `getPipelineConfigOptions()` on mount
+- Group by category: World, Location, Character, Stats, Context, Pipeline
+- Each placeholder shown as a clickable chip/badge: `{WORLD_NAME}`
+- Click inserts `{PLACEHOLDER_NAME}` at cursor position in textarea
+- Tooltip on hover shows description
+
+**Click-to-insert implementation**:
+
+```typescript
+const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+function insertPlaceholder(name: string) {
+  const ta = textareaRef.current;
+  if (!ta) return;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const text = `{${name}}`;
+  const newContent = content.slice(0, start) + text + content.slice(end);
+  setContent(newContent);
+  requestAnimationFrame(() => {
+    ta.selectionStart = ta.selectionEnd = start + text.length;
+    ta.focus();
+  });
+}
+```
+
+Need to add `ref` to the Textarea component — Mantine Textarea supports `ref` prop.
+
+**Enabled tools display**: Read-only list showing which tools are enabled for this step (configured on WorldEditPage). Gives context when writing the prompt.
+
+**"Load Default Template" button**: Fills textarea with the appropriate default template (tool or writer) from `default_templates.py`.
+
+**LLM Chat Panel**: Change `fieldType` from `"system_prompt"` to `"pipeline_prompt"`.
+
+### 11. Simple Mode Prompt Editor
+
+The simple mode system_prompt currently navigates to `/admin/worlds/:id/field/system_prompt` for AI-assisted editing. This page (`WorldFieldEditPage.tsx`) needs to:
+
+- Use `fieldType="pipeline_prompt"` instead of `"system_prompt"` — so the LLM editor knows about placeholders
+- Show the same placeholder reference panel as PipelineStageEditPage
+
+**Option A**: Redirect simple mode prompt editing to the same PipelineStageEditPage component (but for simple mode prompt).
+
+**Option B** (simpler): Add placeholder panel to `WorldFieldEditPage.tsx` when `fieldName === "system_prompt"`.
+
+**Recommended**: Option B — less routing changes, the WorldFieldEditPage already handles system_prompt. Just add the placeholder panel and change fieldType when field is system_prompt.
+
+### 12. LLM Editor System Prompt for Pipeline Prompts
+
+**File**: `backend/app/services/prompts/world_field_editor_system_prompt.py`
+
+Add new field type `"pipeline_prompt"` to `_FIELD_ROLES`:
+
+```python
+"pipeline_prompt": (
+    "You are helping write a **pipeline stage prompt** for the RPG world \"{world_name}\". "
+    "This prompt is the system message for a generation step. "
+    "The admin uses {{PLACEHOLDER}} syntax to inject runtime data. "
+    "Each placeholder is an injection point — the code formats the data, the prompt just marks where it goes.\n\n"
+    "Available placeholders:\n"
+    "- {{WORLD_NAME}} — World display name\n"
+    "- {{RULES}} — Numbered world rules\n"
+    "- {{INJECTED_LORE}} — Always-injected lore facts\n"
+    "- {{LOCATION}} — Full location block: name, description, exits, NPCs present\n"
+    "- {{CHARACTER_NAME}} — Player character name\n"
+    "- {{CHARACTER_STATS}} — Character-scope stats: definitions + current values\n"
+    "- {{WORLD_STATS}} — World-scope stats: definitions + current values\n"
+    "- {{USER_INSTRUCTIONS}} — Player instructions\n"
+    "- {{TURN_FACTS}} — Collected context/facts from previous tool steps (chain mode writer only)\n"
+    "- {{TURN_DECISIONS}} — Decisions/outcomes to execute from previous tool steps (chain mode writer only)\n"
+    "- {{TOOLS}} — Auto-generated list of available tools\n\n"
+    "Write the prompt using these placeholders where appropriate. "
+    "Use markdown headers to organize sections. "
+    "Empty placeholders resolve to empty string at runtime."
+),
+```
+
+Add to `_FIELD_LABELS`:
+
+```python
+"pipeline_prompt": "Pipeline Stage Prompt",
+```
+
+### 13. Migration — Legacy Pipeline Configs
+
+Existing worlds with `generation_mode="chain"` have stages with `step_type="planning"` / `"writing"`.
+
+**On-read migration** (defensive, in chain_generation_service.py — Step 2 will implement):
+
+- `"planning"` → `"tool"`, auto-populate `tools` with all 11 tool names
+- `"writing"` → `"writer"`, auto-populate `tools` with 5 read-only tools
+- Empty `prompt` → fallback to old hardcoded builder (no data loss)
+
+**For simple mode**:
+
+- Empty `system_prompt` → fallback to `build_rich_chat_system_prompt()` (existing behavior)
+- Empty `simple_tools` (`"[]"`) → fallback to all 8 chat tools (existing behavior)
+
+On-read normalization handles runtime compatibility, but we also need a **one-time migration script** to permanently convert existing data in the DB:
+
+### 13b. Migration Script (temporary, execute and delete)
+
+**File**: `backend/migrate_stage5.py` — standalone script, not part of the app package. Deleted after execution.
+
+Run once after deploying Step 1 changes:
+
+```bash
+cd backend && python migrate_stage5.py
+```
+
+**What it does for each world with `generation_mode="chain"`:**
+
+1. Parse `World.pipeline` JSON
+2. For each stage:
+   - `"planning"` → `"tool"`, set `tools` to all 11 tool names, set `prompt` to `DEFAULT_TOOL_PROMPT`
+   - `"writing"` → `"writer"`, set `tools` to 5 read-only tools, set `prompt` to `DEFAULT_WRITER_PROMPT`
+   - If stage already had a non-empty `prompt` (admin free-text), append it to the default template under a `## World-Specific Instructions` section
+3. Save updated `World.pipeline` JSON back to DB
+
+**What it does for each world with `generation_mode="simple"`:**
+
+1. If `World.system_prompt` is non-empty (was admin-appended text), wrap it into `DEFAULT_SIMPLE_PROMPT` under a `## Game Master Instructions` section
+2. Set `World.simple_tools` to all 8 chat tool names (preserves existing behavior)
+
+**After execution**: verify results, then delete the script. The on-read fallback in generation services remains as a safety net.
+
+### 14. Validation
+
+**Backend** (when saving world/pipeline):
+
+- `PipelineStage.step_type` must be `"tool"` or `"writer"`
+- `PipelineStage.tools` entries must all exist in `ALL_TOOL_NAMES`
+- `World.simple_tools` entries must all exist in `ALL_TOOL_NAMES`
+- `max_agent_steps` should only be set for `"tool"` steps
+
+**Frontend** (non-blocking warnings):
+
+- Last pipeline stage must be `"writer"`
+- Tool steps should have at least one tool selected
+- Writer step should exist in chain pipeline
+
+### 15. DB Import/Export
+
+**File**: `backend/app/services/db_import_export.py`
+
+The `simple_tools` field is a regular string column on the `worlds` table. JSONL export already serializes all World fields. No changes needed — the new field is included automatically.
+
+---
+
+## Implementation Order
+
+1. `placeholder_registry.py` + `tool_catalog.py` (pure data, no dependencies)
+2. `World.simple_tools` field + DB init update
+3. `PipelineStage.tools` field
+4. `default_templates.py` (needed by migration script)
+5. `migrate_stage5.py` — temp migration script (run once, then delete)
+6. API endpoint for pipeline config options
+7. Frontend types + API function
+8. `world_field_editor_system_prompt.py` — new field type
+9. `WorldEditPage.tsx` — simple mode tool selection + chain mode overhaul
+10. `PipelineStageEditPage.tsx` — placeholder panel + click-to-insert
+11. `WorldFieldEditPage.tsx` — placeholder panel for simple mode prompt editing
+12. Run migration script on existing DB
+
+---
+
+## Files Summary
+
+| File | Action |
+| --- | --- |
+| `backend/app/models/schemas/pipeline.py` | Add `tools: list[str]` to PipelineStage |
+| `backend/app/models/world.py` | Add `simple_tools: str` field |
+| `backend/app/services/prompts/placeholder_registry.py` | NEW — 11 placeholder definitions |
+| `backend/app/services/prompts/tool_catalog.py` | NEW — 11 tool definitions |
+| `backend/app/routes/admin/worlds.py` | New endpoint: GET pipeline-config |
+| `backend/app/services/prompts/default_templates.py` | NEW — default prompt templates (used by migration) |
+| `backend/migrate_stage5.py` | NEW — temp migration script (delete after running) |
+| `backend/app/services/prompts/world_field_editor_system_prompt.py` | Add `"pipeline_prompt"` field type |
+| `frontend/src/types/world.d.ts` | Update PipelineStage, add new types |
+| `frontend/src/api/worlds.ts` | Add `getPipelineConfigOptions()` |
+| `frontend/src/admin/pages/WorldEditPage.tsx` | Tool selection for both modes, new step types |
+| `frontend/src/admin/pages/PipelineStageEditPage.tsx` | Placeholder panel, click-to-insert, load default |
+| `frontend/src/admin/pages/WorldFieldEditPage.tsx` | Placeholder panel for simple mode prompt |

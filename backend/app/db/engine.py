@@ -7,6 +7,12 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 import app.models.world  # noqa: F401 — register world tables with SQLModel metadata
+import app.models.chat_session  # noqa: F401
+import app.models.chat_summary  # noqa: F401
+import app.models.chat_message  # noqa: F401
+import app.models.chat_state_snapshot  # noqa: F401
+import app.models.chat_memory  # noqa: F401
+import app.models.user_settings  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +73,17 @@ async def init_db() -> None:
 
     async with _engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+
+    # Lightweight migrations for columns added after initial schema
+    from sqlalchemy import text
+    async with _engine.begin() as conn:
+        try:
+            await conn.execute(text(
+                "ALTER TABLE chat_messages ADD COLUMN user_instructions TEXT"
+            ))
+            logger.info("Migration: added user_instructions column to chat_messages")
+        except Exception:
+            pass  # column already exists
 
 
 async def get_standalone_session() -> AsyncSession:

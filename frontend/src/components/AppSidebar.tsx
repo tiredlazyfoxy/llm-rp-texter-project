@@ -14,9 +14,10 @@ interface AppSidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   navItems: NavItem[];
+  logoHref?: string;
 }
 
-export function AppSidebar({ collapsed, onToggle, navItems }: AppSidebarProps) {
+export function AppSidebar({ collapsed, onToggle, navItems, logoHref }: AppSidebarProps) {
   const width = collapsed ? 48 : 220;
 
   return (
@@ -41,12 +42,21 @@ export function AppSidebar({ collapsed, onToggle, navItems }: AppSidebarProps) {
           </UnstyledButton>
         ) : (
           <>
-            <Group gap="xs" style={{ cursor: "default" }}>
-              <Image src="/logo.svg" w={24} h={24} />
-              <Text fw={600} size="md" c="dimmed">
-                LLMRP
-              </Text>
-            </Group>
+            {logoHref ? (
+              <UnstyledButton
+                component="a"
+                href={logoHref}
+                style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}
+              >
+                <Image src="/logo.svg" w={24} h={24} />
+                <Text fw={600} size="md" c="dimmed">LLMRP</Text>
+              </UnstyledButton>
+            ) : (
+              <Group gap="xs" style={{ cursor: "default" }}>
+                <Image src="/logo.svg" w={24} h={24} />
+                <Text fw={600} size="md" c="dimmed">LLMRP</Text>
+              </Group>
+            )}
             <UnstyledButton onClick={onToggle} p={4} style={{ display: "flex" }}>
               <IconLayoutSidebarLeftCollapse size={20} color="var(--mantine-color-dimmed)" />
             </UnstyledButton>

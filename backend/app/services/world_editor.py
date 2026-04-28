@@ -44,6 +44,7 @@ _VALID_STATUSES = {s.value for s in WorldStatus}
 _VALID_SCOPES = {s.value for s in StatScope}
 _VALID_STAT_TYPES = {s.value for s in StatType}
 _VALID_LINK_TYPES = {t.value for t in NPCLinkType}
+_VALID_GENERATION_MODES = {"simple", "chain", "agentic"}
 
 # Map doc_type to vector storage source_type (they happen to be the same)
 _DOC_SOURCE_TYPE = {"location": "location", "npc": "npc", "lore_fact": "lore_fact"}
@@ -188,9 +189,64 @@ async def get_world_detail(world_id: int) -> WorldDetailData:
     )
 
 
+def _validate_pipeline_json(pipeline_json: str) -> None:
+    from app.models.schemas.pipeline import PipelineConfig
+    from app.services.prompts.tool_catalog import ALL_TOOL_NAMES
+    try:
+        config = PipelineConfig.model_validate_json(pipeline_json)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid pipeline config: {e}",
+        )
+    for i, stage in enumerate(config.stages):
+        if stage.step_type not in ("tool", "writer", "planning", "writing"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Stage {i}: invalid step_type '{stage.step_type}'",
+            )
+        invalid = set(stage.tools) - ALL_TOOL_NAMES
+        if invalid:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Stage {i}: unknown tools: {sorted(invalid)}",
+            )
+
+
+def _validate_simple_tools(simple_tools_json: str) -> None:
+    import json as _json
+    from app.services.prompts.tool_catalog import ALL_TOOL_NAMES
+    try:
+        tools = _json.loads(simple_tools_json)
+    except _json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid simple_tools JSON: {e}",
+        )
+    if not isinstance(tools, list):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="simple_tools must be a JSON array",
+        )
+    invalid = set(tools) - ALL_TOOL_NAMES
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown simple_tools: {sorted(invalid)}",
+        )
+
+
 async def create_world(req: CreateWorldRequest, owner_id: int | None = None) -> World:
     if req.status:
         _validate_status(req.status)
+    if req.generation_mode not in _VALID_GENERATION_MODES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid generation_mode: {req.generation_mode}")
+    if req.generation_mode == "agentic":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agentic mode is not implemented yet")
+    if req.pipeline and req.pipeline != "{}":
+        _validate_pipeline_json(req.pipeline)
+    if req.simple_tools and req.simple_tools != "[]":
+        _validate_simple_tools(req.simple_tools)
     now = _now()
     world = World(
         id=generate_id(),
@@ -198,9 +254,12 @@ async def create_world(req: CreateWorldRequest, owner_id: int | None = None) -> 
         description=req.description,
         lore=req.lore,
         system_prompt=req.system_prompt,
+        simple_tools=req.simple_tools,
         character_template=req.character_template,
         initial_message=req.initial_message,
         pipeline=req.pipeline,
+        generation_mode=req.generation_mode,
+        agent_config=req.agent_config,
         status=WorldStatus(req.status),
         owner_id=owner_id,
         created_at=now,
@@ -219,12 +278,26 @@ async def update_world(world_id: int, req: UpdateWorldRequest) -> World:
         world.lore = req.lore
     if req.system_prompt is not None:
         world.system_prompt = req.system_prompt
+    if req.simple_tools is not None:
+        if req.simple_tools != "[]":
+            _validate_simple_tools(req.simple_tools)
+        world.simple_tools = req.simple_tools
     if req.character_template is not None:
         world.character_template = req.character_template
     if req.initial_message is not None:
         world.initial_message = req.initial_message
     if req.pipeline is not None:
+        if req.pipeline and req.pipeline != "{}":
+            _validate_pipeline_json(req.pipeline)
         world.pipeline = req.pipeline
+    if req.generation_mode is not None:
+        if req.generation_mode not in _VALID_GENERATION_MODES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid generation_mode: {req.generation_mode}")
+        if req.generation_mode == "agentic":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agentic mode is not implemented yet")
+        world.generation_mode = req.generation_mode
+    if req.agent_config is not None:
+        world.agent_config = req.agent_config
     if req.status is not None:
         _validate_status(req.status)
         world.status = WorldStatus(req.status)
@@ -250,6 +323,8 @@ async def clone_world(world_id: int, owner_id: int | None = None) -> World:
         character_template=src.character_template,
         initial_message=src.initial_message,
         pipeline=src.pipeline,
+        generation_mode=src.generation_mode,
+        agent_config=src.agent_config,
         status=clone_status,
         owner_id=owner_id,
         created_at=now,
@@ -326,6 +401,7 @@ async def clone_world(world_id: int, owner_id: int | None = None) -> World:
             description=stat.description, scope=stat.scope, stat_type=stat.stat_type,
             default_value=stat.default_value, min_value=stat.min_value,
             max_value=stat.max_value, enum_values=stat.enum_values,
+            hidden=stat.hidden,
         )
         await stat_defs.create(new_stat)
 
@@ -600,6 +676,7 @@ async def create_stat(world_id: int, req: CreateStatRequest) -> WorldStatDefinit
         description=req.description, scope=StatScope(req.scope),
         stat_type=StatType(req.stat_type), default_value=req.default_value,
         min_value=req.min_value, max_value=req.max_value, enum_values=enum_json,
+        hidden=req.hidden,
     ))
 
 
@@ -629,6 +706,8 @@ async def update_stat(world_id: int, stat_id: int, req: UpdateStatRequest) -> Wo
         stat.max_value = req.max_value
     if req.enum_values is not None:
         stat.enum_values = json.dumps(req.enum_values)
+    if req.hidden is not None:
+        stat.hidden = req.hidden
 
     await stat_defs.update(stat)
     return stat

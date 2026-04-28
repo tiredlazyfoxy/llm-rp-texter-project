@@ -12,8 +12,14 @@ import zipfile
 from datetime import datetime
 
 from app.db.import_export_queries import export_table, upsert_batch
+from app.models.chat_memory import ChatMemory
+from app.models.chat_message import ChatMessage
+from app.models.chat_session import ChatSession
+from app.models.chat_state_snapshot import ChatStateSnapshot
+from app.models.chat_summary import ChatSummary
 from app.models.llm_server import LlmServer
 from app.models.user import User, UserRole
+from app.models.user_settings import UserSettings
 from app.models.world import (
     NPCLinkType,
     NPCLocationLink,
@@ -73,6 +79,33 @@ def _dict_to_user(d: dict) -> User:
 
 
 # ---------------------------------------------------------------------------
+# User Settings
+# ---------------------------------------------------------------------------
+
+
+def _user_settings_to_dict(s: UserSettings) -> dict:
+    return {
+        "user_id": s.user_id,
+        "translate_model_id": s.translate_model_id,
+        "translate_temperature": s.translate_temperature,
+        "translate_top_p": s.translate_top_p,
+        "translate_repeat_penalty": s.translate_repeat_penalty,
+        "translate_think": s.translate_think,
+    }
+
+
+def _dict_to_user_settings(d: dict) -> UserSettings:
+    return UserSettings(
+        user_id=d["user_id"],
+        translate_model_id=d.get("translate_model_id"),
+        translate_temperature=d.get("translate_temperature", 0.1),
+        translate_top_p=d.get("translate_top_p", 1.0),
+        translate_repeat_penalty=d.get("translate_repeat_penalty", 1.0),
+        translate_think=d.get("translate_think", False),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Worlds
 # ---------------------------------------------------------------------------
 
@@ -87,6 +120,8 @@ def _world_to_dict(w: World) -> dict:
         "character_template": w.character_template,
         "initial_message": w.initial_message,
         "pipeline": w.pipeline,
+        "generation_mode": w.generation_mode,
+        "agent_config": w.agent_config,
         "status": w.status.value,
         "owner_id": w.owner_id,
         "created_at": _serialize_datetime(w.created_at),
@@ -104,6 +139,8 @@ def _dict_to_world(d: dict) -> World:
         character_template=d.get("character_template", ""),
         initial_message=d.get("initial_message", ""),
         pipeline=d.get("pipeline", "{}"),
+        generation_mode=d.get("generation_mode", "simple"),
+        agent_config=d.get("agent_config", "{}"),
         status=WorldStatus(d["status"]),
         owner_id=d.get("owner_id"),
         created_at=_parse_datetime(d.get("created_at")),
@@ -236,6 +273,7 @@ def _stat_def_to_dict(sd: WorldStatDefinition) -> dict:
         "min_value": sd.min_value,
         "max_value": sd.max_value,
         "enum_values": sd.enum_values,
+        "hidden": sd.hidden,
     }
 
 
@@ -251,6 +289,7 @@ def _dict_to_stat_def(d: dict) -> WorldStatDefinition:
         min_value=d.get("min_value"),
         max_value=d.get("max_value"),
         enum_values=d.get("enum_values"),
+        hidden=d.get("hidden", False),
     )
 
 
@@ -319,8 +358,190 @@ def _dict_to_llm_server(d: dict) -> LlmServer:
 # Import order respects FK dependencies.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Chat Sessions
+# ---------------------------------------------------------------------------
+
+
+def _chat_session_to_dict(s: ChatSession) -> dict:
+    return {
+        "id": s.id,
+        "user_id": s.user_id,
+        "world_id": s.world_id,
+        "current_location_id": s.current_location_id,
+        "character_name": s.character_name,
+        "character_description": s.character_description,
+        "character_stats": s.character_stats,
+        "world_stats": s.world_stats,
+        "current_turn": s.current_turn,
+        "status": s.status,
+        "tool_model_id": s.tool_model_id,
+        "tool_temperature": s.tool_temperature,
+        "tool_repeat_penalty": s.tool_repeat_penalty,
+        "tool_top_p": s.tool_top_p,
+        "text_model_id": s.text_model_id,
+        "text_temperature": s.text_temperature,
+        "text_repeat_penalty": s.text_repeat_penalty,
+        "text_top_p": s.text_top_p,
+        "user_instructions": s.user_instructions,
+        "generation_variants": s.generation_variants,
+        "created_at": _serialize_datetime(s.created_at),
+        "modified_at": _serialize_datetime(s.modified_at),
+    }
+
+
+def _dict_to_chat_session(d: dict) -> ChatSession:
+    return ChatSession(
+        id=d["id"],
+        user_id=d["user_id"],
+        world_id=d["world_id"],
+        current_location_id=d.get("current_location_id"),
+        character_name=d["character_name"],
+        character_description=d.get("character_description", ""),
+        character_stats=d.get("character_stats", "{}"),
+        world_stats=d.get("world_stats", "{}"),
+        current_turn=d.get("current_turn", 0),
+        status=d.get("status", "active"),
+        tool_model_id=d.get("tool_model_id"),
+        tool_temperature=d.get("tool_temperature", 0.7),
+        tool_repeat_penalty=d.get("tool_repeat_penalty", 1.0),
+        tool_top_p=d.get("tool_top_p", 1.0),
+        text_model_id=d.get("text_model_id"),
+        text_temperature=d.get("text_temperature", 0.7),
+        text_repeat_penalty=d.get("text_repeat_penalty", 1.0),
+        text_top_p=d.get("text_top_p", 1.0),
+        user_instructions=d.get("user_instructions", ""),
+        generation_variants=d.get("generation_variants", "[]"),
+        created_at=_parse_datetime(d.get("created_at")),
+        modified_at=_parse_datetime(d.get("modified_at")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chat Summaries
+# ---------------------------------------------------------------------------
+
+
+def _chat_summary_to_dict(s: ChatSummary) -> dict:
+    return {
+        "id": s.id,
+        "session_id": s.session_id,
+        "start_message_id": s.start_message_id,
+        "end_message_id": s.end_message_id,
+        "start_turn": s.start_turn,
+        "end_turn": s.end_turn,
+        "content": s.content,
+        "created_at": _serialize_datetime(s.created_at),
+    }
+
+
+def _dict_to_chat_summary(d: dict) -> ChatSummary:
+    return ChatSummary(
+        id=d["id"],
+        session_id=d["session_id"],
+        start_message_id=d["start_message_id"],
+        end_message_id=d["end_message_id"],
+        start_turn=d["start_turn"],
+        end_turn=d["end_turn"],
+        content=d.get("content", ""),
+        created_at=_parse_datetime(d.get("created_at")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chat Messages
+# ---------------------------------------------------------------------------
+
+
+def _chat_message_to_dict(m: ChatMessage) -> dict:
+    return {
+        "id": m.id,
+        "session_id": m.session_id,
+        "role": m.role,
+        "content": m.content,
+        "turn_number": m.turn_number,
+        "tool_calls": m.tool_calls,
+        "generation_plan": m.generation_plan,
+        "thinking_content": m.thinking_content,
+        "user_instructions": m.user_instructions,
+        "summary_id": m.summary_id,
+        "is_active_variant": m.is_active_variant,
+        "created_at": _serialize_datetime(m.created_at),
+    }
+
+
+def _dict_to_chat_message(d: dict) -> ChatMessage:
+    return ChatMessage(
+        id=d["id"],
+        session_id=d["session_id"],
+        role=d["role"],
+        content=d.get("content", ""),
+        turn_number=d["turn_number"],
+        tool_calls=d.get("tool_calls"),
+        generation_plan=d.get("generation_plan"),
+        thinking_content=d.get("thinking_content"),
+        user_instructions=d.get("user_instructions"),
+        summary_id=d.get("summary_id"),
+        is_active_variant=d.get("is_active_variant", True),
+        created_at=_parse_datetime(d.get("created_at")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chat State Snapshots
+# ---------------------------------------------------------------------------
+
+
+def _chat_state_snapshot_to_dict(s: ChatStateSnapshot) -> dict:
+    return {
+        "id": s.id,
+        "session_id": s.session_id,
+        "turn_number": s.turn_number,
+        "location_id": s.location_id,
+        "character_stats": s.character_stats,
+        "world_stats": s.world_stats,
+        "created_at": _serialize_datetime(s.created_at),
+    }
+
+
+def _dict_to_chat_state_snapshot(d: dict) -> ChatStateSnapshot:
+    return ChatStateSnapshot(
+        id=d["id"],
+        session_id=d["session_id"],
+        turn_number=d["turn_number"],
+        location_id=d.get("location_id"),
+        character_stats=d.get("character_stats", "{}"),
+        world_stats=d.get("world_stats", "{}"),
+        created_at=_parse_datetime(d.get("created_at")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chat Memories
+# ---------------------------------------------------------------------------
+
+
+def _chat_memory_to_dict(m: ChatMemory) -> dict:
+    return {
+        "id": m.id,
+        "session_id": m.session_id,
+        "content": m.content,
+        "created_at": _serialize_datetime(m.created_at),
+    }
+
+
+def _dict_to_chat_memory(d: dict) -> ChatMemory:
+    return ChatMemory(
+        id=d["id"],
+        session_id=d["session_id"],
+        content=d.get("content", ""),
+        created_at=_parse_datetime(d.get("created_at")),
+    )
+
+
 TABLE_REGISTRY = [
     ("users", User, _user_to_dict, _dict_to_user),
+    ("user_settings", UserSettings, _user_settings_to_dict, _dict_to_user_settings),
     ("llm_servers", LlmServer, _llm_server_to_dict, _dict_to_llm_server),
     ("worlds", World, _world_to_dict, _dict_to_world),
     ("world_locations", WorldLocation, _location_to_dict, _dict_to_location),
@@ -329,6 +550,11 @@ TABLE_REGISTRY = [
     ("npc_location_links", NPCLocationLink, _npc_link_to_dict, _dict_to_npc_link),
     ("world_stat_definitions", WorldStatDefinition, _stat_def_to_dict, _dict_to_stat_def),
     ("world_rules", WorldRule, _rule_to_dict, _dict_to_rule),
+    ("chat_sessions", ChatSession, _chat_session_to_dict, _dict_to_chat_session),
+    ("chat_summaries", ChatSummary, _chat_summary_to_dict, _dict_to_chat_summary),
+    ("chat_messages", ChatMessage, _chat_message_to_dict, _dict_to_chat_message),
+    ("chat_state_snapshots", ChatStateSnapshot, _chat_state_snapshot_to_dict, _dict_to_chat_state_snapshot),
+    ("chat_memories", ChatMemory, _chat_memory_to_dict, _dict_to_chat_memory),
 ]
 
 

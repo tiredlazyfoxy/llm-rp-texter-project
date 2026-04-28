@@ -15,9 +15,11 @@ import {
   Title,
 } from "@mantine/core";
 import {
+  IconArrowBackUp,
   IconCheck,
   IconChevronDown,
   IconChevronRight,
+  IconLanguage,
   IconPlayerStop,
   IconPlus,
   IconRefresh,
@@ -33,7 +35,8 @@ import type {
   ToolCallEntry,
 } from "../../types/llmChat";
 import type { EnabledModelInfo } from "../../types/llmServer";
-import { fetchEnabledModels, streamChat } from "../../api/llmChat";
+import { fetchEnabledModels, streamChat, translateTextAdmin } from "../../api/llmChat";
+import { useTranslation } from "../../hooks/useTranslation";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -69,7 +72,7 @@ interface LlmChatPanelProps {
   docId?: string;
   docType?: "location" | "npc" | "lore_fact";
   // World field mode
-  fieldType?: "description" | "system_prompt" | "initial_message";
+  fieldType?: "description" | "system_prompt" | "initial_message" | "pipeline_prompt";
   onApply: (content: string) => void;
   onAppend: (content: string) => void;
 }
@@ -107,6 +110,14 @@ export function LlmChatPanel({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const streamMsgRef = useRef<ChatMessage | null>(null);
   const isAtBottom = useRef(true);
+
+  // Translation
+  const getInputValue = useCallback(() => input, [input]);
+  const { isTranslating, canRevert, translateError, handleTranslate, handleRevert, onInputChange, clearTranslateError } = useTranslation({
+    getValue: getInputValue,
+    setValue: setInput,
+    translateFn: translateTextAdmin,
+  });
 
   // ---- Load models on mount ------------------------------------------------
 
@@ -483,11 +494,16 @@ export function LlmChatPanel({
         </ScrollArea>
 
         {/* Input area */}
+        {translateError && (
+          <Text size="xs" c="red" onClick={clearTranslateError} style={{ cursor: "pointer" }}>
+            {translateError}
+          </Text>
+        )}
         <Group gap="xs" align="flex-end">
           <Textarea
             placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
             value={input}
-            onChange={(e) => setInput(e.currentTarget.value)}
+            onChange={(e) => { setInput(e.currentTarget.value); onInputChange(e.currentTarget.value); }}
             onKeyDown={handleKeyDown}
             autosize
             minRows={1}
@@ -495,6 +511,27 @@ export function LlmChatPanel({
             style={{ flex: 1 }}
             disabled={isStreaming}
           />
+          <ActionIcon
+            variant="subtle"
+            size="lg"
+            onClick={handleTranslate}
+            disabled={!input.trim() || isStreaming || !selectedModel || isTranslating}
+            loading={isTranslating}
+            title="Translate to English"
+          >
+            <IconLanguage size={18} />
+          </ActionIcon>
+          {canRevert && (
+            <ActionIcon
+              variant="subtle"
+              size="lg"
+              color="orange"
+              onClick={handleRevert}
+              title="Revert to original"
+            >
+              <IconArrowBackUp size={18} />
+            </ActionIcon>
+          )}
           {isStreaming ? (
             <ActionIcon
               color="red"

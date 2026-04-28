@@ -6,9 +6,12 @@ export interface WorldItem {
   description: string;
   lore: string;
   system_prompt: string;
+  simple_tools: string;
   character_template: string;
   initial_message: string;
   pipeline: string;
+  generation_mode: string;
+  agent_config: string;
   status: string;
   owner_id: string | null;
   created_at: string | null;
@@ -38,10 +41,53 @@ export interface UpdateWorldRequest {
   description?: string;
   lore?: string;
   system_prompt?: string;
+  simple_tools?: string;
   character_template?: string;
   initial_message?: string;
   pipeline?: string;
+  generation_mode?: string;
+  agent_config?: string;
   status?: string;
+}
+
+// ── Pipeline ───────────────────────────────────────────────────
+
+export interface PipelineStage {
+  step_type: string;
+  name: string;
+  prompt: string;
+  max_agent_steps: number | null;
+  tools: string[];
+  enabled: boolean;
+  model_id: string | null;
+}
+
+export interface PipelineConfig {
+  stages: PipelineStage[];
+}
+
+export interface PlaceholderInfo {
+  name: string;
+  description: string;
+  category: string;
+}
+
+export interface ToolCatalogEntry {
+  name: string;
+  description: string;
+  category: string;
+}
+
+export interface DefaultTemplates {
+  simple: string;
+  tool: string;
+  writer: string;
+}
+
+export interface PipelineConfigOptions {
+  placeholders: PlaceholderInfo[];
+  tools: ToolCatalogEntry[];
+  default_templates: DefaultTemplates;
 }
 
 // ── Documents ───────────────────────────────────────────────────
@@ -111,6 +157,7 @@ export interface StatDefinitionItem {
   min_value: number | null;
   max_value: number | null;
   enum_values: string[] | null;
+  hidden: boolean;
 }
 
 export interface CreateStatRequest {
@@ -122,6 +169,7 @@ export interface CreateStatRequest {
   min_value?: number;
   max_value?: number;
   enum_values?: string[];
+  hidden?: boolean;
 }
 
 export interface UpdateStatRequest {
@@ -133,6 +181,7 @@ export interface UpdateStatRequest {
   min_value?: number | null;
   max_value?: number | null;
   enum_values?: string[] | null;
+  hidden?: boolean | null;
 }
 
 // ── Rules ───────────────────────────────────────────────────────

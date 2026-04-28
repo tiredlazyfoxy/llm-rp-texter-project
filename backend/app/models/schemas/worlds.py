@@ -11,9 +11,12 @@ class WorldResponse(BaseModel):
     description: str
     lore: str
     system_prompt: str
+    simple_tools: str
     character_template: str
     initial_message: str
     pipeline: str
+    generation_mode: str
+    agent_config: str
     status: str
     owner_id: str | None
     created_at: datetime | None
@@ -37,9 +40,12 @@ class CreateWorldRequest(BaseModel):
     description: str = ""
     lore: str = ""
     system_prompt: str = ""
+    simple_tools: str = "[]"
     character_template: str = ""
     initial_message: str = ""
     pipeline: str = "{}"
+    generation_mode: str = "simple"
+    agent_config: str = "{}"
     status: str = "draft"
 
 
@@ -48,9 +54,12 @@ class UpdateWorldRequest(BaseModel):
     description: str | None = None
     lore: str | None = None
     system_prompt: str | None = None
+    simple_tools: str | None = None
     character_template: str | None = None
     initial_message: str | None = None
     pipeline: str | None = None
+    generation_mode: str | None = None
+    agent_config: str | None = None
     status: str | None = None
 
 
@@ -121,6 +130,7 @@ class StatDefinitionResponse(BaseModel):
     min_value: int | None
     max_value: int | None
     enum_values: list[str] | None
+    hidden: bool
 
 
 class CreateStatRequest(BaseModel):
@@ -132,6 +142,7 @@ class CreateStatRequest(BaseModel):
     min_value: int | None = None
     max_value: int | None = None
     enum_values: list[str] | None = None
+    hidden: bool = False
 
 
 class UpdateStatRequest(BaseModel):
@@ -143,6 +154,7 @@ class UpdateStatRequest(BaseModel):
     min_value: int | None = None
     max_value: int | None = None
     enum_values: list[str] | None = None
+    hidden: bool | None = None
 
 
 # ── Rules ─────────────────────────────────────────────────────────
@@ -194,3 +206,30 @@ class CreateNpcLocationLinkRequest(BaseModel):
 class ReindexWorldResponse(BaseModel):
     indexed_count: int
     warning: str | None = None
+
+
+# ── Pipeline Config ─────────────────────────────────────────────
+
+class PlaceholderInfoResponse(BaseModel):
+    name: str
+    description: str
+    category: str
+
+
+class ToolCatalogEntryResponse(BaseModel):
+    name: str
+    description: str
+    category: str
+
+
+class DefaultTemplatesResponse(BaseModel):
+    simple: str
+    tool: str
+    writer: str
+    director: str
+
+
+class PipelineConfigOptionsResponse(BaseModel):
+    placeholders: list[PlaceholderInfoResponse]
+    tools: list[ToolCatalogEntryResponse]
+    default_templates: DefaultTemplatesResponse

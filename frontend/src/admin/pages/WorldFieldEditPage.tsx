@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Badge,
@@ -12,9 +12,12 @@ import {
   Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
-import type { UpdateWorldRequest, WorldDetail } from "../../types/world";
+import type { PipelineConfigOptions, UpdateWorldRequest, WorldDetail } from "../../types/world";
 import { LlmChatPanel } from "../components/LlmChatPanel";
-import { getWorld, updateWorld } from "../../api/worlds";
+import { PlaceholderPanel } from "../components/PlaceholderPanel";
+import { PlaceholderSuggestions } from "../components/PlaceholderSuggestions";
+import { usePlaceholderAutocomplete } from "../hooks/usePlaceholderAutocomplete";
+import { getPipelineConfigOptions, getWorld, updateWorld } from "../../api/worlds";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,13 +60,27 @@ export function WorldFieldEditPage() {
 
   const [content, setContent] = useState("");
   const [originalContent, setOriginalContent] = useState("");
+  const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isPipelinePrompt = fieldName === "system_prompt";
+  const autocomplete = usePlaceholderAutocomplete(
+    configOptions?.placeholders ?? [], textareaRef, content, setContent,
+  );
 
   const load = useCallback(async () => {
     if (!worldId) return;
     setLoading(true);
     setError(null);
     try {
-      const world = await getWorld(worldId);
+      const promises: [Promise<WorldDetail>, Promise<PipelineConfigOptions> | null] = [
+        getWorld(worldId),
+        isPipelinePrompt ? getPipelineConfigOptions() : null,
+      ];
+      const world = await promises[0];
+      if (promises[1]) {
+        setConfigOptions(await promises[1]);
+      }
       const value = getFieldValue(world, fieldName);
       setContent(value);
       setOriginalContent(value);
@@ -72,7 +89,7 @@ export function WorldFieldEditPage() {
     } finally {
       setLoading(false);
     }
-  }, [worldId, fieldName]);
+  }, [worldId, fieldName, isPipelinePrompt]);
 
   useEffect(() => {
     void load();
@@ -95,8 +112,29 @@ export function WorldFieldEditPage() {
     }
   };
 
+  const insertPlaceholder = (name: string) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const text = `{${name}}`;
+    const newContent = content.slice(0, start) + text + content.slice(end);
+    setContent(newContent);
+    requestAnimationFrame(() => {
+      ta.selectionStart = ta.selectionEnd = start + text.length;
+      ta.focus();
+    });
+  };
+
+  const loadDefaultTemplate = () => {
+    if (!configOptions) return;
+    if (content && !window.confirm("Replace current content with default template?")) return;
+    setContent(configOptions.default_templates.simple);
+  };
+
   const isDirty = content !== originalContent;
   const label = FIELD_LABELS[fieldName];
+  const fieldType = isPipelinePrompt ? "pipeline_prompt" : fieldName;
 
   if (loading) {
     return (
@@ -123,7 +161,14 @@ export function WorldFieldEditPage() {
             <Badge variant="light">{label}</Badge>
           </Title>
         </Group>
-        {isDirty && <Button onClick={handleApply} loading={saving}>Apply</Button>}
+        <Group>
+          {isPipelinePrompt && configOptions && (
+            <Button variant="default" size="compact-sm" onClick={loadDefaultTemplate}>
+              Load Default Template
+            </Button>
+          )}
+          {isDirty && <Button onClick={handleApply} loading={saving}>Apply</Button>}
+        </Group>
       </Group>
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
@@ -131,20 +176,44 @@ export function WorldFieldEditPage() {
 
       <Stack gap="md">
         {/* Field textarea */}
-        <Textarea
-          value={content}
-          onChange={(e) => setContent(e.currentTarget.value)}
-          autosize
-          minRows={4}
-          maxRows={30}
-          styles={{ input: { fontFamily: "monospace" } }}
-        />
+        <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
+          <Textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => {
+              setContent(e.currentTarget.value);
+              if (isPipelinePrompt) autocomplete.onTextChange(e.currentTarget.value, e.currentTarget);
+            }}
+            onKeyDown={isPipelinePrompt ? autocomplete.onKeyDown : undefined}
+            autosize
+            minRows={4}
+            styles={{ input: { fontFamily: "monospace" } }}
+          />
+        </div>
+        {isPipelinePrompt && (
+          <PlaceholderSuggestions
+            visible={autocomplete.visible}
+            suggestions={autocomplete.suggestions}
+            selectedIndex={autocomplete.selectedIndex}
+            position={autocomplete.position}
+            onSelect={autocomplete.onSelect}
+          />
+        )}
+
+        {/* Placeholder reference panel (system_prompt only) */}
+        {isPipelinePrompt && configOptions && (
+          <PlaceholderPanel
+            placeholders={configOptions.placeholders}
+            content={content}
+            onInsert={insertPlaceholder}
+          />
+        )}
 
         {/* LLM chat panel */}
         <LlmChatPanel
           currentContent={content}
           worldId={worldId}
-          fieldType={fieldName}
+          fieldType={fieldType}
           onApply={(text) => setContent(text)}
           onAppend={(text) => setContent((prev) => prev + "\n\n" + text)}
         />

@@ -12,12 +12,14 @@ frontend/
     user/                — User SPA (served at /)
       App.tsx, main.tsx
       pages/             — ChatListPage, WorldSelectPage, CharacterSetupPage, ChatViewPage
-      components/        — MessageHistory, MessageBubble, VariantSelector, StatsPanel,
+      components/        — MessageHistory, MessageBubble, StatsPanel,
                            ChatInput, ToolCallTrace, ChatSettingsPanel
       stores/            — ChatStore.ts (MobX)
     admin/               — Admin SPA (served at /admin)
       App.tsx, main.tsx
-      pages/             — WorldsList, WorldView, WorldEdit, DocumentEdit, LlmServersPage, DbManagementPage
+      pages/             — WorldsList, WorldView, WorldEdit, WorldFieldEdit, DocumentEdit, PipelineStageEdit, LlmServersPage, DbManagementPage
+      components/        — LlmChatPanel, PlaceholderPanel, PlaceholderSuggestions
+      hooks/             — usePlaceholderAutocomplete (inline {PLACEHOLDER} autocomplete)
     utils/               — Shared utilities (formatDate.ts, ...)
     api/                 — API client functions (chat.ts, llmServers.ts, dbManagement.ts, ...)
     types/               — TypeScript .d.ts interfaces matching backend schemas
@@ -50,6 +52,7 @@ frontend/
 - `/admin/worlds/:id/edit` — WorldEditPage
 - `/admin/worlds/:id/field/:fieldName` — WorldFieldEditPage (AI-assisted editing of description/system_prompt/initial_message)
 - `/admin/worlds/:id/documents/:docId/edit` — DocumentEditPage
+- `/admin/worlds/:id/pipeline/:stageIndex` — PipelineStageEditPage (pipeline stage prompt editor with LLM chat)
 - `/admin/llm-servers` — LlmServersPage
 - `/admin/database` — DbManagementPage
 
@@ -59,7 +62,7 @@ frontend/
 - **UI Library**: Mantine 7.17+ (@mantine/core, @mantine/form, @mantine/hooks)
 - **State**: MobX 6.13+ (observable stores)
 - **Routing**: History API
-- **SSE**: fetch + ReadableStream (not EventSource — needs POST + auth headers)
+- **SSE**: fetch + ReadableStream (not EventSource — needs POST + auth headers). Events: token, thinking, tool_call_start/result, phase, status, stat_update, variants_update, user_ack, done, error. Backend filters editor-only events by caller_role.
 
 ## Typing
 
@@ -73,6 +76,16 @@ frontend/
 - Format: ISO date (`YYYY-MM-DD`), or time only (`HH:MM`) if the date is today
 - Never use locale-dependent formats (no `toLocaleDateString()`)
 
+## Debug Mode
+
+Editor+ users have a debug toggle in chat settings. When enabled:
+- Tool calls show full arguments + results (no truncation)
+- Thinking content displayed in collapsible panels
+- Generation plan visible (chain mode: facts, decisions, stat_updates — collected via planning tools)
+- Hidden stats revealed with indicator badge
+
+When disabled: clean message display, brief status text only.
+
 ## Key Constraints
 
 - User and Admin SPAs are separate apps with separate builds
@@ -85,6 +98,13 @@ frontend/
 
 - Dev server: `npx vite --port 8094`
 - Build: `npx vite build`
+
+## Production Docker
+
+- `frontend/Dockerfile` — multi-stage: Node 20 build → nginx:alpine
+- Build output copied to `/usr/share/nginx/html`
+- nginx config: `nginx/prod.conf` (multi-SPA fallback for `/`, `/admin`, `/login`)
+- Build context is repo root (not `frontend/`)
 
 ## See Also
 

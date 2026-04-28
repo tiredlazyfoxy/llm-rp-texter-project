@@ -3,6 +3,10 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env.local", override=False)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,9 +14,11 @@ from app.routes.admin.db_management import router as db_management_router
 from app.routes.admin.users import router as admin_users_router
 from app.routes.admin.worlds import router as worlds_router
 from app.routes.auth import router as auth_router
+from app.routes.chat import router as chat_router
 from app.routes.llm_chat import router as llm_chat_router
 from app.routes.llm_models import router as llm_models_router
 from app.routes.llm_servers import router as llm_servers_router
+from app.routes.user_settings import router as user_settings_router
 from app.db import engine as db_engine
 from app.db.engine import DbConfig
 from app.services import vector_storage
@@ -22,6 +28,10 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[logging.StreamHandler()],
 )
+
+# Silence noisy third-party loggers
+for _quiet in ("aiosqlite", "aiohttp", "httpcore", "httpx"):
+    logging.getLogger(_quiet).setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -59,12 +69,14 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(chat_router)
 app.include_router(admin_users_router)
 app.include_router(db_management_router)
 app.include_router(llm_servers_router)
 app.include_router(llm_models_router)
 app.include_router(llm_chat_router)
 app.include_router(worlds_router)
+app.include_router(user_settings_router)
 
 
 @app.get("/api/health")

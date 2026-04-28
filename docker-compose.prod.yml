@@ -1,23 +1,25 @@
-# Production Docker Compose
-# Uses pre-built images for production deployment
-# Usage: docker compose -f docker-compose.prod.yml up -d
-
-version: "3.9"
-
 services:
-  # TODO: Configure with production images when ready
-  backend:
-    build: ./backend
-    expose:
-      - "8085"
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
-
-  nginx:
-    image: nginx:alpine
+  gate:
+    image: iezious/llmrp-gate:latest
     ports:
-      - "80:80"
+      - "8094:80"
     depends_on:
       - backend
+    restart: unless-stopped
+
+  backend:
+    image: iezious/llmrp-api:latest
+    env_file:
+      - .env
+    environment:
+      - LLMRP_DB_PATH=/app/data/llmrp.db
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8085"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped

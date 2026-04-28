@@ -216,3 +216,40 @@ FastAPI app
 ```
 
 Each sub-API is a separate FastAPI `APIRouter` mounted on the main app.
+
+## Generation Modes
+
+`World.generation_mode` controls which chat generation flow is used:
+
+| Mode | Service File | Config Field | Description |
+|------|-------------|-------------|-------------|
+| `"simple"` | `simple_generation_service.py` | `World.system_prompt` | Single LLM call with tools, rich prompt, stat validation |
+| `"chain"` | `chain_generation_service.py` | `World.pipeline` (JSON) | Pipeline stages: planning (planning tools, no JSON output) → writing (prose) |
+| `"agentic"` | `agent_generation_service.py` | `World.agent_config` (JSON) | Sub-agent orchestration (future, not yet implemented) |
+
+**Dispatch**: `chat_agent_service.py` is a thin dispatcher — loads the world, checks `generation_mode`, delegates to the appropriate service. Same dispatch for both `generate_response()` and `regenerate_response()`.
+
+**Shared infrastructure** (used by all modes):
+
+- `chat_tools.py` — Universal tool registry (`TOOL_REGISTRY`, 12 tools: 8 chat tools, 3 planning tools, 1 director tool). One factory, `build_tools(names, ToolContext)`, binds admin-selected names to whatever state (`world_id`, `session_id`, `planning_context`, `stat_defs`, `char_stats`, `world_stats`, `decision_state`) the caller supplies. Unknown name or unmet `requires` → `ValueError`. No per-stage factories or hardcoded bundles — every stage (simple, chain-tool, chain-writer) honors `stage.tools` verbatim.
+- `chat_context.py` — Loads location, NPCs, rules, stats, lore, memories; formats into prompt-ready strings
+- `stat_validation.py` — Validates stat updates against definitions (int range clamping, enum membership, set filtering)
+- `prompts/chat_system_prompt.py` — Rich system prompt builder with full world context and memory management instructions
+
+## Prompt Architecture
+
+All pre-coded prompt parts live in `backend/app/services/prompts/`. No hardcoded prompt text in service files.
+
+Each prompt file follows the **stage-4 documentation convention**:
+
+- **PURPOSE** — what this prompt does
+- **USAGE** — which service/stage calls it
+- **VARIABLES** — all template parameters with descriptions
+- **DESIGN RATIONALE** — why it's structured this way
+- **CHANGELOG** — version history
+
+Prompts combine three layers:
+
+1. **Coded part** — structural instructions, tool usage guidance (hardcoded in the prompt file). Note: planning prompt instructs the LLM to use `add_fact`/`add_decision`/`update_stat` tools for structured output — it does not include JSON output instructions.
+2. **Admin part** — world-specific free text (from `World.system_prompt` or `PipelineStage.prompt`)
+3. **Player part** — per-turn OOC instructions from `(( ))` notation in user messages, stored as `message.user_instructions`, injected via `{USER_INSTRUCTIONS}` placeholder (always included when non-empty)

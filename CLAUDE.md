@@ -38,14 +38,18 @@ See `architecture/` for full documentation.
 - `backend/` — FastAPI backend (agent, users/chats API, admin API)
 - `frontend/` — Vite multi-page app (User SPA + Admin SPA)
 - `docker-compose.dev.yml` — Dev Docker setup with build
-- `docker-compose.prod.yml` — Production Docker setup
+- `docker-compose.prod.yml` — Production Docker setup (pre-built images)
+- `build.ps1` — Build images, compress with 7z, export to NAS
+- `fetch.sh` — Import images from NAS on deployment server
+- `.dockerignore` — Docker build exclusions
 - Each subfolder has its own `CLAUDE.md` for context
 
 ## Conventions
 
 - Planning docs go to `plans/` folder (tracked in git) — **not** `~/.claude/plans/`
-- Plan naming: `stageN_stepM_somename.md` (e.g. `stage1_step1_backend_setup.md`)
-- When a plan is done: rename to `stageN_stepM_somename.done.md` for retrospective
+- **Backlog ideas**: `backlog.<idea_name>.md` — ideas not yet scheduled for execution
+- **Scheduled work**: `stageN_stepM_somename.md` — when a backlog item is promoted to execution
+- **Completed work**: `stageN_stepM_somename.done.md` — for retrospective
 - Final architecture docs go to `architecture/`
 - Every project subfolder must have a `CLAUDE.md`
 

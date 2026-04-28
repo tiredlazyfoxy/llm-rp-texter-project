@@ -21,3 +21,12 @@ class LlmChatRequest(BaseModel):
     doc_id: str = ""
     doc_type: str = ""   # "location" | "npc" | "lore_fact"
     field_type: str = "" # "description" | "system_prompt" | "initial_message"
+
+
+class TranslateRequest(BaseModel):
+    text: str
+    model_id: str
+    temperature: float = 0.1
+    top_p: float = 1.0
+    repeat_penalty: float = 1.0
+    enable_thinking: bool = False

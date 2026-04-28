@@ -15,3 +15,4 @@ Contains finalized architecture and design documentation for the project.
 - This folder is for **final, approved** documentation only
 - Draft/planning docs belong in `plans/`
 - Keep docs concise and up-to-date as the project evolves
+

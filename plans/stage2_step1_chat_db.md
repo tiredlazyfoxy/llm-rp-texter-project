@@ -290,6 +290,7 @@ All new tables must have JSONL import/export support (`.jsonl.gz`). Extend `back
 | `chat_messages` | session_id, role, content, turn_number, tool_calls, summary_id, is_active_variant |
 | `chat_state_snapshots` | session_id, turn_number, location_id, character_stats, world_stats |
 | `chat_summaries` | session_id, start/end_message_id, start/end_turn, content |
+| `chat_memories` | session_id, content — ordered by PK (snowflake), managed via MCP |
 
 ---
 

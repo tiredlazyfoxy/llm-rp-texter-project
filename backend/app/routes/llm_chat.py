@@ -10,11 +10,12 @@ from starlette.responses import StreamingResponse
 
 from app.db import lore_facts as lore_facts_db
 from app.db import worlds as worlds_db
-from app.models.schemas.llm_chat import LlmChatRequest
+from app.models.schemas.llm_chat import LlmChatRequest, TranslateRequest
 from app.models.user import User, UserRole
 from llm.message import LLMMessage
 
 from app.services.auth import require_role
+from app.services import llm_chat as llm_chat_service
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts import build_document_editor_system, build_world_field_editor_system
 
@@ -214,3 +215,21 @@ async def chat_stream(
                 task.cancel()
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.post("/translate")
+async def translate_text(
+    req: TranslateRequest,
+    _caller: User = Depends(_require_editor),
+) -> StreamingResponse:
+    return StreamingResponse(
+        llm_chat_service.translate_to_english_stream(
+            req.text,
+            req.model_id,
+            temperature=req.temperature,
+            top_p=req.top_p,
+            repeat_penalty=req.repeat_penalty,
+            enable_thinking=req.enable_thinking,
+        ),
+        media_type="text/event-stream",
+    )

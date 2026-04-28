@@ -2,10 +2,12 @@ import { useState } from "react";
 import { Group, Menu, Text, UnstyledButton } from "@mantine/core";
 import { getCurrentUser, logout } from "../auth";
 import { ChangePasswordModal } from "./ChangePasswordModal";
+import { TranslationSettingsModal } from "./TranslationSettingsModal";
 
 export function AppHeader() {
   const user = getCurrentUser();
   const [pwdModalOpen, setPwdModalOpen] = useState(false);
+  const [translateModalOpen, setTranslateModalOpen] = useState(false);
 
   return (
     <>
@@ -36,6 +38,9 @@ export function AppHeader() {
                   Admin
                 </Menu.Item>
               )}
+              <Menu.Item onClick={() => setTranslateModalOpen(true)}>
+                Translation settings
+              </Menu.Item>
               <Menu.Item onClick={() => setPwdModalOpen(true)}>
                 Change password
               </Menu.Item>
@@ -49,6 +54,11 @@ export function AppHeader() {
       <ChangePasswordModal
         opened={pwdModalOpen}
         onClose={() => setPwdModalOpen(false)}
+      />
+
+      <TranslationSettingsModal
+        opened={translateModalOpen}
+        onClose={() => setTranslateModalOpen(false)}
       />
     </>
   );
