@@ -11,4 +11,4 @@ Two-stage agent pipeline, generation plans, hidden stats. Admin model + backend 
 
 - Pipeline supports multiple modes (simple, chain).
 - Each generation step may produce hidden state forwarded to next step.
-- Step numbering reflects evolution: original step1 (`1.agent_pipeline.md`) was reworked into a model-admin focused step (`1b.pipeline_model_admin.md`); step2 split into `2`, `2a` (simple), `2b` (chain); step3 split into `3a` (backend) and `3b` (frontend).
+- Step numbering reflects evolution: original step 001 (`001.agent_pipeline.md`) was reworked into a model-admin focused step (`001b.pipeline_model_admin.md`); step 002 split into `002`, `002a` (simple), `002b` (chain); step 003 split into `003a` (backend) and `003b` (frontend).

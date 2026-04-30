@@ -1,9 +1,9 @@
 # Feature 004 — Status
 
-| Step | File | Status |
-|------|------|--------|
-| 1    | `1.translator_tools.md`       | pending |
-| 2    | `2.tool_based_planning.md`    | pending |
+| Step | File                          | Status |
+|------|-------------------------------|--------|
+| 001  | `001.translator_tools.md`     | pending |
+| 002  | `002.tool_based_planning.md`  | pending |
 
 ## Files Changed
 

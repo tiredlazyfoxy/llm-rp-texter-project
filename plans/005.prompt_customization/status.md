@@ -1,10 +1,10 @@
 # Feature 005 — Status
 
-| Step | File | Status |
-|------|------|--------|
-| 1    | `1.admin_prompt_config.md`        | done |
-| 2    | `2.prompt_injection_engine.md`    | done |
-| 3    | `3.director_stage.md`             | done |
+| Step | File                              | Status |
+|------|-----------------------------------|--------|
+| 001  | `001.admin_prompt_config.md`      | done |
+| 002  | `002.prompt_injection_engine.md`  | done |
+| 003  | `003.director_stage.md`           | done |
 
 ## Files Changed
 

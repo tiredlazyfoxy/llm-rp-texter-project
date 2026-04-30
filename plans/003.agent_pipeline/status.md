@@ -1,14 +1,14 @@
 # Feature 003 — Status
 
-| Step | File | Status |
-|------|------|--------|
-| 1    | `1.agent_pipeline.md`           | done |
-| 1b   | `1b.pipeline_model_admin.md`    | done |
-| 2    | `2.pipeline_backend.md`         | done |
-| 2a   | `2a.simple_mode.md`             | done |
-| 2b   | `2b.chain_mode.md`              | done |
-| 3a   | `3a.backend.md`                 | done |
-| 3b   | `3b.frontend.md`                | done |
+| Step  | File                            | Status |
+|-------|---------------------------------|--------|
+| 001   | `001.agent_pipeline.md`         | done |
+| 001b  | `001b.pipeline_model_admin.md`  | done |
+| 002   | `002.pipeline_backend.md`       | done |
+| 002a  | `002a.simple_mode.md`           | done |
+| 002b  | `002b.chain_mode.md`            | done |
+| 003a  | `003a.backend.md`               | done |
+| 003b  | `003b.frontend.md`              | done |
 
 ## Files Changed
 

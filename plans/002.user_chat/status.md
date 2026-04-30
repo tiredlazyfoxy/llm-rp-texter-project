@@ -1,11 +1,11 @@
 # Feature 002 — Status
 
-| Step | File | Status |
-|------|------|--------|
-| 1    | `1.chat_db.md`        | done |
-| 2    | `2.chat_tools.md`     | done |
-| 3    | `3.chat_api_ui.md`    | done |
-| 4    | `4.summarization.md`  | done |
+| Step | File                    | Status |
+|------|-------------------------|--------|
+| 001  | `001.chat_db.md`        | done |
+| 002  | `002.chat_tools.md`     | done |
+| 003  | `003.chat_api_ui.md`    | done |
+| 004  | `004.summarization.md`  | done |
 
 ## Files Changed
 
