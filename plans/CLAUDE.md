@@ -1,18 +1,32 @@
 # Plans Folder
 
-Working area for planning documents, task breakdowns, and drafts.
+Working area for feature planning. Tracked in git for retrospective.
 
-## Rules
+## Layout
 
-- This folder is **tracked in git** — plans are committed for retrospective
-- All plans go here during planning mode — **not** in `~/.claude/plans/`
-- **Backlog**: `backlog.<idea_name>.md` — new ideas, not yet scheduled
-- **Scheduled**: `stageN_stepM_somename.md` — promoted from backlog for execution
-- **Done**: `stageN_stepM_somename.done.md` — completed, kept for retrospective
-- Move finalized docs to `architecture/` when approved
+```
+plans/
+  <NNN>.<feature_name>/         # NNN = 3-digit feature number, sorts the list
+    context.md                  # required — global planner context for the feature: files, references, facts
+    outcome.md                  # required — documentation changes to be made after implementation
+    status.md                   # required — per-step status + files changed (just a list)
+    <step>.<name>.md            # required per step — the plan: what will change
+    <step>.context.md           # optional — extra planner context scoped to a single step
+  backlog/
+    <idea_name>.md              # ideas not yet promoted to a feature
+```
+
+- `<step>` is the step label (e.g. `1`, `1b`, `2a`). Sub-step suffixes are allowed when a step is split or reworked.
+- Step files inside a feature share the feature's `context.md`; only add `<step>.context.md` when that step needs context the others don't.
 
 ## Lifecycle
 
-1. New idea → create `backlog.<idea_name>.md`
-2. Ready for execution → rename to `stageN_stepM_<name>.md`
-3. Completed → rename to `stageN_stepM_<name>.done.md`
+1. **New idea** → `plans/backlog/<idea_name>.md`
+2. **Promote to feature** → create `plans/<NNN>.<feature_name>/` with `context.md`, `outcome.md`, `status.md`, and at least one `<step>.<name>.md`
+3. **Implement** → update `status.md` per step (mark done, list files changed)
+4. **Finalize** → after the feature is delivered, apply `outcome.md` to architecture/CLAUDE docs
+
+## Rules
+
+- Final architecture docs go to `architecture/`, not here.
+- Every feature folder must have all three required files (`context.md`, `outcome.md`, `status.md`) plus at least one step plan.
