@@ -1,17 +1,24 @@
 # Project Rules
 
-## Environment
+## DEV Environment
 
 - **OS**: Windows 11
 - **Preferred shell**: PowerShell (use PowerShell over bash when possible)
 - **Path separators**: Use backslashes (`\`) for Windows paths in PowerShell; forward slashes are acceptable in git commands
 
-## File System Access
+## Prod Environment
+
+- Docker compose
+- Static nginx for fronend
+
+## Rules
+
+### File System Access
 
 - Freely run `ls`, `dir`, `Get-ChildItem`, search, and other read-only commands on the project folder and subfolders
 - No restrictions on reading files within the project
 
-## Git Policy
+### Git Policy
 
 - **Read-only commands** (run freely, no permission needed): `git status`, `git log`, `git diff`, `git branch`, `git remote`, `git show`, `git stash list`, and any other non-modifying commands
 - **`git add` and `git commit`** (require explicit user permission before running)
