@@ -12,49 +12,17 @@ FastAPI application — Python 3.13, SQLite, SQLModel ORM.
 
 ```
 backend/
-  app/
+  app/                   — FastAPI application (see app/CLAUDE.md)
     main.py              — FastAPI app, CORS, router mounting
     models/              — SQLModel DB models + Pydantic API schemas
-      schemas/           — Pydantic request/response schemas (auth.py, chat.py, db_management.py, pipeline.py)
-      user.py, world.py, llm_server.py, chat_session.py, chat_message.py, ...
     routes/              — API route handlers (HTTP layer only)
-      auth.py, chat.py, llm_servers.py, admin/db_management.py, ...
     db/                  — Data access layer (DB-agnostic interface)
-      engine.py          — Async engine, injectable config, DDL, state flags
-      users.py           — User CRUD (session-free, import as `from app.db import users`)
-      worlds.py          — World CRUD
-      locations.py       — WorldLocation CRUD
-      npcs.py            — WorldNPC CRUD
-      lore_facts.py      — WorldLoreFact CRUD
-      npc_links.py       — NPCLocationLink CRUD
-      stat_defs.py       — WorldStatDefinition CRUD
-      rules.py           — WorldRule CRUD
-      import_export_queries.py — export_table(), upsert_batch(), vector rebuild
-      db_management.py         — DB introspection (table list, columns, counts, create)
     services/            — Business logic (no direct DB queries, no session creation)
-      snowflake.py       — Snowflake ID generator (int64)
-      database.py        — DB setup orchestration (create/import)
-      auth.py            — JWT create/verify, password hashing
-      db_import_export.py — gzipped JSONL per table
-      db_management.py    — DB introspection service (status, schema drift, create tables)
-      prompts/           — LLM prompt package (one documented file per prompt, stage-4 docstring)
-        placeholder_registry.py     — Static registry of prompt placeholders ({WORLD_NAME}, {RULES}, {DECISION}, …)
-        tool_catalog.py             — Static registry of tools with name, description, category (research/action/planning/director)
-        default_templates.py        — Default prompt templates (simple, tool, writer, director) using {PLACEHOLDER} syntax
-        world_field_editor_system_prompt.py — System prompt for LLM-assisted field editing
-        planning_system_prompt.py   — Planning stage system prompt (chain mode, legacy fallback)
-        writing_system_prompt.py    — Writing stage system prompt (chain mode, legacy fallback)
-        writing_plan_message.py     — Plan injection template for writer
-      chat_tools.py         — Universal tool registry (TOOL_REGISTRY, 12 tools) + ToolContext + build_tools(names, ctx). No per-stage factories — every caller selects tools by name and passes the state it has; missing required state → ValueError.
-      chat_context.py       — Context builder for rich system prompts
-      stat_validation.py    — Stat update validation against definitions
-      chat_service.py       — Chat CRUD (sessions, messages, memories, rewind, edit/delete messages)
-      chat_agent_service.py — Generation dispatcher (routes to mode-specific services)
-      simple_generation_service.py  — Simple mode: single LLM call with tools
-      chain_generation_service.py   — Chain mode: planning (tools → PlanningContext → GenerationPlanOutput) → writing pipeline
   pyproject.toml         — Dependencies
   data/                  — SQLite DB location (dev)
 ```
+
+See per-folder `CLAUDE.md` files for contents of each subfolder.
 
 ## Sub-APIs
 
@@ -105,22 +73,7 @@ Dispatch in `chat_agent_service.py` routes to the appropriate service. Shared in
 
 ## DB Models
 
-| Table | Key Fields |
-|---|---|
-| `users` | username, role (admin/editor/player), pwdhash, jwt_signing_key |
-| `worlds` | name, system_prompt, simple_tools, character_template, generation_mode, pipeline, agent_config, status |
-| `world_locations` | world_id, name, content, exits |
-| `world_npcs` | world_id, name, content |
-| `world_lore_facts` | world_id, content, is_injected (bool), weight (int) |
-| `npc_location_links` | npc_id, location_id, link_type (present/excluded) |
-| `world_stat_definitions` | world_id, name, scope, stat_type, constraints, hidden |
-| `world_rules` | world_id, rule_text, order |
-| `llm_servers` | name, backend_type, base_url, enabled_models, is_embedding, embedding_model |
-| `chat_sessions` | user_id, world_id, current_location_id, tool_model_id, text_model_id, character_stats, world_stats, current_turn, generation_variants (JSON) |
-| `chat_messages` | session_id, role, content, turn_number, tool_calls, generation_plan, thinking_content, is_active_variant |
-| `chat_state_snapshots` | session_id, turn_number, location_id, character_stats, world_stats |
-| `chat_summaries` | session_id, start/end turn, content |
-| `chat_memories` | session_id, content |
+See [`architecture/db-models.md`](../architecture/db-models.md). Implementation lives in [`backend/app/models/`](app/models/).
 
 ## DB Import/Export
 
