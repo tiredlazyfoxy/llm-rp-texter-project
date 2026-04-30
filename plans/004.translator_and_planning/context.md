@@ -9,4 +9,4 @@ Translator tooling (multi-language tool I/O) and tool-based planning stage for t
 
 ## Facts
 
-- Former Stage 4 steps 1, 2, 5 were moved to backlog; only translator_tools and tool_based_planning remain in scope here.
+- Former Feature 004 steps 1, 2, 5 were moved to backlog; only translator_tools and tool_based_planning remain in scope here.

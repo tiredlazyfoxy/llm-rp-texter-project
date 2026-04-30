@@ -17,7 +17,7 @@ plans/
 ```
 
 - `<SSS>` is a 3-digit step label (e.g. `001`, `001b`, `002a`). Sub-step letter suffixes are allowed when a step is split or reworked.
-- Step files inside a feature share the feature's `context.md`; only add `<step>.context.md` when that step needs context the others don't.
+- Step files inside a feature share the feature's `context.md`; only add `<SSS>.context.md` when that step needs context the others don't.
 
 ## Lifecycle
 

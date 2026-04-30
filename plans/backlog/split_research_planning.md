@@ -1,4 +1,4 @@
-# Stage 4 Step 5: Split Research from Planning
+# Feature 004 Step 005: Split Research from Planning
 
 ## Context
 
@@ -6,7 +6,7 @@ Step 4 introduced tool-based planning: the planning LLM uses `add_fact`, `add_de
 
 **Why split?** A research stage focused purely on gathering facts (cheap, fast model) produces better context than asking one LLM call to simultaneously gather info AND make creative decisions. The planning stage can then focus on decisions with all facts already collected.
 
-**Depends on**: Stage 4 Step 4 (tool-based PlanningContext) must be implemented first.
+**Depends on**: Feature 004 Step 004 (tool-based PlanningContext) must be implemented first.
 
 ## Design
 

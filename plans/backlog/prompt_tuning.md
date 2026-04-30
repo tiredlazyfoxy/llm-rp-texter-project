@@ -1,20 +1,20 @@
-# Stage 4 Step 1 — Prompt Tuning Infrastructure
+# Feature 004 Step 001 — Prompt Tuning Infrastructure
 
 ## Context
 
-With all prompts implemented across stages 1–3, this step establishes the infrastructure and workflow for iterating on prompt quality. The goal: any developer can tune any prompt without understanding the full codebase, using only the prompt file itself as context.
+With all prompts implemented across features 001– 003, this step establishes the infrastructure and workflow for iterating on prompt quality. The goal: any developer can tune any prompt without understanding the full codebase, using only the prompt file itself as context.
 
 ### Dependencies
 
-- Stage 2 Steps 2–4 (all chat prompts implemented in prompts/ package)
-- Stage 3 Step 1 (pipeline prompts implemented in prompts/ package)
-- Stage 1 Step 5 (document editor prompt implemented in prompts/ package)
+- Feature 002 Steps 002–004 (all chat prompts implemented in prompts/ package)
+- Feature 003 Step 001 (pipeline prompts implemented in prompts/ package)
+- Feature 001 Step 005 (document editor prompt implemented in prompts/ package)
 
 ---
 
 ## 1. Prompt Package Structure
 
-Established in stage 2 step 2, extended in stage 3 step 1 and stage 1 step 5.
+Established in feature 002 step 002, extended in feature 003 step 001 and feature 001 step 005.
 
 ```
 backend/app/services/prompts/
@@ -82,7 +82,7 @@ information for future context injection.
 USAGE
 -----
 - Service: summarization_service.py :: compact_messages(), regenerate_summary()
-- Stage: Stage 2 Step 4 (Summarization)
+- Stage: Feature 002 Step 004 (Summarization)
 - Agent: Standalone summarization call (non-streaming, no tools)
 - Called when: User clicks "Compact" on an assistant message, or regenerates a summary
 
@@ -109,7 +109,7 @@ DESIGN RATIONALE
 
 CHANGELOG
 ---------
-- v1 (stage 2 step 4): Initial version.
+- v1 (feature 002 step 004): Initial version.
 """
 
 SUMMARIZE_SYSTEM_PROMPT = """\
@@ -251,7 +251,7 @@ When implementing or reviewing prompt files, verify:
 
 ## New Files
 
-None — this plan defines standards applied during stage 2 and stage 3 implementation. The folder structure and documentation requirements are incorporated into those plans directly.
+None — this plan defines standards applied during feature 002 and feature 003 implementation. The folder structure and documentation requirements are incorporated into those plans directly.
 
 ---
 

@@ -1,4 +1,4 @@
-# Stage 4 Step 2 — Agent Mode (Design Document)
+# Feature 004 Step 002 — Agent Mode (Design Document)
 
 ## Context
 
@@ -6,7 +6,7 @@ This is a **design document** for the agentic generation mode (`generation_mode 
 
 ### Why This Exists
 
-The chain mode (stage 3 step 2b) uses a fixed stage sequence: planning → writing. This works well for standard RP scenarios but has limitations:
+The chain mode (feature 003 step 002b) uses a fixed stage sequence: planning → writing. This works well for standard RP scenarios but has limitations:
 - Fixed control flow — can't dynamically decide to gather more data mid-planning
 - Single planning step — can't break complex decisions into sub-tasks
 - No inter-agent communication — planning and writing are isolated

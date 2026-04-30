@@ -1,4 +1,4 @@
-# Stage 5 — Agent-Subagent Generation Mode (Design)
+# Feature 005 — Agent-Subagent Generation Mode (Design)
 
 ## Overview
 

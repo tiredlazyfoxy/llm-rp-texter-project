@@ -54,9 +54,9 @@ See `architecture/` for full documentation.
 ## Conventions
 
 - Planning docs go to `plans/` folder (tracked in git) — **not** `~/.claude/plans/`
-- **Backlog ideas**: `backlog.<idea_name>.md` — ideas not yet scheduled for execution
-- **Scheduled work**: `stageN_stepM_somename.md` — when a backlog item is promoted to execution
-- **Completed work**: `stageN_stepM_somename.done.md` — for retrospective
+- **Features** live in `plans/<NNN>.<feature_name>/` (3-digit feature number, sorts the list); each folder has required `context.md`, `outcome.md`, `status.md` plus one or more `<SSS>.<name>.md` step plans (3-digit step number, optional letter suffix like `001b`/`002a`) and optional `<SSS>.context.md`
+- **Backlog ideas**: `plans/backlog/<idea_name>.md` — ideas not yet promoted to a feature
+- See `plans/CLAUDE.md` for full layout and lifecycle
 - Final architecture docs go to `architecture/`
 - Every project subfolder must have a `CLAUDE.md`
 
