@@ -24,6 +24,7 @@ from app.db import chats as chats_db
 from app.db import locations as locations_db
 from app.models.chat_message import ChatMessage
 from app.models.chat_state_snapshot import ChatStateSnapshot
+from app.models.pipeline import Pipeline
 from app.services import snowflake as snowflake_svc
 from app.services.chat_agent_service import (
     _lp,
@@ -97,6 +98,7 @@ async def _run_generation(
     session_id: int,
     llm_messages: list[dict[str, str]],
     queue: asyncio.Queue,
+    pipeline: Pipeline,
     is_regenerate: bool = False,
     user_instructions: str | None = None,
 ) -> None:
@@ -121,10 +123,10 @@ async def _run_generation(
             len(context["present_npcs"]), len(context["rules"]), len(context["current_stats"]),
         )
 
-        # Parse tool selection from world config
+        # Parse tool selection from pipeline config
         world = context["world"]
         try:
-            configured_tools: list[str] = json.loads(world.simple_tools) if world.simple_tools else []
+            configured_tools: list[str] = json.loads(pipeline.simple_tools) if pipeline.simple_tools else []
         except (json.JSONDecodeError, TypeError):
             configured_tools = []
 
@@ -144,12 +146,12 @@ async def _run_generation(
         logger.debug("%s Tools: %s", lp, list(tool_callables.keys()))
 
         # Build system prompt (template resolution or legacy fallback)
-        if world.system_prompt and world.system_prompt.strip():
+        if pipeline.system_prompt and pipeline.system_prompt.strip():
             tools_desc = build_tools_description(
                 [d["function"]["name"] for d in tool_defs],
             )
             system_prompt = resolve_prompt_template(
-                world.system_prompt,
+                pipeline.system_prompt,
                 WORLD_NAME=world.name,
                 RULES=context["rules"],
                 INJECTED_LORE=context["injected_lore"],
@@ -166,7 +168,7 @@ async def _run_generation(
             system_prompt = build_rich_chat_system_prompt(
                 world_name=world.name,
                 world_description=world.description,
-                admin_system_prompt=world.system_prompt,
+                admin_system_prompt=pipeline.system_prompt,
                 location_name=context["location_name"],
                 location_description=context["location_description"],
                 location_exits=context["location_exits"],
@@ -326,6 +328,7 @@ def generate_simple_response(
     session_id: int,
     user_id: int,
     user_message: str,
+    pipeline: Pipeline,
     variant_index: int | None = None,
     user_instructions: str | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -387,6 +390,7 @@ def generate_simple_response(
         queue: asyncio.Queue[str | None] = asyncio.Queue()
         task = asyncio.create_task(
             _run_generation(chat, turn, session_id, llm_messages, queue,
+                            pipeline=pipeline,
                             user_instructions=user_instructions)
         )
 
@@ -410,6 +414,7 @@ def generate_simple_response(
 def regenerate_simple_response(
     session_id: int,
     user_id: int,
+    pipeline: Pipeline,
 ) -> AsyncGenerator[str, None]:
     """Simple mode regeneration: mark old inactive, restore stats, re-run."""
 
@@ -485,6 +490,7 @@ def regenerate_simple_response(
         queue: asyncio.Queue[str | None] = asyncio.Queue()
         task = asyncio.create_task(
             _run_generation(chat, turn, session_id, llm_messages, queue,
+                            pipeline=pipeline,
                             is_regenerate=True, user_instructions=user_instructions)
         )
 

@@ -168,12 +168,6 @@ function InfoTab({ world, worldId }: { world: WorldDetail; worldId: string }) {
               <Text size="sm" c="dimmed">-</Text>
             )}
           </Stack>
-          {world.system_prompt && (
-            <Stack gap={4}>
-              <Text fw={600}>System Prompt</Text>
-              <CollapsibleText text={world.system_prompt} mono />
-            </Stack>
-          )}
           {world.initial_message && (
             <Stack gap={4}>
               <Text fw={600}>Initial Message</Text>

@@ -17,10 +17,10 @@ class LlmChatRequest(BaseModel):
     enable_thinking: bool = False
     enable_tools: bool = False
     current_content: str
-    world_id: str
+    world_id: str | None = None
     doc_id: str = ""
     doc_type: str = ""   # "location" | "npc" | "lore_fact"
-    field_type: str = "" # "description" | "system_prompt" | "initial_message"
+    field_type: str = "" # "description" | "system_prompt" | "initial_message" | "pipeline_prompt"
 
 
 class TranslateRequest(BaseModel):

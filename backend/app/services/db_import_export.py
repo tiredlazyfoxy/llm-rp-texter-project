@@ -18,6 +18,7 @@ from app.models.chat_session import ChatSession
 from app.models.chat_state_snapshot import ChatStateSnapshot
 from app.models.chat_summary import ChatSummary
 from app.models.llm_server import LlmServer
+from app.models.pipeline import Pipeline, PipelineKind
 from app.models.user import User, UserRole
 from app.models.user_settings import UserSettings
 from app.models.world import (
@@ -116,12 +117,16 @@ def _world_to_dict(w: World) -> dict:
         "name": w.name,
         "description": w.description,
         "lore": w.lore,
+        # Legacy pipeline fields kept for backward compat with older exports —
+        # they remain on the model after Feature 007 but are write-dead.
         "system_prompt": w.system_prompt,
+        "simple_tools": w.simple_tools,
         "character_template": w.character_template,
         "initial_message": w.initial_message,
         "pipeline": w.pipeline,
         "generation_mode": w.generation_mode,
         "agent_config": w.agent_config,
+        "pipeline_id": w.pipeline_id,
         "status": w.status.value,
         "owner_id": w.owner_id,
         "created_at": _serialize_datetime(w.created_at),
@@ -136,13 +141,50 @@ def _dict_to_world(d: dict) -> World:
         description=d.get("description", ""),
         lore=d.get("lore", ""),
         system_prompt=d.get("system_prompt", ""),
+        simple_tools=d.get("simple_tools", "[]"),
         character_template=d.get("character_template", ""),
         initial_message=d.get("initial_message", ""),
         pipeline=d.get("pipeline", "{}"),
         generation_mode=d.get("generation_mode", "simple"),
         agent_config=d.get("agent_config", "{}"),
+        pipeline_id=d.get("pipeline_id"),
         status=WorldStatus(d["status"]),
         owner_id=d.get("owner_id"),
+        created_at=_parse_datetime(d.get("created_at")),
+        modified_at=_parse_datetime(d.get("modified_at")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pipelines
+# ---------------------------------------------------------------------------
+
+
+def _pipeline_to_dict(p: Pipeline) -> dict:
+    return {
+        "id": p.id,
+        "name": p.name,
+        "description": p.description,
+        "kind": p.kind.value,
+        "system_prompt": p.system_prompt,
+        "simple_tools": p.simple_tools,
+        "pipeline_config": p.pipeline_config,
+        "agent_config": p.agent_config,
+        "created_at": _serialize_datetime(p.created_at),
+        "modified_at": _serialize_datetime(p.modified_at),
+    }
+
+
+def _dict_to_pipeline(d: dict) -> Pipeline:
+    return Pipeline(
+        id=d["id"],
+        name=d["name"],
+        description=d.get("description", ""),
+        kind=PipelineKind(d.get("kind", "simple")),
+        system_prompt=d.get("system_prompt", ""),
+        simple_tools=d.get("simple_tools", "[]"),
+        pipeline_config=d.get("pipeline_config", "{}"),
+        agent_config=d.get("agent_config", "{}"),
         created_at=_parse_datetime(d.get("created_at")),
         modified_at=_parse_datetime(d.get("modified_at")),
     )
@@ -543,6 +585,7 @@ TABLE_REGISTRY = [
     ("users", User, _user_to_dict, _dict_to_user),
     ("user_settings", UserSettings, _user_settings_to_dict, _dict_to_user_settings),
     ("llm_servers", LlmServer, _llm_server_to_dict, _dict_to_llm_server),
+    ("pipelines", Pipeline, _pipeline_to_dict, _dict_to_pipeline),
     ("worlds", World, _world_to_dict, _dict_to_world),
     ("world_locations", WorldLocation, _location_to_dict, _dict_to_location),
     ("world_npcs", WorldNPC, _npc_to_dict, _dict_to_npc),

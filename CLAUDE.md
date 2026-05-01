@@ -1,17 +1,24 @@
 # Project Rules
 
-## Environment
+## DEV Environment
 
 - **OS**: Windows 11
 - **Preferred shell**: PowerShell (use PowerShell over bash when possible)
 - **Path separators**: Use backslashes (`\`) for Windows paths in PowerShell; forward slashes are acceptable in git commands
 
-## File System Access
+## Prod Environment
+
+- Docker compose
+- Static nginx for fronend
+
+## Rules
+
+### File System Access
 
 - Freely run `ls`, `dir`, `Get-ChildItem`, search, and other read-only commands on the project folder and subfolders
 - No restrictions on reading files within the project
 
-## Git Policy
+### Git Policy
 
 - **Read-only commands** (run freely, no permission needed): `git status`, `git log`, `git diff`, `git branch`, `git remote`, `git show`, `git stash list`, and any other non-modifying commands
 - **`git add` and `git commit`** (require explicit user permission before running)
@@ -47,9 +54,9 @@ See `architecture/` for full documentation.
 ## Conventions
 
 - Planning docs go to `plans/` folder (tracked in git) — **not** `~/.claude/plans/`
-- **Backlog ideas**: `backlog.<idea_name>.md` — ideas not yet scheduled for execution
-- **Scheduled work**: `stageN_stepM_somename.md` — when a backlog item is promoted to execution
-- **Completed work**: `stageN_stepM_somename.done.md` — for retrospective
+- **Features** live in `plans/<NNN>.<feature_name>/` (3-digit feature number, sorts the list); each folder has required `context.md`, `outcome.md`, `status.md` plus one or more `<SSS>.<name>.md` step plans (3-digit step number, optional letter suffix like `001b`/`002a`) and optional `<SSS>.context.md`
+- **Backlog ideas**: `plans/backlog/<idea_name>.md` — ideas not yet promoted to a feature
+- See `plans/CLAUDE.md` for full layout and lifecycle
 - Final architecture docs go to `architecture/`
 - Every project subfolder must have a `CLAUDE.md`
 
@@ -84,10 +91,3 @@ See `architecture/` for full documentation.
 - **No `session`, `AsyncSession`, or connection objects outside `db/`**
 - **Import style**: namespace modules — `from app.db import users, worlds` then `await users.get_by_id(id)`
 - Services import as: `from app.services import auth as auth_service` then `auth_service.create_token(user)`
-
-## Workflow: COLLECT Mode
-
-- When the user starts a chat with **COLLECT** or writes **COLLECT** mid-conversation, enter collect mode
-- In collect mode: **only accumulate context** from subsequent messages — no execution, no coding, no planning, no tool calls, no suggestions
-- Just acknowledge each message briefly (e.g. "Got it", "Noted")
-- When the user writes **START**, process all collected context together and begin working

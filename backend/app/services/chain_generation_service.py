@@ -27,6 +27,7 @@ from app.db import locations as locations_db
 from app.db import worlds as worlds_db
 from app.models.chat_message import ChatMessage
 from app.models.chat_state_snapshot import ChatStateSnapshot
+from app.models.pipeline import Pipeline
 from app.models.schemas.pipeline import GenerationPlanOutput, PipelineConfig, PlanningContext
 from app.services import snowflake as snowflake_svc
 from app.services.chat_agent_service import (
@@ -598,6 +599,7 @@ async def _run_chain_generation(
     llm_messages: list[dict[str, str]],
     queue: asyncio.Queue,
     caller_role: str,
+    pipeline_obj: Pipeline,
     is_regenerate: bool = False,
     user_instructions: str | None = None,
 ) -> None:
@@ -605,12 +607,12 @@ async def _run_chain_generation(
     try:
         lp = _lp(session_id, turn)
 
-        # Load world and parse pipeline
+        # Load world and parse pipeline config from Pipeline entity
         world = await worlds_db.get_by_id(chat.world_id)
         if world is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found")
         try:
-            pipeline = PipelineConfig.model_validate_json(world.pipeline)
+            pipeline = PipelineConfig.model_validate_json(pipeline_obj.pipeline_config)
         except Exception:
             pipeline = PipelineConfig(stages=[])
 
@@ -689,6 +691,7 @@ def generate_chain_response(
     user_id: int,
     user_message: str,
     caller_role: str,
+    pipeline: Pipeline,
     variant_index: int | None = None,
     user_instructions: str | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -753,6 +756,7 @@ def generate_chain_response(
         task = asyncio.create_task(
             _run_chain_generation(
                 chat, turn, session_id, llm_messages, queue, caller_role,
+                pipeline_obj=pipeline,
                 user_instructions=user_instructions,
             )
         )
@@ -778,6 +782,7 @@ def regenerate_chain_response(
     session_id: int,
     user_id: int,
     caller_role: str,
+    pipeline: Pipeline,
 ) -> AsyncGenerator[str, None]:
     """Chain mode regeneration: mark old inactive, restore stats, re-run pipeline."""
 
@@ -854,6 +859,7 @@ def regenerate_chain_response(
         task = asyncio.create_task(
             _run_chain_generation(
                 chat, turn, session_id, llm_messages, queue, caller_role,
+                pipeline_obj=pipeline,
                 is_regenerate=True, user_instructions=user_instructions,
             )
         )

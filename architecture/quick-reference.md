@@ -14,11 +14,13 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 ## Database Tables
 
-### Stage 1 — World System
+### Feature 001 — World System
 
 **users**: id, username, pwdhash, salt, role (admin/editor/player), jwt_signing_key, last_login, last_key_update
 
-**worlds**: id, name, description, system_prompt (full prompt template with `{PLACEHOLDER}` syntax), simple_tools (JSON list of enabled tool names for simple mode), character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), generation_mode (str: "simple"/"chain"/"agentic", default "simple"), pipeline (JSON — PipelineConfig for chain mode), agent_config (JSON — future agentic mode config), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts.)
+**worlds**: id, name, description, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline_id (FK pipelines.id, nullable — a world without a pipeline cannot start generation), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts. The legacy columns `system_prompt`, `simple_tools`, `pipeline`, `generation_mode`, `agent_config` remain on the table but are write-dead post Feature 007 — kept for old-export compatibility and one-shot rollback; cleanup is a follow-up.)
+
+**pipelines** (Feature 007): id, name, description, kind (`"simple"` | `"chain"` | `"agentic"`), system_prompt (used when kind == "simple"), simple_tools (JSON list of tool names; simple mode), pipeline_config (JSON — `PipelineConfig`; chain mode), agent_config (JSON; future agentic mode), created_at, modified_at. A pipeline is the standalone, world-agnostic definition of a generation flow; multiple worlds may share one pipeline.
 
 **world_locations**: id, world_id, name, content (markdown), exits (JSON array of location IDs or None), created_at, modified_at
 
@@ -34,7 +36,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **llm_servers**: id, name, backend_type (llama-swap/openai), base_url, api_key (supports `$ENV_VAR`), enabled_models (JSON array), is_active, is_embedding (bool, at most one server), embedding_model (model ID or null), created_at, modified_at
 
-### Stage 2 — Chat System
+### Feature 002 — Chat System
 
 **chat_sessions**: id, user_id, world_id, current_location_id, character_name, character_description, character_stats (JSON), world_stats (JSON), current_turn, status (active/archived), tool_model_id, tool_temperature, tool_repeat_penalty, tool_top_p, text_model_id, text_temperature, text_repeat_penalty, text_top_p, user_instructions (deprecated — now per-message), generation_variants (JSON), created_at, modified_at
 
@@ -52,7 +54,7 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 
 ## API Endpoints
 
-### Auth (`/api/auth`) — stage1_step1
+### Auth (`/api/auth`) — feature 001 step 001
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
@@ -61,7 +63,7 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 | POST | `/api/auth/setup/create` | Create DB + admin user |
 | POST | `/api/auth/setup/import` | Import DB from zip upload |
 
-### Admin — LLM Servers (`/api/admin/llm-servers`) — stage1_step3
+### Admin — LLM Servers (`/api/admin/llm-servers`) — feature 001 step 003
 
 | Method | Path | Purpose | Role |
 | ------ | ---- | ------- | ---- |
@@ -76,7 +78,7 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 | DELETE | `/api/admin/llm-servers/embedding` | Clear embedding designation | admin |
 | GET | `/api/llm/models` | List all enabled models | editor |
 
-### Admin — DB Management (`/api/admin/db`) — stage1_step6
+### Admin — DB Management (`/api/admin/db`) — feature 001 step 006
 
 | Method | Path | Purpose | Role |
 | ------ | ---- | ------- | ---- |
@@ -86,11 +88,24 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 | POST | `/api/admin/db/import` | Import data from zip | admin |
 | POST | `/api/admin/db/reindex-vectors` | Rebuild vector index from all docs | admin |
 
-### Admin — Worlds (`/api/admin/worlds`) — stage1_step4
+### Admin — Worlds (`/api/admin/worlds`) — feature 001 step 004
 
-CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. Includes `POST /api/admin/worlds/:id/reindex` for per-world vector reindex. `GET /api/admin/worlds/pipeline-config` returns static config data (placeholders, tools, default templates) for the admin prompt editor UI. (See stage1_step4 plan for full endpoint list.)
+CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. Includes `POST /api/admin/worlds/:id/reindex` for per-world vector reindex. World responses carry `pipeline_id` (nullable); pipeline definition lives in the Pipelines API (below). (See `plans/001.admin_setup/004.world_editor.md` for full endpoint list.)
 
-### Chats (`/api/chats`) — stage2_step3
+### Admin — Pipelines (`/api/admin/pipelines`) — feature 007
+
+Standalone CRUD for shared pipelines. Worlds reference a pipeline via `world.pipeline_id`.
+
+| Method | Path | Purpose | Role |
+| ------ | ---- | ------- | ---- |
+| GET | `/api/admin/pipelines` | List all pipelines | editor |
+| POST | `/api/admin/pipelines` | Create pipeline | editor |
+| GET | `/api/admin/pipelines/:id` | Get pipeline | editor |
+| PUT | `/api/admin/pipelines/:id` | Update pipeline | editor |
+| DELETE | `/api/admin/pipelines/:id` | Delete pipeline (409 if any world references it) | admin |
+| GET | `/api/admin/pipelines/config-options` | Static placeholders / tool catalog / default templates for the prompt editor UI (relocated from `/api/admin/worlds/pipeline-config`) | editor |
+
+### Chats (`/api/chats`) — feature 002 step 003
 
 | Method | Path | Purpose |
 | ------ | ---- | ------- |
@@ -137,7 +152,7 @@ Regeneration adds `variants_update` after `done` with the updated variants list.
 
 > **Tools + Streaming**: As of llm-client 0.1.3, `chat_with_tools` supports `stream=True` + `on_delta` callback, so `token` events stream in real-time even in tools mode.
 
-## Admin LLM Tools (stage1_step7)
+## Admin LLM Tools (feature 001 step 007)
 
 Available only during admin document editing (`enable_tools: true` in `LlmChatRequest`). Not available to players.
 
@@ -149,7 +164,7 @@ Implemented in `backend/app/services/admin_tools.py`. Tool schemas via `pydantic
 
 **Lore context with tools enabled:** `is_injected=True` lore facts are always in the system prompt (see Lore Injection below). Non-injected facts are excluded from context — the LLM fetches them via `search`/`get_lore`. Injected fact IDs are filtered out of tool search results to avoid duplication.
 
-## Lore Injection (stage1_step7b)
+## Lore Injection (feature 001 step 007b)
 
 `WorldLoreFact` has two fields that control context injection:
 
@@ -168,7 +183,7 @@ Implemented in `backend/app/services/admin_tools.py`. Tool schemas via `pydantic
 
 **Admin UI:** Lore fact list shows `is_injected=True` facts pinned at top (sorted by weight, pin icon), then regular facts below with a divider. Edit page has "Always inject" toggle and "Injection order" number input.
 
-## Chat Tools (stage3_step2)
+## Chat Tools (feature 003 step 002)
 
 Player-facing in-game tools. Implemented in `backend/app/services/chat_tools.py`. Used by all generation modes (simple, chain). Reuses `admin_tools.search_impl()`, `admin_tools.get_lore_impl()`, `admin_tools.web_search_impl()` for search/lore/web tools.
 
@@ -217,24 +232,24 @@ Tool registration: single `TOOL_REGISTRY` (12 tools) + `build_tools(names, ToolC
 - `POST /continue` accepts `{ variant_index: int }` (index into variants array)
 - SSE: `variants_update` event sent after regeneration with the updated variants list (avoids full chat reload)
 
-## Summarization (stage2_step4)
+## Summarization (feature 002 step 004)
 
 - LLM compresses older message ranges into `chat_summaries`
 - Summarized messages get `summary_id` set (not deleted)
 - Context build order: system prompt -> summaries (by start_turn ASC) -> raw non-summarized active messages
 - Lazy-loaded, triggered when context exceeds threshold
 
-## Generation Modes (stage3)
+## Generation Modes (feature 003, ownership revised in feature 007)
 
-`World.generation_mode` controls which generation flow is used:
+A world picks a pipeline via `world.pipeline_id`; the pipeline's `kind` field selects the generation flow. `world.pipeline_id` is **required** to start generation — chatting against a world with no pipeline returns 400 ("World has no pipeline configured").
 
-- **`"simple"`** (default) — Single LLM call with admin-selected tools, prompt template with `{PLACEHOLDER}` syntax, stat validation. Admin prompt: `World.system_prompt`. Tools: `World.simple_tools`. Service: `simple_generation_service.py`
-- **`"chain"`** — Pipeline stages defined in `World.pipeline` (PipelineConfig JSON). Each stage has step_type (`"tool"` or `"writer"`), admin-configurable prompt template with `{PLACEHOLDER}` syntax, and per-stage tool selection. Default: tool stage (research + planning tools) → writer stage (prose). Service: `chain_generation_service.py`
-- **`"agentic"`** (future) — Sub-agent orchestration, config in `World.agent_config`. Service: `agent_generation_service.py`. Not yet implemented.
+- **`kind == "simple"`** (default) — Single LLM call with admin-selected tools, prompt template with `{PLACEHOLDER}` syntax, stat validation. Admin prompt: `pipeline.system_prompt`. Tools: `pipeline.simple_tools`. Service: `simple_generation_service.py`
+- **`kind == "chain"`** — Pipeline stages defined in `pipeline.pipeline_config` (PipelineConfig JSON). Each stage has step_type (`"tool"` or `"writer"`), admin-configurable prompt template with `{PLACEHOLDER}` syntax, and per-stage tool selection. Default: tool stage (research + planning tools) → writer stage (prose). Service: `chain_generation_service.py`
+- **`kind == "agentic"`** (future) — Sub-agent orchestration, config in `pipeline.agent_config`. Service: `agent_generation_service.py`. Not yet implemented.
 
-Dispatch: `chat_agent_service.py` routes to the appropriate service based on `generation_mode`.
+Dispatch: `chat_agent_service.py` resolves `world.pipeline_id` to a `Pipeline`, then routes to the appropriate generation service based on `pipeline.kind`. The pipeline object is threaded into the chosen service. This eliminates the prior bug class where `world.generation_mode` could disagree with the shape of the world's inline pipeline config.
 
-### Pipeline Config (`World.pipeline` JSON)
+### Pipeline Config (`pipeline.pipeline_config` JSON, chain mode)
 
 ```
 PipelineConfig:
@@ -269,30 +284,40 @@ Editor+ toggle in user settings. Controls UI visibility of tool call details, th
 
 ## Implementation Progress
 
-- Stage 1 Step 1: Login, User Model, DB Bootstrap — done
-- Stage 1 Step 2: World models, vector storage, import/export — done
-- Stage 1 Step 3: LLM Servers CRUD + embedding server designation — done
-- Stage 1 Step 4: World editor (admin CRUD UI for locations, NPCs, lore facts, rules) — done
-- Stage 1 Step 5: LLM-assisted world editing (document editor chat panel + field editor for description/system_prompt/initial_message, thinking mode, apply/append) — done
-- Stage 1 Step 6: DB Management admin page — done
-- Stage 1 Step 7: Admin LLM tools (search, get_lore, web_search), SSE streaming for tools, per-message regenerate — done
-- DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export)
-- Stage 2 Step 1: Chat DB models (chat_sessions, chat_messages, chat_state_snapshots, chat_summaries, chat_memories) + import/export — done
-- Stage 2 Step 2: Chat tools & prompts — done
-- Stage 2 Step 3: Chat API, UI, memories, dual model config — done
-- Stage 2 Step 4: Summarization API and UI — done
-- Stage 3 Step 1: Pipeline config model + admin UI (generation_mode, PipelineConfig, hidden stats, prompt skeletons) — done
-- Stage 3 Step 2a: Simple mode backend (chat tools, rich prompt, stat validation, shared infrastructure, move_to_location) — done
-- Stage 3 Step 2b: Chain mode backend (planning → writing pipeline, generation_plan, writer tools, memory enforcement) — done
-- Stage 3 Step 3: User UI (debug mode, message edit/delete, thinking_content storage, SSE phase/status, hidden stats filtering) — done
+### Feature 001 — Admin Setup (`plans/001.admin_setup/`)
+- Step 001: Login, User Model, DB Bootstrap — done
+- Step 002: World models, vector storage, import/export — done
+- Step 003: LLM Servers CRUD + embedding server designation — done
+- Step 004: World editor (admin CRUD UI for locations, NPCs, lore facts, rules) — done
+- Step 005: LLM-assisted world editing (document editor chat panel + field editor for description/system_prompt/initial_message, thinking mode, apply/append) — done
+- Step 006: DB Management admin page — done
+- Step 007: Admin LLM tools (search, get_lore, web_search), SSE streaming for tools, per-message regenerate — done
+- DB layer refactored to DB-agnostic interface (session-free, injectable config, streaming import/export) — see step 001b
 
-- Stage 5 Step 1: Admin-configurable prompt templates — placeholder registry, tool catalog, per-stage tool selection, admin UI (placeholder panel, autocomplete, stage names) — done
-- Stage 5 Step 2: Prompt injection engine — `{PLACEHOLDER}` resolution, generation services refactored to dynamic pipeline — done
-- Stage 5 Step 3: Director stage — optional tool stage that commits a single `{DECISION}` via `set_decision` for downstream stages (`plans/stage5_step3_director_stage.md`) — done
+### Feature 002 — User Chat (`plans/002.user_chat/`)
+- Step 001: Chat DB models (chat_sessions, chat_messages, chat_state_snapshots, chat_summaries, chat_memories) + import/export — done
+- Step 002: Chat tools & prompts — done
+- Step 003: Chat API, UI, memories, dual model config — done
+- Step 004: Summarization API and UI — done
+
+### Feature 003 — Agent Pipeline (`plans/003.agent_pipeline/`)
+- Step 001 / 001b: Pipeline config model + admin UI (generation_mode, PipelineConfig, hidden stats, prompt skeletons) — done
+- Step 002a: Simple mode backend (chat tools, rich prompt, stat validation, shared infrastructure, move_to_location) — done
+- Step 002b: Chain mode backend (planning → writing pipeline, generation_plan, writer tools, memory enforcement) — done
+- Step 003a / 003b: User UI (debug mode, message edit/delete, thinking_content storage, SSE phase/status, hidden stats filtering) — done
+
+### Feature 005 — Prompt Customization (`plans/005.prompt_customization/`)
+- Step 001: Admin-configurable prompt templates — placeholder registry, tool catalog, per-stage tool selection, admin UI (placeholder panel, autocomplete, stage names) — done
+- Step 002: Prompt injection engine — `{PLACEHOLDER}` resolution, generation services refactored to dynamic pipeline — done
+- Step 003: Director stage — optional tool stage that commits a single `{DECISION}` via `set_decision` for downstream stages (`plans/005.prompt_customization/003.director_stage.md`) — done
+
+### Feature 007 — Shared Pipelines (`plans/007.shared_pipelines/`)
+- Step 001: Pipeline data model + DB + API + one-time migration — done. New `pipelines` table, `world.pipeline_id` FK, `/api/admin/pipelines` CRUD, runtime dispatch on `pipeline.kind`. Legacy world columns (`system_prompt`, `simple_tools`, `pipeline`, `generation_mode`, `agent_config`) retained write-dead for rollback / old-export compatibility; cleanup is a follow-up.
+- Step 002: Pipeline admin UI + world picker — done. Dedicated `/admin/pipelines` and `/admin/pipelines/:id` and `/admin/pipelines/:id/stage/:idx` admin pages; world editor reduced to a pipeline `<Select>` + "Edit pipeline" link. AI-assisted pipeline-prompt editor decoupled from world context: world-agnostic system prompt builder, world-agnostic tool surface (`web_search` only) via `get_world_agnostic_tools()`.
 
 ## Backlog
 
-- Agent flow — sub-agent orchestration design (`plans/backlog.agent_flow.md`)
-- Agent mode — agentic generation mode design (`plans/backlog.agent_mode.md`)
-- Split research/planning — separate research and planning stages (`plans/backlog.split_research_planning.md`)
-- Prompt tuning — infrastructure for prompt iteration (`plans/backlog.prompt_tuning.md`)
+- Agent flow — sub-agent orchestration design (`plans/backlog/agent_flow.md`)
+- Agent mode — agentic generation mode design (`plans/backlog/agent_mode.md`)
+- Split research/planning — separate research and planning stages (`plans/backlog/split_research_planning.md`)
+- Prompt tuning — infrastructure for prompt iteration (`plans/backlog/prompt_tuning.md`)

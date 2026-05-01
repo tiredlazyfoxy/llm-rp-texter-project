@@ -11,7 +11,6 @@ import type {
   DocumentsListResponse,
   NpcLocationLinkItem,
   NpcLocationLinksListResponse,
-  PipelineConfigOptions,
   RuleItem,
   StatDefinitionItem,
   UpdateDocumentRequest,
@@ -71,10 +70,6 @@ export async function reindexWorld(worldId: string): Promise<ReindexWorldResult>
   return authRequest<ReindexWorldResult>(`${BASE}/${worldId}/reindex`, {
     method: "POST",
   });
-}
-
-export async function getPipelineConfigOptions(): Promise<PipelineConfigOptions> {
-  return authRequest<PipelineConfigOptions>(`${BASE}/pipeline-config`);
 }
 
 // ── Documents ───────────────────────────────────────────────────

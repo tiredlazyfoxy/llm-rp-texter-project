@@ -10,13 +10,9 @@ class WorldResponse(BaseModel):
     name: str
     description: str
     lore: str
-    system_prompt: str
-    simple_tools: str
     character_template: str
     initial_message: str
-    pipeline: str
-    generation_mode: str
-    agent_config: str
+    pipeline_id: str | None
     status: str
     owner_id: str | None
     created_at: datetime | None
@@ -39,13 +35,9 @@ class CreateWorldRequest(BaseModel):
     name: str
     description: str = ""
     lore: str = ""
-    system_prompt: str = ""
-    simple_tools: str = "[]"
     character_template: str = ""
     initial_message: str = ""
-    pipeline: str = "{}"
-    generation_mode: str = "simple"
-    agent_config: str = "{}"
+    pipeline_id: str | None = None
     status: str = "draft"
 
 
@@ -53,13 +45,9 @@ class UpdateWorldRequest(BaseModel):
     name: str | None = None
     description: str | None = None
     lore: str | None = None
-    system_prompt: str | None = None
-    simple_tools: str | None = None
     character_template: str | None = None
     initial_message: str | None = None
-    pipeline: str | None = None
-    generation_mode: str | None = None
-    agent_config: str | None = None
+    pipeline_id: str | None = None
     status: str | None = None
 
 

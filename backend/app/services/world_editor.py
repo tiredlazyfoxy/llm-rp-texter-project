@@ -9,7 +9,7 @@ from typing import TypedDict
 
 from fastapi import HTTPException, status
 
-from app.db import locations, lore_facts, npc_links, npcs, rules, stat_defs, worlds
+from app.db import locations, lore_facts, npc_links, npcs, pipelines as pipelines_db, rules, stat_defs, worlds
 from app.models.schemas.worlds import (
     CreateDocumentRequest,
     CreateNpcLocationLinkRequest,
@@ -44,7 +44,6 @@ _VALID_STATUSES = {s.value for s in WorldStatus}
 _VALID_SCOPES = {s.value for s in StatScope}
 _VALID_STAT_TYPES = {s.value for s in StatType}
 _VALID_LINK_TYPES = {t.value for t in NPCLinkType}
-_VALID_GENERATION_MODES = {"simple", "chain", "agentic"}
 
 # Map doc_type to vector storage source_type (they happen to be the same)
 _DOC_SOURCE_TYPE = {"location": "location", "npc": "npc", "lore_fact": "lore_fact"}
@@ -189,77 +188,34 @@ async def get_world_detail(world_id: int) -> WorldDetailData:
     )
 
 
-def _validate_pipeline_json(pipeline_json: str) -> None:
-    from app.models.schemas.pipeline import PipelineConfig
-    from app.services.prompts.tool_catalog import ALL_TOOL_NAMES
+async def _verify_pipeline_exists(pipeline_id_str: str | None) -> int | None:
+    if pipeline_id_str is None:
+        return None
     try:
-        config = PipelineConfig.model_validate_json(pipeline_json)
-    except Exception as e:
+        pid = int(pipeline_id_str)
+    except (TypeError, ValueError):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid pipeline config: {e}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid pipeline_id: {pipeline_id_str}",
         )
-    for i, stage in enumerate(config.stages):
-        if stage.step_type not in ("tool", "writer", "planning", "writing"):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Stage {i}: invalid step_type '{stage.step_type}'",
-            )
-        invalid = set(stage.tools) - ALL_TOOL_NAMES
-        if invalid:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Stage {i}: unknown tools: {sorted(invalid)}",
-            )
-
-
-def _validate_simple_tools(simple_tools_json: str) -> None:
-    import json as _json
-    from app.services.prompts.tool_catalog import ALL_TOOL_NAMES
-    try:
-        tools = _json.loads(simple_tools_json)
-    except _json.JSONDecodeError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid simple_tools JSON: {e}",
-        )
-    if not isinstance(tools, list):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="simple_tools must be a JSON array",
-        )
-    invalid = set(tools) - ALL_TOOL_NAMES
-    if invalid:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Unknown simple_tools: {sorted(invalid)}",
-        )
+    if await pipelines_db.get_by_id(pid) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline not found")
+    return pid
 
 
 async def create_world(req: CreateWorldRequest, owner_id: int | None = None) -> World:
     if req.status:
         _validate_status(req.status)
-    if req.generation_mode not in _VALID_GENERATION_MODES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid generation_mode: {req.generation_mode}")
-    if req.generation_mode == "agentic":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agentic mode is not implemented yet")
-    if req.pipeline and req.pipeline != "{}":
-        _validate_pipeline_json(req.pipeline)
-    if req.simple_tools and req.simple_tools != "[]":
-        _validate_simple_tools(req.simple_tools)
+    pipeline_id = await _verify_pipeline_exists(req.pipeline_id)
     now = _now()
     world = World(
         id=generate_id(),
         name=req.name,
         description=req.description,
         lore=req.lore,
-        system_prompt=req.system_prompt,
-        simple_tools=req.simple_tools,
         character_template=req.character_template,
         initial_message=req.initial_message,
-        pipeline=req.pipeline,
-        generation_mode=req.generation_mode,
-        agent_config=req.agent_config,
+        pipeline_id=pipeline_id,
         status=WorldStatus(req.status),
         owner_id=owner_id,
         created_at=now,
@@ -276,28 +232,12 @@ async def update_world(world_id: int, req: UpdateWorldRequest) -> World:
         world.description = req.description
     if req.lore is not None:
         world.lore = req.lore
-    if req.system_prompt is not None:
-        world.system_prompt = req.system_prompt
-    if req.simple_tools is not None:
-        if req.simple_tools != "[]":
-            _validate_simple_tools(req.simple_tools)
-        world.simple_tools = req.simple_tools
     if req.character_template is not None:
         world.character_template = req.character_template
     if req.initial_message is not None:
         world.initial_message = req.initial_message
-    if req.pipeline is not None:
-        if req.pipeline and req.pipeline != "{}":
-            _validate_pipeline_json(req.pipeline)
-        world.pipeline = req.pipeline
-    if req.generation_mode is not None:
-        if req.generation_mode not in _VALID_GENERATION_MODES:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid generation_mode: {req.generation_mode}")
-        if req.generation_mode == "agentic":
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agentic mode is not implemented yet")
-        world.generation_mode = req.generation_mode
-    if req.agent_config is not None:
-        world.agent_config = req.agent_config
+    if req.pipeline_id is not None:
+        world.pipeline_id = await _verify_pipeline_exists(req.pipeline_id)
     if req.status is not None:
         _validate_status(req.status)
         world.status = WorldStatus(req.status)
@@ -319,12 +259,9 @@ async def clone_world(world_id: int, owner_id: int | None = None) -> World:
         name=f"{src.name} (copy)",
         description=src.description,
         lore=src.lore,
-        system_prompt=src.system_prompt,
         character_template=src.character_template,
         initial_message=src.initial_message,
-        pipeline=src.pipeline,
-        generation_mode=src.generation_mode,
-        agent_config=src.agent_config,
+        pipeline_id=src.pipeline_id,
         status=clone_status,
         owner_id=owner_id,
         created_at=now,

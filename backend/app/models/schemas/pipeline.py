@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -32,3 +34,42 @@ class GenerationPlanOutput(BaseModel):
     collected_data: str = ""
     stat_updates: list[StatUpdateEntry] = []
     decisions: list[str] = []
+
+
+# ── Pipeline API Schemas ─────────────────────────────────────────
+
+class PipelineResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    kind: str                         # "simple" | "chain" | "agentic"
+    system_prompt: str
+    simple_tools: str                 # JSON list
+    pipeline_config: str              # JSON PipelineConfig
+    agent_config: str                 # JSON
+    created_at: datetime | None
+    modified_at: datetime | None
+
+
+class PipelinesListResponse(BaseModel):
+    items: list[PipelineResponse]
+
+
+class CreatePipelineRequest(BaseModel):
+    name: str
+    description: str = ""
+    kind: str = "simple"
+    system_prompt: str = ""
+    simple_tools: str = "[]"
+    pipeline_config: str = "{}"
+    agent_config: str = "{}"
+
+
+class UpdatePipelineRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    kind: str | None = None
+    system_prompt: str | None = None
+    simple_tools: str | None = None
+    pipeline_config: str | None = None
+    agent_config: str | None = None

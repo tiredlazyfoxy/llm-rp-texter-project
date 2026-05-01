@@ -17,21 +17,25 @@ import {
 import { IconArrowLeft } from "@tabler/icons-react";
 import { fetchEnabledModels } from "../../api/llmChat";
 import type { EnabledModelInfo } from "../../types/llmServer";
-import type { PipelineConfig, PipelineConfigOptions } from "../../types/world";
+import type { PipelineConfig, PipelineConfigOptions } from "../../types/pipeline";
 import { LlmChatPanel } from "../components/LlmChatPanel";
 import { PlaceholderPanel } from "../components/PlaceholderPanel";
 import { PlaceholderSuggestions } from "../components/PlaceholderSuggestions";
 import { usePlaceholderAutocomplete } from "../hooks/usePlaceholderAutocomplete";
-import { getPipelineConfigOptions, getWorld, updateWorld } from "../../api/worlds";
+import {
+  getPipeline,
+  getPipelineConfigOptions,
+  updatePipeline,
+} from "../../api/pipelines";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function extractIds(): { worldId: string; stageIndex: number } | null {
-  const m = window.location.pathname.match(/\/admin\/worlds\/(\d+)\/pipeline\/(\d+)/);
+function extractIds(): { pipelineId: string; stageIndex: number } | null {
+  const m = window.location.pathname.match(/\/admin\/pipelines\/(\d+)\/stage\/(\d+)/);
   if (!m) return null;
-  return { worldId: m[1], stageIndex: parseInt(m[2]) };
+  return { pipelineId: m[1], stageIndex: parseInt(m[2]) };
 }
 
 // ---------------------------------------------------------------------------
@@ -40,7 +44,7 @@ function extractIds(): { worldId: string; stageIndex: number } | null {
 
 export function PipelineStageEditPage() {
   const ids = extractIds();
-  const worldId = ids?.worldId ?? "";
+  const pipelineId = ids?.pipelineId ?? "";
   const stageIndex = ids?.stageIndex ?? 0;
 
   const [loading, setLoading] = useState(true);
@@ -65,16 +69,16 @@ export function PipelineStageEditPage() {
   );
 
   const load = useCallback(async () => {
-    if (!worldId) return;
+    if (!pipelineId) return;
     setLoading(true);
     setError(null);
     try {
-      const [world, opts] = await Promise.all([
-        getWorld(worldId),
+      const [p, opts] = await Promise.all([
+        getPipeline(pipelineId),
         getPipelineConfigOptions(),
       ]);
       setConfigOptions(opts);
-      const parsed: PipelineConfig = JSON.parse(world.pipeline || "{}");
+      const parsed: PipelineConfig = JSON.parse(p.pipeline_config || "{}");
       const config = { stages: parsed.stages || [] };
       setPipelineConfig(config);
       if (stageIndex >= config.stages.length) {
@@ -94,7 +98,7 @@ export function PipelineStageEditPage() {
     } finally {
       setLoading(false);
     }
-  }, [worldId, stageIndex]);
+  }, [pipelineId, stageIndex]);
 
   useEffect(() => {
     void load();
@@ -110,10 +114,10 @@ export function PipelineStageEditPage() {
         stages: pipelineConfig.stages.map((s, i) =>
           i === stageIndex
             ? { ...s, prompt: content, enabled: stageEnabled, model_id: stageModelId }
-            : s
+            : s,
         ),
       };
-      await updateWorld(worldId, { pipeline: JSON.stringify(updated) });
+      await updatePipeline(pipelineId, { pipeline_config: JSON.stringify(updated) });
       setPipelineConfig(updated);
       setOriginalContent(content);
       setSuccess("Applied.");
@@ -170,14 +174,16 @@ export function PipelineStageEditPage() {
           <Button
             variant="subtle"
             leftSection={<IconArrowLeft size={16} />}
-            onClick={() => { window.location.href = `/admin/worlds/${worldId}/edit`; }}
+            onClick={() => { window.location.href = `/admin/pipelines/${pipelineId}`; }}
           >
             Back
           </Button>
           <Title order={4}>
             <Text span c="dimmed" size="sm" mr={6}>Pipeline stage {stageIndex + 1}</Text>
             {stageName && <Text span size="sm" fw={600} mr={6}>{stageName}</Text>}
-            <Badge variant="light" color={(stepType === "tool" || stepType === "planning") ? "violet" : "teal"}>{stepType}</Badge>
+            <Badge variant="light" color={(stepType === "tool" || stepType === "planning") ? "violet" : "teal"}>
+              {stepType}
+            </Badge>
           </Title>
         </Group>
         <Group>
@@ -192,6 +198,27 @@ export function PipelineStageEditPage() {
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
       {success && <Alert color="green" mb="md">{success}</Alert>}
+
+      <Paper p="sm" withBorder mb="md">
+        <Group gap="md" wrap="nowrap">
+          <Checkbox
+            label="Stage enabled"
+            checked={stageEnabled}
+            onChange={e => setStageEnabled(e.currentTarget.checked)}
+          />
+          <Select
+            label="Model override"
+            description="Leave empty to use the session model"
+            placeholder="Session model"
+            data={enabledModels.map(m => ({ value: m.model_id, label: m.model_id }))}
+            value={stageModelId}
+            onChange={setStageModelId}
+            searchable
+            clearable
+            w={320}
+          />
+        </Group>
+      </Paper>
 
       <Stack gap="md">
         {/* Prompt textarea */}
@@ -238,31 +265,9 @@ export function PipelineStageEditPage() {
           </Paper>
         )}
 
-        {/* Stage controls: enabled + model override */}
-        <Paper p="sm" withBorder>
-          <Stack gap="xs">
-            <Checkbox
-              label="Stage enabled"
-              checked={stageEnabled}
-              onChange={e => setStageEnabled(e.currentTarget.checked)}
-            />
-            <Select
-              label="Model override"
-              description="Leave empty to use the session model"
-              placeholder="Session model"
-              data={enabledModels.map(m => ({ value: m.model_id, label: m.model_id }))}
-              value={stageModelId}
-              onChange={setStageModelId}
-              searchable
-              clearable
-            />
-          </Stack>
-        </Paper>
-
-        {/* LLM chat panel */}
+        {/* LLM chat panel — world-agnostic for pipeline prompts (no worldId passed) */}
         <LlmChatPanel
           currentContent={content}
-          worldId={worldId}
           fieldType="pipeline_prompt"
           onApply={(text) => setContent(text)}
           onAppend={(text) => setContent((prev) => prev + "\n\n" + text)}

@@ -1,7 +1,10 @@
 """LLM prompt package — one documented file per prompt."""
 
 from app.services.prompts.document_editor_system_prompt import build_document_editor_system
-from app.services.prompts.world_field_editor_system_prompt import build_world_field_editor_system
+from app.services.prompts.world_field_editor_system_prompt import (
+    build_pipeline_prompt_editor_system,
+    build_world_field_editor_system,
+)
 from app.services.prompts.chat_summarization_prompt import (
     MEMORY_EXTRACTION_SYSTEM_PROMPT,
     MEMORY_EXTRACTION_USER_PROMPT_TEMPLATE,
@@ -23,6 +26,7 @@ from app.services.prompts.default_templates import (
 __all__ = [
     "build_rich_chat_system_prompt",
     "build_document_editor_system",
+    "build_pipeline_prompt_editor_system",
     "build_world_field_editor_system",
     "MEMORY_EXTRACTION_SYSTEM_PROMPT",
     "MEMORY_EXTRACTION_USER_PROMPT_TEMPLATE",

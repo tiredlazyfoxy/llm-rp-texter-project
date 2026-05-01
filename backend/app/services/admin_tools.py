@@ -213,6 +213,23 @@ async def _get_injected_ids(world_id: int) -> set[int]:
     return {f.id for f in facts}
 
 
+def get_world_agnostic_tools() -> dict[str, Callable]:
+    """Return {tool_name: async_callable} for tools that do not require world context.
+
+    Used by the pipeline-prompt editor LLM helper, where the prompt being edited
+    is reused across all worlds and must not be coloured by any one world's data.
+    """
+    return {
+        "web_search": web_search_impl,
+    }
+
+
+WORLD_AGNOSTIC_TOOL_DEFINITIONS: list[dict[str, Any]] = [
+    d for d in ADMIN_TOOL_DEFINITIONS
+    if d.get("function", {}).get("name") == "web_search"
+]
+
+
 def get_admin_tools(world_id: int) -> dict[str, Callable]:
     """Return {tool_name: async_callable} bound to the given world_id."""
     async def search_bound(query: str, source_type: str | None = None) -> str:

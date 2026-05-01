@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+import app.models.pipeline  # noqa: F401
 import app.models.world  # noqa: F401 — register world tables with SQLModel metadata
 import app.models.chat_session  # noqa: F401
 import app.models.chat_summary  # noqa: F401
@@ -82,6 +83,11 @@ async def init_db() -> None:
                 "ALTER TABLE chat_messages ADD COLUMN user_instructions TEXT"
             ))
             logger.info("Migration: added user_instructions column to chat_messages")
+        except Exception:
+            pass  # column already exists
+        try:
+            await conn.execute(text("ALTER TABLE worlds ADD COLUMN pipeline_id BIGINT"))
+            logger.info("Migration: added pipeline_id column to worlds")
         except Exception:
             pass  # column already exists
 

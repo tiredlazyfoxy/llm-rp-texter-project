@@ -45,39 +45,88 @@ _FIELD_ROLES = {
         "This is the first message players see when they start a new chat session. "
         "Available placeholders: `{{character_name}}`, `{{location_name}}`, `{{location_summary}}`."
     ),
-    "pipeline_prompt": (
-        "You are helping write a **pipeline stage prompt** for the RPG world \"{world_name}\". "
-        "This prompt is the system message for a generation step. "
-        "The admin uses {{PLACEHOLDER}} syntax to inject runtime data. "
-        "Each placeholder is an injection point — the code formats the data, the prompt just marks where it goes.\n\n"
-        "Available placeholders:\n"
-        "- {{WORLD_NAME}} — World display name\n"
-        "- {{RULES}} — Numbered world rules\n"
-        "- {{INJECTED_LORE}} — Always-injected lore facts\n"
-        "- {{LOCATION}} — Full location block: name, description, exits, NPCs present\n"
-        "- {{CHARACTER_NAME}} — Player character name\n"
-        "- {{CHARACTER_STATS}} — Character-scope stats: definitions + current values\n"
-        "- {{WORLD_STATS}} — World-scope stats: definitions + current values\n"
-        "- {{USER_INSTRUCTIONS}} — Player instructions\n"
-        "- {{TURN_FACTS}} — Collected context/facts from previous tool steps (chain mode writer only)\n"
-        "- {{TURN_DECISIONS}} — Decisions/outcomes to execute from previous tool steps (chain mode writer only)\n"
-        "- {{TOOLS}} — Auto-generated list of available tools\n\n"
-        "Available tools the admin can enable per stage:\n"
-        "- **Research:** get_location_info, get_npc_info, search, get_lore, web_search, get_memory\n"
-        "- **Action:** add_memory, move_to_location\n"
-        "- **Planning:** add_fact, add_decision, update_stat\n\n"
-        "Write the prompt using these placeholders where appropriate. "
-        "Use markdown headers to organize sections. "
-        "Empty placeholders resolve to empty string at runtime."
-    ),
 }
 
 _FIELD_LABELS = {
     "description": "World Description",
     "system_prompt": "System Prompt",
     "initial_message": "Initial Message",
-    "pipeline_prompt": "Pipeline Stage Prompt",
 }
+
+
+_PIPELINE_PROMPT_ROLE = (
+    "You are helping write a **pipeline stage prompt**. "
+    "This prompt is the system message for a generation step in an LLM-driven RPG. "
+    "Pipelines are shared across worlds, so do not assume any specific world setting, "
+    "lore, or characters — the prompt is reused with different worlds at runtime.\n\n"
+    "The admin uses {PLACEHOLDER} syntax to inject runtime data. "
+    "Each placeholder is an injection point — the code formats the data, the prompt just marks where it goes.\n\n"
+    "Available placeholders:\n"
+    "- {WORLD_NAME} — World display name\n"
+    "- {RULES} — Numbered world rules\n"
+    "- {INJECTED_LORE} — Always-injected lore facts\n"
+    "- {LOCATION} — Full location block: name, description, exits, NPCs present\n"
+    "- {CHARACTER_NAME} — Player character name\n"
+    "- {CHARACTER_STATS} — Character-scope stats: definitions + current values\n"
+    "- {WORLD_STATS} — World-scope stats: definitions + current values\n"
+    "- {USER_INSTRUCTIONS} — Player instructions\n"
+    "- {TURN_FACTS} — Collected context/facts from previous tool steps (chain mode writer only)\n"
+    "- {TURN_DECISIONS} — Decisions/outcomes to execute from previous tool steps (chain mode writer only)\n"
+    "- {TOOLS} — Auto-generated list of available tools\n\n"
+    "Available tools the admin can enable per stage:\n"
+    "- **Research:** get_location_info, get_npc_info, search, get_lore, web_search, get_memory\n"
+    "- **Action:** add_memory, move_to_location\n"
+    "- **Planning:** add_fact, add_decision, update_stat\n\n"
+    "Write the prompt using these placeholders where appropriate. "
+    "Use markdown headers to organize sections. "
+    "Empty placeholders resolve to empty string at runtime."
+)
+
+
+def build_pipeline_prompt_editor_system(
+    current_content: str,
+    enable_tools: bool = False,
+) -> str:
+    """Build the system prompt for the pipeline-prompt editor LLM chat.
+
+    World-agnostic by design — pipelines are shared across worlds, so this
+    helper deliberately omits world name, description, lore, and NPC info.
+    With tools enabled, only world-agnostic tools (e.g. ``web_search``) are
+    exposed by the route layer.
+    """
+    sections: list[str] = [
+        _PIPELINE_PROMPT_ROLE,
+        "Your task is to help draft, revise, and improve the pipeline stage prompt. "
+        "Respond with the text that should go into the prompt. "
+        "Use markdown formatting where appropriate.",
+    ]
+
+    if current_content:
+        sections.append(
+            "## Current Pipeline Stage Prompt\n\n"
+            f"{current_content}\n\n"
+            "The editor may ask you to rewrite, extend, or revise the above content. "
+            "When providing a full replacement, output the complete updated text."
+        )
+    else:
+        sections.append(
+            "The pipeline stage prompt is currently empty. The editor will ask you "
+            "to help draft initial content."
+        )
+
+    if enable_tools:
+        sections.append(
+            "## How to Use Your Tools\n\n"
+            "You have access to ``web_search`` for real-world reference material — "
+            "historical periods, cultural practices, naming conventions, mythology, "
+            "writing-style references. World-specific tools (search/get_lore/get_npc_info/"
+            "get_location_info/get_memory) are deliberately NOT available because pipelines "
+            "are shared across worlds.\n\n"
+            "Use ``web_search`` proactively to ground prompt language in concrete reference "
+            "material rather than relying on memory."
+        )
+
+    return "\n\n".join(sections)
 
 
 def build_world_field_editor_system(
