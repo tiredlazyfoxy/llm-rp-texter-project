@@ -1,6 +1,6 @@
 ---
 name: git
-description: Work with the project's git repository: commit, branch, merge, rebase, etc. Use when you need to make a commit as part of a step, or when you need to check git history for context.
+description: Activate this skill whenever the task involves interacting with the git repository.
 ---
 
 # Git usage rules
