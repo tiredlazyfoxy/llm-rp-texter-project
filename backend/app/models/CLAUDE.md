@@ -2,7 +2,7 @@
 
 SQLModel DB models + Pydantic API schemas. No logic.
 
-See [`architecture/db-models.md`](../../../architecture/db-models.md) for the table reference.
+See [`docs/architecture/db-models.md`](../../../docs/architecture/db-models.md) for the table reference.
 
 ```
 models/

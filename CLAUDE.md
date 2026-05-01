@@ -28,7 +28,7 @@
 
 LLM-driven RPG chat application. World, NPCs, rules, and interactions are defined — actions and dialogue are generated dynamically by an LLM agent using MCP tools.
 
-See `architecture/` for full documentation.
+See `docs/architecture/` for full documentation.
 
 ## Tech Stack
 
@@ -40,8 +40,9 @@ See `architecture/` for full documentation.
 
 ## Project Structure
 
-- `architecture/` — Architecture documents and design decisions
-- `plans/` — Project plans and task breakdowns (tracked in git)
+- `docs/` — Documentation root
+  - `docs/architecture/` — Architecture documents and design decisions
+  - `docs/plans/` — Project plans and task breakdowns (tracked in git)
 - `backend/` — FastAPI backend (agent, users/chats API, admin API)
 - `frontend/` — Vite multi-page app (User SPA + Admin SPA)
 - `docker-compose.dev.yml` — Dev Docker setup with build
@@ -53,11 +54,11 @@ See `architecture/` for full documentation.
 
 ## Conventions
 
-- Planning docs go to `plans/` folder (tracked in git) — **not** `~/.claude/plans/`
-- **Features** live in `plans/<NNN>.<feature_name>/` (3-digit feature number, sorts the list); each folder has required `context.md`, `outcome.md`, `status.md` plus one or more `<SSS>.<name>.md` step plans (3-digit step number, optional letter suffix like `001b`/`002a`) and optional `<SSS>.context.md`
-- **Backlog ideas**: `plans/backlog/<idea_name>.md` — ideas not yet promoted to a feature
-- See `plans/CLAUDE.md` for full layout and lifecycle
-- Final architecture docs go to `architecture/`
+- Planning docs go to `docs/plans/` folder (tracked in git) — **not** `~/.claude/plans/`
+- **Features** live in `docs/plans/<NNN>.<feature_name>/` (3-digit feature number, sorts the list); each folder has required `context.md`, `outcome.md`, `status.md` plus one or more `<SSS>.<name>.md` step plans (3-digit step number, optional letter suffix like `001b`/`002a`) and optional `<SSS>.context.md`
+- **Backlog ideas**: `docs/plans/backlog/<idea_name>.md` — ideas not yet promoted to a feature
+- See `docs/plans/CLAUDE.md` for full layout and lifecycle
+- Final architecture docs go to `docs/architecture/`
 - Every project subfolder must have a `CLAUDE.md`
 
 ## API Typing — Full Stack

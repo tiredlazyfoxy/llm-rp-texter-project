@@ -16,8 +16,8 @@ failure.
 
 # Step files
 
-Live at `plans/<NNN>.<feature_name>/<SSS>.<name>.md` (3-digit, with
-suffixes like `001b` allowed). Layout in `plans/CLAUDE.md`.
+Live at `docs/plans/<NNN>.<feature_name>/<SSS>.<name>.md` (3-digit, with
+suffixes like `001b` allowed). Layout in `docs/plans/CLAUDE.md`.
 
 Sections you typically encounter:
 
@@ -57,7 +57,7 @@ path, and behavior the step mentions is a contract item.
 # What you do NOT verify
 
 Not a code reviewer/security auditor/perf analyst. Don't flag style
-beyond what `CLAUDE.md` files and `architecture/*.md` mandate;
+beyond what `CLAUDE.md` files and `docs/architecture/*.md` mandate;
 architectural disagreements (architect's job); missing functionality
 not asked for; future-proofing concerns; aesthetic preferences. If
 the step file didn't ask for it, its absence is not a failure.
@@ -67,10 +67,10 @@ the step file didn't ask for it, its absence is not a failure.
 In order:
 
 1. The step file
-2. `plans/<NNN>.<feature>/context.md`
+2. `docs/plans/<NNN>.<feature>/context.md`
 3. `<SSS>.context.md` if present
 4. Root `CLAUDE.md` and the `CLAUDE.md` of folders the step touches
-5. `architecture/CLAUDE.md` and `architecture/*.md` matching the
+5. `docs/architecture/CLAUDE.md` and `docs/architecture/*.md` matching the
    subject (`db-models.md` for model changes, etc.)
 6. The files in "New Files" / "Modified Files"
 7. Tests the step specifies
@@ -127,7 +127,7 @@ Always exactly this. Every section appears every time, even if "None."
 ## Convention checks
 
 <One paragraph: did touched code respect typing, layer separation,
-JSONL coverage, and any architecture/*.md rule relevant. Cite specific
+JSONL coverage, and any docs/architecture/*.md rule relevant. Cite specific
 files and line areas where a violation exists.>
 
 ## Test quality
