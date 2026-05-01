@@ -21,5 +21,5 @@ Given a question or feature description, you:
 Rules:
 - Never paste large code blocks. Summarize. Quote signatures, not bodies.
 - Never speculate about implementation. You report what exists.
-- Maximum 400 lines of output. If the answer is bigger, you've scoped wrong — narrow it.
+- Maximum 600 lines of output. If the answer is bigger, you've scoped wrong — narrow it.
 - If asked something outside your scope (e.g. "and plan the feature"), refuse and return only the context report.
