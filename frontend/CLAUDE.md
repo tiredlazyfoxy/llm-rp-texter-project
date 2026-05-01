@@ -81,4 +81,4 @@ When disabled: clean message display, brief status text only.
 
 ## See Also
 
-- `architecture/quick-reference.md` — API endpoints, SSE protocol, data types
+- `docs/architecture/quick-reference.md` — API endpoints, SSE protocol, data types

@@ -73,7 +73,7 @@ Dispatch in `chat_agent_service.py` resolves the world's pipeline and routes on 
 
 ## DB Models
 
-See [`architecture/db-models.md`](../architecture/db-models.md). Implementation lives in [`backend/app/models/`](app/models/).
+See [`docs/architecture/db-models.md`](../docs/architecture/db-models.md). Implementation lives in [`backend/app/models/`](app/models/).
 
 ## DB Import/Export
 
@@ -104,5 +104,5 @@ See [`architecture/db-models.md`](../architecture/db-models.md). Implementation 
 
 ## See Also
 
-- `architecture/backend.md` — Full backend architecture details
-- `architecture/quick-reference.md` — Condensed API endpoints, tools, SSE protocol
+- `docs/architecture/backend.md` — Full backend architecture details
+- `docs/architecture/quick-reference.md` — Condensed API endpoints, tools, SSE protocol

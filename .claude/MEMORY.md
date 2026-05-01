@@ -13,9 +13,9 @@
 - **DB import/export**: All DB models must have gzipped JSONL import/export — always update when models change
 
 ## Architecture Docs
-- `architecture/README.md` — Project overview
-- `architecture/system-overview.md` — System diagram and sub-APIs
-- `architecture/backend.md` — Backend conventions, data modeling, LLM client, logging
-- `architecture/dev-environment.md` — Dev setup and ports
-- `architecture/deployment.md` — Docker and prod config
-- `architecture/auth.md` — JWT auth flow
+- `docs/architecture/README.md` — Project overview
+- `docs/architecture/system-overview.md` — System diagram and sub-APIs
+- `docs/architecture/backend.md` — Backend conventions, data modeling, LLM client, logging
+- `docs/architecture/dev-environment.md` — Dev setup and ports
+- `docs/architecture/deployment.md` — Docker and prod config
+- `docs/architecture/auth.md` — JWT auth flow

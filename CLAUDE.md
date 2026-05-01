@@ -4,7 +4,7 @@
 
 - **OS**: Windows 11
 - **Preferred shell**: PowerShell (use PowerShell over bash when possible)
-- **Path separators**: Use backslashes (`\`) for Windows paths in PowerShell; forward slashes are acceptable in git commands
+- **Path separators**: Use forward slashes (`/`) for all paths and file names both in bash and powershell
 
 ## Prod Environment
 
@@ -20,15 +20,13 @@
 
 ### Git Policy
 
-- **Read-only commands** (run freely, no permission needed): `git status`, `git log`, `git diff`, `git branch`, `git remote`, `git show`, `git stash list`, and any other non-modifying commands
-- **`git add` and `git commit`** (require explicit user permission before running)
-- **Other write commands** (run freely): `git push`, `git merge`, `git rebase`, `git checkout`, `git stash`, etc.
+- use "git" skill for any git commands
 
 ## Project Overview
 
 LLM-driven RPG chat application. World, NPCs, rules, and interactions are defined — actions and dialogue are generated dynamically by an LLM agent using MCP tools.
 
-See `architecture/` for full documentation.
+See `docs/architecture/` for full documentation.
 
 ## Tech Stack
 
@@ -40,8 +38,9 @@ See `architecture/` for full documentation.
 
 ## Project Structure
 
-- `architecture/` — Architecture documents and design decisions
-- `plans/` — Project plans and task breakdowns (tracked in git)
+- `docs/` — Documentation root
+  - `docs/architecture/` — Architecture documents and design decisions
+  - `docs/plans/` — Project plans and task breakdowns (tracked in git)
 - `backend/` — FastAPI backend (agent, users/chats API, admin API)
 - `frontend/` — Vite multi-page app (User SPA + Admin SPA)
 - `docker-compose.dev.yml` — Dev Docker setup with build
@@ -53,11 +52,11 @@ See `architecture/` for full documentation.
 
 ## Conventions
 
-- Planning docs go to `plans/` folder (tracked in git) — **not** `~/.claude/plans/`
-- **Features** live in `plans/<NNN>.<feature_name>/` (3-digit feature number, sorts the list); each folder has required `context.md`, `outcome.md`, `status.md` plus one or more `<SSS>.<name>.md` step plans (3-digit step number, optional letter suffix like `001b`/`002a`) and optional `<SSS>.context.md`
-- **Backlog ideas**: `plans/backlog/<idea_name>.md` — ideas not yet promoted to a feature
-- See `plans/CLAUDE.md` for full layout and lifecycle
-- Final architecture docs go to `architecture/`
+- Planning docs go to `docs/plans/` folder (tracked in git) — **not** `~/.claude/plans/`
+- **Features** live in `docs/plans/<NNN>.<feature_name>/` (3-digit feature number, sorts the list); each folder has required `context.md`, `outcome.md`, `status.md` plus one or more `<SSS>.<name>.md` step plans (3-digit step number, optional letter suffix like `001b`/`002a`) and optional `<SSS>.context.md`
+- **Backlog ideas**: `docs/plans/backlog/<idea_name>.md` — ideas not yet promoted to a feature
+- See `docs/plans/CLAUDE.md` for full layout and lifecycle
+- Final architecture docs go to `docs/architecture/`
 - Every project subfolder must have a `CLAUDE.md`
 
 ## API Typing — Full Stack

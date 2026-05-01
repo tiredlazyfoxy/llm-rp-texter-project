@@ -1,8 +1,7 @@
 .git
 backend/.venv
 frontend/node_modules
-architecture/
-plans/
+docs/
 *.md
 docker-compose.dev.yml
 start.ps1
