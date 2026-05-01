@@ -16,7 +16,7 @@ After implementation, update the following docs:
 - [ ] `backend/app/db/CLAUDE.md` — list new `pipelines.py` namespace module.
 - [ ] `backend/app/services/CLAUDE.md` — list new `pipelines.py` service module.
 - [ ] `backend/app/routes/CLAUDE.md` — note new `admin/pipelines.py` route module.
-- [ ] `frontend/src/admin/CLAUDE.md` — add `/admin/pipelines`, `/admin/pipelines/:id` routes; list `PipelinesListPage`, `PipelineEditPage` (and `PipelineStageEditPage` migrating from world to pipeline scope).
+- [ ] `frontend/src/admin/CLAUDE.md` — add `/admin/pipelines`, `/admin/pipelines/:id`, `/admin/pipelines/new` (shadow / clone), `/admin/pipelines/:id/stage/:idx` routes; list `PipelinesListPage`, `PipelineEditPage` (with shadow + clone modes) and `PipelineStageEditPage` (migrated from world to pipeline scope).
 - [ ] `frontend/src/api/CLAUDE.md` — list new `pipelines.ts`.
 - [ ] `frontend/src/types/CLAUDE.md` — list new `pipeline.d.ts`.
 - [ ] Update CLAUDE-memory project status note: feature 007 added.
@@ -31,4 +31,17 @@ After implementation, update the following docs:
 - Step 002: New `get_world_agnostic_tools()` / `WORLD_AGNOSTIC_TOOL_DEFINITIONS` in `backend/app/services/admin_tools.py` cleanly separate the "shared/global" tool surface (only `web_search` today) from the world-scoped admin tools. Possible impact: mention in `architecture/backend.md` and `backend/app/services/CLAUDE.md` (admin tools section) so future tools are deliberately classified as world-scoped or world-agnostic before being added.
 - Step 002: The pipeline-prompt editor system prompt now lives in a dedicated `build_pipeline_prompt_editor_system()` builder inside `world_field_editor_system_prompt.py` (kept in the same file for proximity to the related world-field builder). Possible impact: `backend/app/services/prompts/CLAUDE.md` could note this dual role of the file, or — if the architect prefers a stricter one-prompt-per-file rule — split into `pipeline_prompt_editor_system_prompt.py` as a follow-up.
 - Step 002: `LlmChatPanelProps.worldId` is now optional. Callers that previously always passed `worldId` continue to work; the only caller intentionally omitting it is the new `PipelineStageEditPage`. Possible impact: when finalizing, the admin-frontend section of `frontend/CLAUDE.md` can note that the LLM chat panel supports both world-scoped and world-agnostic modes.
+
+## Step 003 outcome — Clone Pipeline (shadow-then-save)
+
+After implementation, update:
+
+- [ ] `frontend/src/admin/CLAUDE.md` — under "Routes", add `/admin/pipelines/new` (covers `?cloneFrom=<sourceId>`) noting it is a frontend-only "shadow" state served by `PipelineEditPage` (the pipeline is materialized on Save via `POST /api/admin/pipelines`). Note that `PipelineEditPage` now operates in two modes: `edit` (existing record) and `shadow` (in-memory only, used for clone).
+- [ ] `architecture/quick-reference.md` — no API surface change to record (clone is frontend-only over the existing `POST /api/admin/pipelines`); skip unless an "Admin UI Flows" section exists.
+
+### Possible follow-ups (not part of this step)
+
+- Replace the `PipelinesListPage` Create modal with a query-paramless `/admin/pipelines/new` (blank-shadow) so create + clone share one code path. Currently the loader's blank-shadow branch is stubbed with an error; opening it later just deletes the early-return guard and seeds defaults.
+- Add a unified "unsaved changes" guard (`beforeunload` + intercepted Back) to `PipelineEditPage` covering both modes. Today neither mode warns before discard — matches the pre-007 baseline.
+- Backend `pipeline.name` uniqueness is not enforced; cloning twice yields two `"X (clone)"` rows. Matches `clone_world` behavior. Worth a follow-up only if duplicate names cause user confusion in the list view.
 

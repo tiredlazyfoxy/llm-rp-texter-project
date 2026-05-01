@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   ActionIcon,
@@ -23,6 +23,7 @@ import {
   IconArrowDown,
   IconArrowLeft,
   IconArrowUp,
+  IconCopy,
   IconSparkles,
   IconTrash,
 } from "@tabler/icons-react";
@@ -37,6 +38,7 @@ import type {
   UpdatePipelineRequest,
 } from "../../types/pipeline";
 import {
+  createPipeline,
   deletePipeline,
   getPipeline,
   getPipelineConfigOptions,
@@ -47,9 +49,17 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function extractPipelineId(): string | null {
-  const m = window.location.pathname.match(/\/admin\/pipelines\/(\d+)$/);
-  return m ? m[1] : null;
+type PageMode = "edit" | "shadow";
+interface RouteInfo { mode: PageMode; pipelineId: string | null; cloneFromId: string | null; }
+
+function parseRoute(): RouteInfo {
+  const path = window.location.pathname;
+  if (path === "/admin/pipelines/new") {
+    const cloneFrom = new URLSearchParams(window.location.search).get("cloneFrom");
+    return { mode: "shadow", pipelineId: null, cloneFromId: cloneFrom };
+  }
+  const m = path.match(/\/admin\/pipelines\/(\d+)$/);
+  return { mode: "edit", pipelineId: m ? m[1] : null, cloneFromId: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +67,9 @@ function extractPipelineId(): string | null {
 // ---------------------------------------------------------------------------
 
 export function PipelineEditPage() {
-  const pipelineId = extractPipelineId();
+  const route = parseRoute();
+  const { mode, pipelineId, cloneFromId } = route;
+  const shadowAgentConfigRef = useRef<string>("{}");
   const [pipeline, setPipeline] = useState<PipelineItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -80,10 +92,30 @@ export function PipelineEditPage() {
   const isAdmin = getCurrentUser()?.role === "admin";
 
   const load = useCallback(async () => {
-    if (!pipelineId) return;
     setLoading(true);
     setError(null);
     try {
+      if (mode === "shadow") {
+        if (!cloneFromId) {
+          setError("Missing cloneFrom parameter");
+          return;
+        }
+        const src = await getPipeline(cloneFromId);
+        setName(`${src.name} (clone)`);
+        setDescription(src.description);
+        setKind(src.kind);
+        setSystemPrompt(src.system_prompt);
+        try { setSimpleTools(JSON.parse(src.simple_tools || "[]")); } catch { setSimpleTools([]); }
+        try {
+          const parsed = JSON.parse(src.pipeline_config || "{}");
+          setPipelineConfig({ stages: parsed.stages || [] });
+        } catch {
+          setPipelineConfig({ stages: [] });
+        }
+        shadowAgentConfigRef.current = src.agent_config ?? "{}";
+        return;
+      }
+      if (!pipelineId) return;
       const p = await getPipeline(pipelineId);
       setPipeline(p);
       setName(p.name);
@@ -102,7 +134,7 @@ export function PipelineEditPage() {
     } finally {
       setLoading(false);
     }
-  }, [pipelineId]);
+  }, [mode, pipelineId, cloneFromId]);
 
   useEffect(() => {
     void load();
@@ -111,11 +143,25 @@ export function PipelineEditPage() {
   }, [load]);
 
   const handleSave = async () => {
-    if (!pipelineId) return;
+    if (!name.trim()) { setError("Name is required"); return; }
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
+      if (mode === "shadow") {
+        const created = await createPipeline({
+          name,
+          description,
+          kind,
+          system_prompt: systemPrompt,
+          simple_tools: JSON.stringify(simpleTools),
+          pipeline_config: JSON.stringify(pipelineConfig),
+          agent_config: shadowAgentConfigRef.current,
+        });
+        window.location.href = `/admin/pipelines/${created.id}`;
+        return;
+      }
+      if (!pipelineId) return;
       const req: UpdatePipelineRequest = {
         name,
         description,
@@ -151,8 +197,11 @@ export function PipelineEditPage() {
     }
   };
 
-  if (!pipelineId) {
+  if (mode === "edit" && !pipelineId) {
     return <Container py="md"><Alert color="red">Invalid pipeline ID</Alert></Container>;
+  }
+  if (mode === "shadow" && !cloneFromId) {
+    return <Container py="md"><Alert color="red">Missing cloneFrom parameter</Alert></Container>;
   }
 
   if (loading) {
@@ -183,10 +232,22 @@ export function PipelineEditPage() {
           >
             Back
           </Button>
-          <Title order={3}>{pipeline?.name || "Edit Pipeline"}</Title>
+          <Title order={3}>
+            {mode === "shadow" ? (name || "New pipeline (clone)") : (pipeline?.name || "Edit Pipeline")}
+          </Title>
         </Group>
         <Group>
-          {isAdmin && (
+          {mode === "edit" && (
+            <Button
+              variant="light"
+              leftSection={<IconCopy size={16} />}
+              onClick={() => { window.location.href = `/admin/pipelines/new?cloneFrom=${pipelineId}`; }}
+              disabled={loading || saving}
+            >
+              Clone
+            </Button>
+          )}
+          {isAdmin && mode === "edit" && (
             <Button
               variant="light"
               color="red"
@@ -450,8 +511,10 @@ export function PipelineEditPage() {
                             <ActionIcon
                               variant="subtle"
                               size="sm"
-                              title="Edit Prompt"
+                              title={mode === "shadow" ? "Save the clone first to edit stage prompts" : "Edit Prompt"}
+                              disabled={mode === "shadow"}
                               onClick={() => {
+                                if (mode === "shadow" || !pipelineId) return;
                                 window.location.href = `/admin/pipelines/${pipelineId}/stage/${idx}`;
                               }}
                             >

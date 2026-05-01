@@ -37,6 +37,7 @@ function AdminContent() {
   }
   if (path.startsWith("/admin/pipelines")) {
     if (/\/admin\/pipelines\/\d+\/stage\/\d+/.test(path)) return <PipelineStageEditPage />;
+    if (path === "/admin/pipelines/new" || path.startsWith("/admin/pipelines/new?")) return <PipelineEditPage />;
     if (/\/admin\/pipelines\/\d+/.test(path)) return <PipelineEditPage />;
     return <PipelinesListPage />;
   }

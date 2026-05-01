@@ -1,9 +1,10 @@
 # Feature 007 — Status
 
-| Step | File                           | Status | Verifier | Date       |
-|------|--------------------------------|--------|----------|------------|
-| 001  | `001.data_model.md`            | done   | self     | 2026-05-01 |
-| 002  | `002.pipeline_admin_ui.md`     | done   | PASS     | 2026-05-01 |
+| Step | File                           | Status  | Verifier | Date       |
+|------|--------------------------------|---------|----------|------------|
+| 001  | `001.data_model.md`            | done    | self     | 2026-05-01 |
+| 002  | `002.pipeline_admin_ui.md`     | done    | PASS     | 2026-05-01 |
+| 003  | `003.clone_pipeline.md`        | done    | self     | 2026-05-01 |
 
 ## Files Changed
 
@@ -38,6 +39,12 @@ Frontend:
 - `frontend/src/admin/components/PlaceholderPanel.tsx` — `PlaceholderInfo` import switched to `types/pipeline`.
 - `frontend/src/admin/components/PlaceholderSuggestions.tsx` — same import switch.
 - `frontend/src/admin/hooks/usePlaceholderAutocomplete.ts` — same import switch.
+
+### Step 003 — Clone Pipeline (shadow-then-save)
+
+Frontend:
+- `frontend/src/admin/App.tsx` — added `/admin/pipelines/new` matcher (placed before the `\d+` matcher) routing to `PipelineEditPage`.
+- `frontend/src/admin/pages/PipelineEditPage.tsx` — added `parseRoute()` (replaces `extractPipelineId()`) returning `{ mode: "edit" | "shadow", pipelineId, cloneFromId }`. Added `shadowAgentConfigRef` to passthrough source `agent_config`. Branched `load()` to fetch source via `cloneFromId` and pre-fill name as `"<source> (clone)"`. Branched `handleSave()` to call `createPipeline` and redirect to `/admin/pipelines/<new-id>`; added empty-name client guard. Header title tracks `name` in shadow mode. Added Clone button (`IconCopy`) shown only in edit mode. Hid Delete button in shadow mode. Disabled per-stage `IconSparkles` link in shadow mode with tooltip "Save the clone first to edit stage prompts". Added `Missing cloneFrom parameter` guard. Imported `createPipeline` and `IconCopy`; switched `useState` import to also include `useRef`.
 
 ### Step 002 — Pipeline Admin UI + World Picker
 
