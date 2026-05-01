@@ -17,7 +17,11 @@ from llm.message import LLMMessage
 from app.services.auth import require_role
 from app.services import llm_chat as llm_chat_service
 from app.services.llm_chat import get_llm_client_for_model
-from app.services.prompts import build_document_editor_system, build_world_field_editor_system
+from app.services.prompts import (
+    build_document_editor_system,
+    build_pipeline_prompt_editor_system,
+    build_world_field_editor_system,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +41,27 @@ async def _run_with_tools(
     options: dict,
     queue: asyncio.Queue,
     content_parts: list[str],
-    world_id: int,
+    world_id: int | None,
+    world_agnostic: bool = False,
 ) -> None:
-    """Tool-enabled agentic loop: wraps each tool to emit SSE events, then calls chat_with_tools."""
-    from app.services.admin_tools import ADMIN_TOOL_DEFINITIONS, get_admin_tools
+    """Tool-enabled agentic loop: wraps each tool to emit SSE events, then calls chat_with_tools.
 
-    base_tools = get_admin_tools(world_id)
+    When ``world_agnostic`` is True (pipeline-prompt editor), only world-agnostic
+    tools (``web_search``) are exposed and ``world_id`` is ignored.
+    """
+    from app.services.admin_tools import (
+        ADMIN_TOOL_DEFINITIONS,
+        WORLD_AGNOSTIC_TOOL_DEFINITIONS,
+        get_admin_tools,
+        get_world_agnostic_tools,
+    )
+
+    if world_agnostic or world_id is None:
+        base_tools = get_world_agnostic_tools()
+        tool_definitions = WORLD_AGNOSTIC_TOOL_DEFINITIONS
+    else:
+        base_tools = get_admin_tools(world_id)
+        tool_definitions = ADMIN_TOOL_DEFINITIONS
 
     def _make_wrapper(name: str, impl):
         @functools.wraps(impl)
@@ -65,7 +84,7 @@ async def _run_with_tools(
     async with client:
         await client.chat_with_tools(
             messages,
-            tools_definitions=ADMIN_TOOL_DEFINITIONS,
+            tools_definitions=tool_definitions,
             tools=tools,
             system=system_prompt,
             options=tools_options,
@@ -83,49 +102,66 @@ async def chat_stream(
     req: LlmChatRequest,
     _caller: User = Depends(_require_editor),
 ) -> StreamingResponse:
-    # Load world context
-    world = await worlds_db.get_by_id(int(req.world_id))
-    if world is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found")
+    # Pipeline-prompt editor is world-agnostic: pipelines are shared across worlds,
+    # so the helper must not pull world name / lore / NPCs into the prompt or its tools.
+    is_pipeline_prompt = req.field_type == "pipeline_prompt"
 
-    # is_injected lore facts are always included in the system prompt (even with tools enabled)
-    injected_facts = await lore_facts_db.list_injected_by_world(int(req.world_id))
-    injected_lore = "\n\n".join(f.content for f in injected_facts if f.content)
-
-    # When tools are enabled, the LLM fetches non-injected lore actively via search/get_lore.
-    # Without tools, inject all non-injected facts too.
-    if req.enable_tools:
-        world_lore = ""
-    else:
-        all_facts = await lore_facts_db.list_by_world(int(req.world_id))
-        lore_parts: list[str] = []
-        if world.lore:
-            lore_parts.append(world.lore)
-        for fact in all_facts:
-            if not fact.is_injected and fact.content:
-                lore_parts.append(fact.content)
-        world_lore = "\n\n".join(lore_parts)
-
-    if req.field_type:
-        system_prompt = build_world_field_editor_system(
-            field_type=req.field_type,
-            world_name=world.name,
-            world_description=world.description,
-            world_lore=world_lore,
-            injected_lore=injected_lore,
+    if is_pipeline_prompt:
+        system_prompt = build_pipeline_prompt_editor_system(
             current_content=req.current_content,
             enable_tools=req.enable_tools,
         )
+        world_id_int: int | None = None
     else:
-        system_prompt = build_document_editor_system(
-            doc_type=req.doc_type,
-            world_name=world.name,
-            world_description=world.description,
-            world_lore=world_lore,
-            injected_lore=injected_lore,
-            current_content=req.current_content,
-            enable_tools=req.enable_tools,
-        )
+        # Load world context
+        if not req.world_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="world_id is required for world-scoped chat",
+            )
+        world_id_int = int(req.world_id)
+        world = await worlds_db.get_by_id(world_id_int)
+        if world is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found")
+
+        # is_injected lore facts are always included in the system prompt (even with tools enabled)
+        injected_facts = await lore_facts_db.list_injected_by_world(world_id_int)
+        injected_lore = "\n\n".join(f.content for f in injected_facts if f.content)
+
+        # When tools are enabled, the LLM fetches non-injected lore actively via search/get_lore.
+        # Without tools, inject all non-injected facts too.
+        if req.enable_tools:
+            world_lore = ""
+        else:
+            all_facts = await lore_facts_db.list_by_world(world_id_int)
+            lore_parts: list[str] = []
+            if world.lore:
+                lore_parts.append(world.lore)
+            for fact in all_facts:
+                if not fact.is_injected and fact.content:
+                    lore_parts.append(fact.content)
+            world_lore = "\n\n".join(lore_parts)
+
+        if req.field_type:
+            system_prompt = build_world_field_editor_system(
+                field_type=req.field_type,
+                world_name=world.name,
+                world_description=world.description,
+                world_lore=world_lore,
+                injected_lore=injected_lore,
+                current_content=req.current_content,
+                enable_tools=req.enable_tools,
+            )
+        else:
+            system_prompt = build_document_editor_system(
+                doc_type=req.doc_type,
+                world_name=world.name,
+                world_description=world.description,
+                world_lore=world_lore,
+                injected_lore=injected_lore,
+                current_content=req.current_content,
+                enable_tools=req.enable_tools,
+            )
 
     client = await get_llm_client_for_model(req.model_id)
 
@@ -185,7 +221,16 @@ async def chat_stream(
         async def run_llm() -> None:
             try:
                 if req.enable_tools:
-                    await _run_with_tools(client, messages, system_prompt, options, queue, content_parts, int(req.world_id))
+                    await _run_with_tools(
+                        client,
+                        messages,
+                        system_prompt,
+                        options,
+                        queue,
+                        content_parts,
+                        world_id_int,
+                        world_agnostic=is_pipeline_prompt,
+                    )
                 else:
                     async with client:
                         await client.chat(

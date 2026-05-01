@@ -3,7 +3,7 @@
 | Step | File                           | Status | Verifier | Date       |
 |------|--------------------------------|--------|----------|------------|
 | 001  | `001.data_model.md`            | done   | self     | 2026-05-01 |
-| 002  | `002.pipeline_admin_ui.md`     | planned | —       | —          |
+| 002  | `002.pipeline_admin_ui.md`     | done   | PASS     | 2026-05-01 |
 
 ## Files Changed
 
@@ -38,6 +38,24 @@ Frontend:
 - `frontend/src/admin/components/PlaceholderPanel.tsx` — `PlaceholderInfo` import switched to `types/pipeline`.
 - `frontend/src/admin/components/PlaceholderSuggestions.tsx` — same import switch.
 - `frontend/src/admin/hooks/usePlaceholderAutocomplete.ts` — same import switch.
+
+### Step 002 — Pipeline Admin UI + World Picker
+
+Backend (decouple AI-assisted pipeline-prompt editor from world context):
+- `backend/app/models/schemas/llm_chat.py` — made `world_id` optional (`str | None = None`); added `pipeline_prompt` to the `field_type` comment.
+- `backend/app/routes/llm_chat.py` — early-branched on `field_type == "pipeline_prompt"`: builds a world-agnostic system prompt via `build_pipeline_prompt_editor_system`, skips world/lore loads, and threads `world_agnostic=True` into `_run_with_tools`. `_run_with_tools` now picks `WORLD_AGNOSTIC_TOOL_DEFINITIONS` + `get_world_agnostic_tools()` when world-agnostic; world-scoped chat still raises 400 if `world_id` missing.
+- `backend/app/services/admin_tools.py` — added `get_world_agnostic_tools()` (only `web_search`) and `WORLD_AGNOSTIC_TOOL_DEFINITIONS` (filtered subset of `ADMIN_TOOL_DEFINITIONS`).
+- `backend/app/services/prompts/world_field_editor_system_prompt.py` — removed `pipeline_prompt` entries from `_FIELD_ROLES`/`_FIELD_LABELS`; added new `build_pipeline_prompt_editor_system(current_content, enable_tools)` builder with a generic, world-agnostic role line and only `web_search` documented when tools enabled.
+- `backend/app/services/prompts/__init__.py` — re-exported `build_pipeline_prompt_editor_system`.
+
+Frontend:
+- `frontend/src/admin/App.tsx` — added `IconRoute` import, "Pipelines" nav entry between Worlds and LLM Servers, and routing for `/admin/pipelines`, `/admin/pipelines/:id`, `/admin/pipelines/:id/stage/:idx`. Dropped the `/admin/worlds/:id/pipeline/:n` matcher.
+- `frontend/src/admin/pages/PipelinesListPage.tsx` — NEW: list/create/delete pipelines page with kind badge column and friendly 409 error surfacing for in-use pipelines.
+- `frontend/src/admin/pages/PipelineEditPage.tsx` — NEW: pipeline editor relocated from `WorldEditPage` (basics + simple-mode system prompt/tools + chain-mode stage list with add/remove/reorder/per-stage tools/model override/prompt preview/`IconSparkles` link to stage editor). Uses `getPipeline`/`updatePipeline`/`deletePipeline` from `api/pipelines`.
+- `frontend/src/admin/pages/PipelineStageEditPage.tsx` — replaced step-001 stub with the relocated stage prompt editor: URL `/admin/pipelines/:pipelineId/stage/:stageIndex`, loads via `getPipeline` + `getPipelineConfigOptions`, saves via `updatePipeline`. Passes no `worldId` to `LlmChatPanel`.
+- `frontend/src/admin/pages/WorldEditPage.tsx` — replaced step-001 placeholder with a real `Pipeline` picker (`Select` populated from `listPipelines()`) plus an "Edit pipeline" link button.
+- `frontend/src/admin/components/LlmChatPanel.tsx` — made `worldId` prop optional; sends `world_id: worldId ?? null` in the request body.
+- `frontend/src/types/llmChat.d.ts` — made `world_id` optional (`string | null`).
 
 ## Notes & Issues
 

@@ -67,7 +67,7 @@ function loadParams(): EditorLlmParams {
 
 interface LlmChatPanelProps {
   currentContent: string;
-  worldId: string;
+  worldId?: string;
   // Document mode
   docId?: string;
   docType?: "location" | "npc" | "lore_fact";
@@ -204,7 +204,7 @@ export function LlmChatPanel({
         enable_thinking: params.enable_thinking,
         enable_tools: params.enable_tools,
         current_content: currentContent,
-        world_id: worldId,
+        world_id: worldId ?? null,
         doc_id: docId ?? "",
         doc_type: docType ?? "",
         field_type: fieldType ?? "",

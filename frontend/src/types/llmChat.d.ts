@@ -12,7 +12,7 @@ export interface LlmChatRequest {
   enable_thinking: boolean;
   enable_tools: boolean;
   current_content: string;
-  world_id: string;
+  world_id?: string | null;
   doc_id: string;
   doc_type: string;
   field_type: string;

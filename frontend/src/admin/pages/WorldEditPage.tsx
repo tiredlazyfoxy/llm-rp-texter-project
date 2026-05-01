@@ -32,6 +32,7 @@ import {
 } from "@tabler/icons-react";
 import { getCurrentUser } from "../../auth";
 import type { RuleItem, StatDefinitionItem, WorldDetail } from "../../types/world";
+import type { PipelineItem } from "../../types/pipeline";
 import {
   cloneWorld,
   createRule,
@@ -45,6 +46,7 @@ import {
   updateStat,
   updateWorld,
 } from "../../api/worlds";
+import { listPipelines } from "../../api/pipelines";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -257,6 +259,7 @@ export function WorldEditPage() {
   const [characterTemplate, setCharacterTemplate] = useState("");
   const [initialMessage, setInitialMessage] = useState("");
   const [pipelineId, setPipelineId] = useState<string | null>(null);
+  const [pipelines, setPipelines] = useState<PipelineItem[]>([]);
   const [worldStatus, setWorldStatus] = useState("draft");
 
   // Resizable textarea heights (persisted to localStorage)
@@ -317,6 +320,10 @@ export function WorldEditPage() {
   useEffect(() => {
     loadWorld();
   }, [loadWorld]);
+
+  useEffect(() => {
+    listPipelines().then(setPipelines).catch(() => {});
+  }, []);
 
   const handleSave = async () => {
     if (!worldId) return;
@@ -470,12 +477,23 @@ export function WorldEditPage() {
         </Stack>
       </Paper>
 
-      {/* Pipeline picker — full UI lands in step 002 */}
+      {/* Pipeline picker */}
       <Paper p="md" mb="md" withBorder>
         <Stack>
-          <Text c="dimmed" size="sm">
-            Pipeline picker — see step 002. Selected pipeline_id: {pipelineId ?? "(none)"}
-          </Text>
+          <Select
+            label="Pipeline"
+            description="Pipelines define the generation flow (simple / chain / agentic)."
+            data={pipelines.map(p => ({ value: p.id, label: `${p.name} (${p.kind})` }))}
+            value={pipelineId}
+            onChange={setPipelineId}
+            searchable
+            clearable
+          />
+          {pipelineId && (
+            <Button variant="subtle" component="a" href={`/admin/pipelines/${pipelineId}`}>
+              Edit pipeline
+            </Button>
+          )}
         </Stack>
       </Paper>
 
