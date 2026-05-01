@@ -219,15 +219,17 @@ Each sub-API is a separate FastAPI `APIRouter` mounted on the main app.
 
 ## Generation Modes
 
-`World.generation_mode` controls which chat generation flow is used:
+A world picks a pipeline via `world.pipeline_id` (Feature 007); the pipeline's `kind` field selects the generation flow. `world.pipeline_id` is required to start generation — chatting against a world with no pipeline returns 400.
 
-| Mode | Service File | Config Field | Description |
+| `pipeline.kind` | Service File | Config Source | Description |
 |------|-------------|-------------|-------------|
-| `"simple"` | `simple_generation_service.py` | `World.system_prompt` | Single LLM call with tools, rich prompt, stat validation |
-| `"chain"` | `chain_generation_service.py` | `World.pipeline` (JSON) | Pipeline stages: planning (planning tools, no JSON output) → writing (prose) |
-| `"agentic"` | `agent_generation_service.py` | `World.agent_config` (JSON) | Sub-agent orchestration (future, not yet implemented) |
+| `"simple"` | `simple_generation_service.py` | `pipeline.system_prompt`, `pipeline.simple_tools` | Single LLM call with tools, rich prompt, stat validation |
+| `"chain"` | `chain_generation_service.py` | `pipeline.pipeline_config` (JSON) | Pipeline stages: planning (planning tools, no JSON output) → writing (prose) |
+| `"agentic"` | `agent_generation_service.py` | `pipeline.agent_config` (JSON) | Sub-agent orchestration (future, not yet implemented) |
 
-**Dispatch**: `chat_agent_service.py` is a thin dispatcher — loads the world, checks `generation_mode`, delegates to the appropriate service. Same dispatch for both `generate_response()` and `regenerate_response()`.
+**Dispatch**: `chat_agent_service.py` loads the world, resolves `world.pipeline_id` to a `Pipeline`, dispatches on `pipeline.kind`, and threads the `Pipeline` into the chosen generation service. Same dispatch for both `generate_response()` and `regenerate_response()`.
+
+**Admin tool surface** (`backend/app/services/admin_tools.py`): admin LLM helpers split by world coupling. `get_admin_tools(world_id)` / `ADMIN_TOOL_DEFINITIONS` are world-scoped (`search`, `get_lore`, `web_search`); `get_world_agnostic_tools()` / `WORLD_AGNOSTIC_TOOL_DEFINITIONS` expose only `web_search`. The pipeline-prompt AI editor (Feature 007) uses the world-agnostic surface so suggestions are identical regardless of which world the editor was opened from.
 
 **Shared infrastructure** (used by all modes):
 
@@ -251,5 +253,5 @@ Each prompt file follows the **stage-4 documentation convention**:
 Prompts combine three layers:
 
 1. **Coded part** — structural instructions, tool usage guidance (hardcoded in the prompt file). Note: planning prompt instructs the LLM to use `add_fact`/`add_decision`/`update_stat` tools for structured output — it does not include JSON output instructions.
-2. **Admin part** — world-specific free text (from `World.system_prompt` or `PipelineStage.prompt`)
+2. **Admin part** — pipeline-specific free text (from `Pipeline.system_prompt` for simple kind, or `PipelineStage.prompt` inside `Pipeline.pipeline_config` for chain kind)
 3. **Player part** — per-turn OOC instructions from `(( ))` notation in user messages, stored as `message.user_instructions`, injected via `{USER_INSTRUCTIONS}` placeholder (always included when non-empty)

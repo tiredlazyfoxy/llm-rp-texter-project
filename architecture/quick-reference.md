@@ -18,7 +18,9 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **users**: id, username, pwdhash, salt, role (admin/editor/player), jwt_signing_key, last_login, last_key_update
 
-**worlds**: id, name, description, system_prompt (full prompt template with `{PLACEHOLDER}` syntax), simple_tools (JSON list of enabled tool names for simple mode), character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), generation_mode (str: "simple"/"chain"/"agentic", default "simple"), pipeline (JSON — PipelineConfig for chain mode), agent_config (JSON — future agentic mode config), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts.)
+**worlds**: id, name, description, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline_id (FK pipelines.id, nullable — a world without a pipeline cannot start generation), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts. The legacy columns `system_prompt`, `simple_tools`, `pipeline`, `generation_mode`, `agent_config` remain on the table but are write-dead post Feature 007 — kept for old-export compatibility and one-shot rollback; cleanup is a follow-up.)
+
+**pipelines** (Feature 007): id, name, description, kind (`"simple"` | `"chain"` | `"agentic"`), system_prompt (used when kind == "simple"), simple_tools (JSON list of tool names; simple mode), pipeline_config (JSON — `PipelineConfig`; chain mode), agent_config (JSON; future agentic mode), created_at, modified_at. A pipeline is the standalone, world-agnostic definition of a generation flow; multiple worlds may share one pipeline.
 
 **world_locations**: id, world_id, name, content (markdown), exits (JSON array of location IDs or None), created_at, modified_at
 
@@ -88,7 +90,20 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 
 ### Admin — Worlds (`/api/admin/worlds`) — feature 001 step 004
 
-CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. Includes `POST /api/admin/worlds/:id/reindex` for per-world vector reindex. `GET /api/admin/worlds/pipeline-config` returns static config data (placeholders, tools, default templates) for the admin prompt editor UI. (See `plans/001.admin_setup/004.world_editor.md` for full endpoint list.)
+CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. Includes `POST /api/admin/worlds/:id/reindex` for per-world vector reindex. World responses carry `pipeline_id` (nullable); pipeline definition lives in the Pipelines API (below). (See `plans/001.admin_setup/004.world_editor.md` for full endpoint list.)
+
+### Admin — Pipelines (`/api/admin/pipelines`) — feature 007
+
+Standalone CRUD for shared pipelines. Worlds reference a pipeline via `world.pipeline_id`.
+
+| Method | Path | Purpose | Role |
+| ------ | ---- | ------- | ---- |
+| GET | `/api/admin/pipelines` | List all pipelines | editor |
+| POST | `/api/admin/pipelines` | Create pipeline | editor |
+| GET | `/api/admin/pipelines/:id` | Get pipeline | editor |
+| PUT | `/api/admin/pipelines/:id` | Update pipeline | editor |
+| DELETE | `/api/admin/pipelines/:id` | Delete pipeline (409 if any world references it) | admin |
+| GET | `/api/admin/pipelines/config-options` | Static placeholders / tool catalog / default templates for the prompt editor UI (relocated from `/api/admin/worlds/pipeline-config`) | editor |
 
 ### Chats (`/api/chats`) — feature 002 step 003
 
@@ -224,17 +239,17 @@ Tool registration: single `TOOL_REGISTRY` (12 tools) + `build_tools(names, ToolC
 - Context build order: system prompt -> summaries (by start_turn ASC) -> raw non-summarized active messages
 - Lazy-loaded, triggered when context exceeds threshold
 
-## Generation Modes (feature 003)
+## Generation Modes (feature 003, ownership revised in feature 007)
 
-`World.generation_mode` controls which generation flow is used:
+A world picks a pipeline via `world.pipeline_id`; the pipeline's `kind` field selects the generation flow. `world.pipeline_id` is **required** to start generation — chatting against a world with no pipeline returns 400 ("World has no pipeline configured").
 
-- **`"simple"`** (default) — Single LLM call with admin-selected tools, prompt template with `{PLACEHOLDER}` syntax, stat validation. Admin prompt: `World.system_prompt`. Tools: `World.simple_tools`. Service: `simple_generation_service.py`
-- **`"chain"`** — Pipeline stages defined in `World.pipeline` (PipelineConfig JSON). Each stage has step_type (`"tool"` or `"writer"`), admin-configurable prompt template with `{PLACEHOLDER}` syntax, and per-stage tool selection. Default: tool stage (research + planning tools) → writer stage (prose). Service: `chain_generation_service.py`
-- **`"agentic"`** (future) — Sub-agent orchestration, config in `World.agent_config`. Service: `agent_generation_service.py`. Not yet implemented.
+- **`kind == "simple"`** (default) — Single LLM call with admin-selected tools, prompt template with `{PLACEHOLDER}` syntax, stat validation. Admin prompt: `pipeline.system_prompt`. Tools: `pipeline.simple_tools`. Service: `simple_generation_service.py`
+- **`kind == "chain"`** — Pipeline stages defined in `pipeline.pipeline_config` (PipelineConfig JSON). Each stage has step_type (`"tool"` or `"writer"`), admin-configurable prompt template with `{PLACEHOLDER}` syntax, and per-stage tool selection. Default: tool stage (research + planning tools) → writer stage (prose). Service: `chain_generation_service.py`
+- **`kind == "agentic"`** (future) — Sub-agent orchestration, config in `pipeline.agent_config`. Service: `agent_generation_service.py`. Not yet implemented.
 
-Dispatch: `chat_agent_service.py` routes to the appropriate service based on `generation_mode`.
+Dispatch: `chat_agent_service.py` resolves `world.pipeline_id` to a `Pipeline`, then routes to the appropriate generation service based on `pipeline.kind`. The pipeline object is threaded into the chosen service. This eliminates the prior bug class where `world.generation_mode` could disagree with the shape of the world's inline pipeline config.
 
-### Pipeline Config (`World.pipeline` JSON)
+### Pipeline Config (`pipeline.pipeline_config` JSON, chain mode)
 
 ```
 PipelineConfig:
@@ -295,6 +310,10 @@ Editor+ toggle in user settings. Controls UI visibility of tool call details, th
 - Step 001: Admin-configurable prompt templates — placeholder registry, tool catalog, per-stage tool selection, admin UI (placeholder panel, autocomplete, stage names) — done
 - Step 002: Prompt injection engine — `{PLACEHOLDER}` resolution, generation services refactored to dynamic pipeline — done
 - Step 003: Director stage — optional tool stage that commits a single `{DECISION}` via `set_decision` for downstream stages (`plans/005.prompt_customization/003.director_stage.md`) — done
+
+### Feature 007 — Shared Pipelines (`plans/007.shared_pipelines/`)
+- Step 001: Pipeline data model + DB + API + one-time migration — done. New `pipelines` table, `world.pipeline_id` FK, `/api/admin/pipelines` CRUD, runtime dispatch on `pipeline.kind`. Legacy world columns (`system_prompt`, `simple_tools`, `pipeline`, `generation_mode`, `agent_config`) retained write-dead for rollback / old-export compatibility; cleanup is a follow-up.
+- Step 002: Pipeline admin UI + world picker — done. Dedicated `/admin/pipelines` and `/admin/pipelines/:id` and `/admin/pipelines/:id/stage/:idx` admin pages; world editor reduced to a pipeline `<Select>` + "Edit pipeline" link. AI-assisted pipeline-prompt editor decoupled from world context: world-agnostic system prompt builder, world-agnostic tool surface (`web_search` only) via `get_world_agnostic_tools()`.
 
 ## Backlog
 
