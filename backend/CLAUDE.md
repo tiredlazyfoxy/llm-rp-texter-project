@@ -33,13 +33,13 @@ See per-folder `CLAUDE.md` files for contents of each subfolder.
 
 ## Generation Modes
 
-`World.generation_mode` controls which generation flow is used for chat:
+Each world references a `Pipeline` via `World.pipeline_id` (required for chat). The pipeline's `kind` controls the generation flow:
 
-- **`"simple"`** — Single LLM call with admin-selected tools, prompt template with `{PLACEHOLDER}` syntax, stat validation. Admin prompt: `World.system_prompt`. Tools: `World.simple_tools`. Service: `simple_generation_service.py`
-- **`"chain"`** — Pipeline stages from `World.pipeline` JSON (PipelineConfig). Each stage has step_type (`"tool"` or `"writer"`), admin-configurable prompt template, and per-stage tool selection. Default: tool stage → writer stage. Service: `chain_generation_service.py`
-- **`"agentic"`** (future) — Sub-agent orchestration, config in `World.agent_config`. Not yet implemented.
+- **`"simple"`** — Single LLM call with admin-selected tools, prompt template with `{PLACEHOLDER}` syntax, stat validation. Prompt: `pipeline.system_prompt`. Tools: `pipeline.simple_tools`. Service: `simple_generation_service.py`
+- **`"chain"`** — Pipeline stages from `pipeline.pipeline_config` JSON (PipelineConfig). Each stage has step_type (`"tool"` or `"writer"`), admin-configurable prompt template, and per-stage tool selection. Default: tool stage → writer stage. Service: `chain_generation_service.py`
+- **`"agentic"`** (future) — Sub-agent orchestration, config in `pipeline.agent_config`. Not yet implemented.
 
-Dispatch in `chat_agent_service.py` routes to the appropriate service. Shared infrastructure: `chat_tools.py`, `chat_context.py`, `stat_validation.py`, rich system prompt.
+Dispatch in `chat_agent_service.py` resolves the world's pipeline and routes on `pipeline.kind`. Shared infrastructure: `chat_tools.py`, `chat_context.py`, `stat_validation.py`, rich system prompt.
 
 ## Setup
 

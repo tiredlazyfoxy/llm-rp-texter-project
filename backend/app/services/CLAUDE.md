@@ -7,6 +7,7 @@ services/
   snowflake.py       — Snowflake ID generator (int64)
   database.py        — DB setup orchestration (create/import)
   auth.py            — JWT create/verify, password hashing
+  pipelines.py       — Pipeline validation + CRUD orchestration (kind, simple_tools, pipeline_config)
   db_import_export.py — gzipped JSONL per table
   db_management.py    — DB introspection service (status, schema drift, create tables)
   prompts/           — LLM prompt package (see prompts/CLAUDE.md)

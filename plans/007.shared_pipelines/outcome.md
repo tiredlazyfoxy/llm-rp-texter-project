@@ -45,3 +45,13 @@ After implementation, update:
 - Add a unified "unsaved changes" guard (`beforeunload` + intercepted Back) to `PipelineEditPage` covering both modes. Today neither mode warns before discard — matches the pre-007 baseline.
 - Backend `pipeline.name` uniqueness is not enforced; cloning twice yields two `"X (clone)"` rows. Matches `clone_world` behavior. Worth a follow-up only if duplicate names cause user confusion in the list view.
 
+---
+Status: Applied 2026-05-01
+Applied items: 7
+Rejected items: 17
+
+Notes:
+- Top-level architecture docs (`quick-reference.md`, `db-models.md`, `backend.md`) — already brought up to date for feature 007 in commit `2136de9`. No further edits required.
+- Per-folder `CLAUDE.md` updates applied: `backend/CLAUDE.md` (Generation Modes rewritten under `pipeline.kind`), `backend/app/models/CLAUDE.md` (added `pipeline.py`), `backend/app/db/CLAUDE.md` (added `pipelines.py`), `backend/app/services/CLAUDE.md` (added `pipelines.py`), `backend/app/routes/CLAUDE.md` (added `admin/pipelines.py`), `backend/app/services/prompts/CLAUDE.md` (noted dual role of `world_field_editor_system_prompt.py`), `frontend/src/admin/CLAUDE.md` (replaced Routes block with new pipeline routes incl. `/admin/pipelines/new` shadow/clone, updated pages list, narrowed `WorldFieldEditPage` description), `frontend/src/api/CLAUDE.md` (added `pipelines.ts`), `frontend/src/types/CLAUDE.md` (added `pipeline.d.ts`).
+- "Update CLAUDE-memory project-status note" rejected: out of architect scope (user-managed memory file).
+- Step 003 follow-ups (blank-shadow unification, unsaved-changes guard, name uniqueness) deferred: not part of this feature; no Future-work section to fold them into.

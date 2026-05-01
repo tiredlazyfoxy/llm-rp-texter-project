@@ -4,5 +4,5 @@ API route handlers — HTTP layer only: parse requests, call services, format re
 
 ```
 routes/
-  auth.py, chat.py, llm_servers.py, admin/db_management.py, ...
+  auth.py, chat.py, llm_servers.py, admin/db_management.py, admin/pipelines.py, ...
 ```

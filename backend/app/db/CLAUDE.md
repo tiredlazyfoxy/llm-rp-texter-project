@@ -7,6 +7,7 @@ db/
   engine.py          — Async engine, injectable config, DDL, state flags
   users.py           — User CRUD (session-free, import as `from app.db import users`)
   worlds.py          — World CRUD
+  pipelines.py       — Pipeline CRUD (referenced by World.pipeline_id)
   locations.py       — WorldLocation CRUD
   npcs.py            — WorldNPC CRUD
   lore_facts.py      — WorldLoreFact CRUD
