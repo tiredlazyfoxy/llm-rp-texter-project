@@ -12,34 +12,34 @@ import {
   Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
-import type { PipelineConfigOptions, UpdateWorldRequest, WorldDetail } from "../../types/world";
+import type { UpdateWorldRequest, WorldDetail } from "../../types/world";
+import type { PipelineConfigOptions } from "../../types/pipeline";
 import { LlmChatPanel } from "../components/LlmChatPanel";
 import { PlaceholderPanel } from "../components/PlaceholderPanel";
 import { PlaceholderSuggestions } from "../components/PlaceholderSuggestions";
 import { usePlaceholderAutocomplete } from "../hooks/usePlaceholderAutocomplete";
-import { getPipelineConfigOptions, getWorld, updateWorld } from "../../api/worlds";
+import { getWorld, updateWorld } from "../../api/worlds";
+import { getPipelineConfigOptions } from "../../api/pipelines";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-type FieldName = "description" | "system_prompt" | "initial_message";
+type FieldName = "description" | "initial_message";
 
 function extractIds(): { worldId: string; fieldName: FieldName } | null {
-  const m = window.location.pathname.match(/\/admin\/worlds\/(\d+)\/field\/(description|system_prompt|initial_message)/);
+  const m = window.location.pathname.match(/\/admin\/worlds\/(\d+)\/field\/(description|initial_message)/);
   if (!m) return null;
   return { worldId: m[1], fieldName: m[2] as FieldName };
 }
 
 const FIELD_LABELS: Record<FieldName, string> = {
   description: "Description",
-  system_prompt: "System Prompt",
   initial_message: "Initial Message",
 };
 
 function getFieldValue(world: WorldDetail, field: FieldName): string {
   if (field === "description") return world.description ?? "";
-  if (field === "system_prompt") return world.system_prompt ?? "";
   if (field === "initial_message") return world.initial_message ?? "";
   return "";
 }
@@ -63,7 +63,8 @@ export function WorldFieldEditPage() {
   const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isPipelinePrompt = fieldName === "system_prompt";
+  // Pipeline-prompt editing moved out of world fields in feature 007.
+  const isPipelinePrompt = false;
   const autocomplete = usePlaceholderAutocomplete(
     configOptions?.placeholders ?? [], textareaRef, content, setContent,
   );

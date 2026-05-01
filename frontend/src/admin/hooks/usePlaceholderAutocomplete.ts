@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { PlaceholderInfo } from "../../types/world";
+import type { PlaceholderInfo } from "../../types/pipeline";
 
 export interface AutocompletePosition {
   top: number;

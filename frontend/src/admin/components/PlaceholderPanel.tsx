@@ -1,5 +1,5 @@
 import { Badge, Group, Paper, Text, Tooltip } from "@mantine/core";
-import type { PlaceholderInfo } from "../../types/world";
+import type { PlaceholderInfo } from "../../types/pipeline";
 
 interface PlaceholderPanelProps {
   placeholders: PlaceholderInfo[];

@@ -5,13 +5,9 @@ export interface WorldItem {
   name: string;
   description: string;
   lore: string;
-  system_prompt: string;
-  simple_tools: string;
   character_template: string;
   initial_message: string;
-  pipeline: string;
-  generation_mode: string;
-  agent_config: string;
+  pipeline_id: string | null;
   status: string;
   owner_id: string | null;
   created_at: string | null;
@@ -34,60 +30,17 @@ export interface CreateWorldRequest {
   name: string;
   description?: string;
   status?: string;
+  pipeline_id?: string | null;
 }
 
 export interface UpdateWorldRequest {
   name?: string;
   description?: string;
   lore?: string;
-  system_prompt?: string;
-  simple_tools?: string;
   character_template?: string;
   initial_message?: string;
-  pipeline?: string;
-  generation_mode?: string;
-  agent_config?: string;
+  pipeline_id?: string | null;
   status?: string;
-}
-
-// ── Pipeline ───────────────────────────────────────────────────
-
-export interface PipelineStage {
-  step_type: string;
-  name: string;
-  prompt: string;
-  max_agent_steps: number | null;
-  tools: string[];
-  enabled: boolean;
-  model_id: string | null;
-}
-
-export interface PipelineConfig {
-  stages: PipelineStage[];
-}
-
-export interface PlaceholderInfo {
-  name: string;
-  description: string;
-  category: string;
-}
-
-export interface ToolCatalogEntry {
-  name: string;
-  description: string;
-  category: string;
-}
-
-export interface DefaultTemplates {
-  simple: string;
-  tool: string;
-  writer: string;
-}
-
-export interface PipelineConfigOptions {
-  placeholders: PlaceholderInfo[];
-  tools: ToolCatalogEntry[];
-  default_templates: DefaultTemplates;
 }
 
 // ── Documents ───────────────────────────────────────────────────

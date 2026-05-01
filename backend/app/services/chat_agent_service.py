@@ -16,7 +16,9 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from app.db import chats as chats_db
+from app.db import pipelines as pipelines_db
 from app.db import worlds as worlds_db
+from app.models.pipeline import Pipeline
 from app.models.schemas.chat import ChatMessageResponse
 
 logger = logging.getLogger(__name__)
@@ -183,6 +185,22 @@ def create_thinking_callback(
     return on_delta
 
 
+async def _resolve_pipeline(world) -> Pipeline:
+    """Load the pipeline referenced by a world or raise 400."""
+    if world.pipeline_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="World has no pipeline configured",
+        )
+    pipeline = await pipelines_db.get_by_id(world.pipeline_id)
+    if pipeline is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configured pipeline missing",
+        )
+    return pipeline
+
+
 # ---------------------------------------------------------------------------
 # Dispatch: generate_response
 # ---------------------------------------------------------------------------
@@ -206,13 +224,15 @@ async def generate_response(
     if world is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found")
 
-    mode = world.generation_mode or "simple"
-    logger.debug("[s:%d] Dispatching generation: mode=%s, world_id=%d", session_id, mode, world.id)
+    pipeline = await _resolve_pipeline(world)
+    mode = pipeline.kind.value
+    logger.debug("[s:%d] Dispatching generation: mode=%s, world_id=%d, pipeline_id=%d", session_id, mode, world.id, pipeline.id)
 
     if mode == "chain":
         from app.services import chain_generation_service
         return chain_generation_service.generate_chain_response(
             session_id, user_id, user_message, caller_role,
+            pipeline=pipeline,
             variant_index=variant_index,
             user_instructions=user_instructions,
         )
@@ -225,6 +245,7 @@ async def generate_response(
         from app.services import simple_generation_service
         return simple_generation_service.generate_simple_response(
             session_id, user_id, user_message,
+            pipeline=pipeline,
             variant_index=variant_index,
             user_instructions=user_instructions,
         )
@@ -268,12 +289,14 @@ async def regenerate_response(
     if world is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="World not found")
 
-    mode = world.generation_mode or "simple"
+    pipeline = await _resolve_pipeline(world)
+    mode = pipeline.kind.value
 
     if mode == "chain":
         from app.services import chain_generation_service
         return chain_generation_service.regenerate_chain_response(
             session_id, user_id, caller_role,
+            pipeline=pipeline,
         )
     elif mode == "agentic":
         raise HTTPException(
@@ -284,4 +307,5 @@ async def regenerate_response(
         from app.services import simple_generation_service
         return simple_generation_service.regenerate_simple_response(
             session_id, user_id,
+            pipeline=pipeline,
         )

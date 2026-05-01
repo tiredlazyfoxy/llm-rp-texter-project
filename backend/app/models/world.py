@@ -41,6 +41,7 @@ class World(SQLModel, table=True):
     pipeline: str = Field(default="{}")
     generation_mode: str = Field(default="simple")  # "simple" | "chain" | "agentic"
     agent_config: str = Field(default="{}")  # future: used when generation_mode = "agentic"
+    pipeline_id: int | None = Field(default=None, foreign_key="pipelines.id", index=True)
     status: WorldStatus = Field(default=WorldStatus.draft)
     owner_id: int | None = Field(default=None, index=True)
     created_at: datetime | None = Field(default=None)

@@ -20,3 +20,12 @@ After implementation, update the following docs:
 - [ ] `frontend/src/api/CLAUDE.md` — list new `pipelines.ts`.
 - [ ] `frontend/src/types/CLAUDE.md` — list new `pipeline.d.ts`.
 - [ ] Update CLAUDE-memory project status note: feature 007 added.
+
+## Observations
+
+- Step 001: `World.system_prompt`, `simple_tools`, `pipeline`, `generation_mode`, `agent_config` columns are now write-dead — they remain on the SQLModel and in `_world_to_dict`/`_dict_to_world` for backward-compat with old `.jsonl.gz` exports and as a one-shot rollback safety net for the manual migration. Possible impact: schedule a follow-up cleanup feature to drop these columns, drop the legacy keys from `db_import_export.py`, and remove the SQLModel fields once all production DBs have been migrated and a couple of release cycles have soaked.
+- Step 001: `DefaultTemplates` (frontend) gained the `director` key to match the backend `default_templates` shape — `backend/app/models/schemas/worlds.py` already declared `director: str` on `DefaultTemplatesResponse`, but the frontend `.d.ts` was missing it. Possible impact: noted only because the type was incomplete — no change required to architecture docs.
+- Step 001: `WorldFieldEditPage` previously handled `system_prompt` (world field) plus a `pipeline_prompt` AI-helper branch. With `system_prompt` moving to Pipeline, the page lost both responsibilities; `FieldName` is now `"description" | "initial_message"`. Step 002 §8 will move the pipeline-prompt AI-helper to `PipelineStageEditPage` against a Pipeline. Possible impact: when finalizing, update `frontend/src/admin/CLAUDE.md` to reflect that `WorldFieldEditPage` only edits world-owned text fields and that pipeline-prompt AI editing lives under the pipeline routes.
+- Step 001: §H stub deviation — `WorldEditPage.tsx` no longer contains the generation-mode pickers, system-prompt textarea, simple-tool multi-select, or stage list. It shows a placeholder `<Text>Pipeline picker — see step 002</Text>`. Step 002 must replace this placeholder with the real `<Select>` + "Edit pipeline" link before the feature is shippable; the world editor is currently functional only for non-pipeline fields.
+- Step 001: `WorldEditPage` has no `pipeline_id` editing UI yet — the state is loaded and saved, but the user cannot change it from the world editor. Step 002's pipeline picker is mandatory for end-to-end shippability.
+
