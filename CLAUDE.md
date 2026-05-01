@@ -4,7 +4,7 @@
 
 - **OS**: Windows 11
 - **Preferred shell**: PowerShell (use PowerShell over bash when possible)
-- **Path separators**: Use backslashes (`\`) for Windows paths in PowerShell; forward slashes are acceptable in git commands
+- **Path separators**: Use forward slashes (`/`) for all paths and file names both in bash and powershell
 
 ## Prod Environment
 
@@ -20,9 +20,7 @@
 
 ### Git Policy
 
-- **Read-only commands** (run freely, no permission needed): `git status`, `git log`, `git diff`, `git branch`, `git remote`, `git show`, `git stash list`, and any other non-modifying commands
-- **`git add` and `git commit`** (require explicit user permission before running)
-- **Other write commands** (run freely): `git push`, `git merge`, `git rebase`, `git checkout`, `git stash`, etc.
+- use "git" skill for any git commands
 
 ## Project Overview
 
