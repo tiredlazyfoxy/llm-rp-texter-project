@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BrowserRouter } from "react-router-dom";
 import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
 import "../global.css";
@@ -6,18 +7,7 @@ import { theme } from "../theme";
 import { loadTranslationSettings } from "../utils/translationSettings";
 import { AppLayout } from "../components/AppLayout";
 import { UserSidebar } from "./components/UserSidebar";
-import { ChatListPage } from "./pages/ChatListPage";
-import { CharacterSetupPage } from "./pages/CharacterSetupPage";
-import { ChatViewPage } from "./pages/ChatViewPage";
-import { WorldPage } from "./pages/WorldPage";
-
-function UserContent() {
-  const path = window.location.pathname;
-  if (/\/chat\/\d+/.test(path)) return <ChatViewPage />;
-  if (/\/worlds\/\d+\/new/.test(path)) return <CharacterSetupPage />;
-  if (/\/worlds\/\d+$/.test(path)) return <WorldPage />;
-  return <ChatListPage />;
-}
+import { UserRoutes } from "./routes";
 
 export function App() {
   const [ready, setReady] = useState(false);
@@ -35,9 +25,11 @@ export function App() {
 
   return (
     <MantineProvider theme={theme} defaultColorScheme="dark">
-      <AppLayout sidebar={<UserSidebar />}>
-        <UserContent />
-      </AppLayout>
+      <BrowserRouter>
+        <AppLayout sidebar={<UserSidebar />}>
+          <UserRoutes />
+        </AppLayout>
+      </BrowserRouter>
     </MantineProvider>
   );
 }

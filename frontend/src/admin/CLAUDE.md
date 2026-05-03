@@ -5,10 +5,13 @@ Admin SPA — world and user management (served at `/admin`).
 ```
 admin/
   App.tsx, main.tsx
+  routes.tsx         — React Router route table (AdminRoutes); per-path-param wrappers pass key={id}
   pages/             — WorldsList, WorldView, WorldEdit, WorldFieldEdit, DocumentEdit, PipelinesList, PipelineEdit, PipelineStageEdit, LlmServersPage, DbManagementPage
   components/        — LlmChatPanel, PlaceholderPanel, PlaceholderSuggestions
   hooks/             — usePlaceholderAutocomplete (inline {PLACEHOLDER} autocomplete)
 ```
+
+Routing uses `react-router-dom`'s `BrowserRouter` with `basename="/admin"` mounted in `App.tsx`; the `<Routes>` table in `routes.tsx` is written without the `/admin` prefix.
 
 ## Routes
 

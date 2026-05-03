@@ -41,3 +41,7 @@ When all steps are done, the architect (or a final review pass) confirms:
 5. Every page has a sibling `<page>PageState.ts` and a single mount/unmount `useEffect`.
 6. `frontend/src/api/client.ts` exists with `ApiError` and `AbortSignal` plumbing; no `fetch(` outside `src/api/`.
 7. The architecture docs and the actual code agree.
+
+## Observations
+
+- Step 001: many stray compiled `.js` files exist next to `.tsx` files across `frontend/src/` (untracked). Possible impact: add a guard to `frontend/CLAUDE.md` (or the cleanup step) noting `tsconfig.json` should keep `noEmit` true (Vite handles emit) and the leftover `.js` files should be removed; consider a `.gitignore` rule for `src/**/*.js` to prevent accidental check-in.
