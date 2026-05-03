@@ -33,3 +33,4 @@ The goal is to research and validate whether this approach produces coherent, en
 - **ORM**: SQLModel (SQLAlchemy + Pydantic)
 - **Two SPAs**: User and Admin are separate apps sharing only the login flow
 - **JWT authentication**: Stateless tokens shared across both SPAs
+- **Frontend architecture**: MobX-only state, observer everywhere, no `useState`/`useCallback`/Context, `useEffect` only at the page level for mount/unmount, page = route owner with remount-on-key, URL query params as the cross-navigation persistence layer, async resource trio (`<name>` / `<name>Status` / `<name>Error`), HTTP isolated in `src/api/` with DTOs in `src/models/`, no runtime schema validation. See `frontend.md` and the `frontend-*.md` set for the full rules.
