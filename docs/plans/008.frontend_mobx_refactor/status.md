@@ -17,11 +17,19 @@ Already applied (locked decisions baked into the docs before any step is planned
 
 ## Steps
 
-(none planned yet — steps will be added one at a time)
-
 | Step | Title | Status |
 |------|-------|--------|
+| 001 | Routing foundation | planned |
+| 002 | API client.ts + ApiError + AbortSignal | planned |
+| 003 | Component folder reorg | planned |
+| 003b | Hooks → wrapper components | planned |
+| 004 | User SPA non-chat pages | planned |
+| 005 | Chat refactor (singleton → ChatPageState) | planned |
+| 006 | Admin worlds domain | planned |
+| 007 | Admin pipelines domain | planned |
+| 008 | Admin users / LLM / DB | planned |
+| 009 | Cleanup pass | planned |
 
 ## Files changed (cumulative)
 
-(populated per step)
+(populated per step on completion)
