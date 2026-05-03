@@ -32,11 +32,13 @@ Three layers, each with a clear lifetime and purpose:
 
 | Layer | Where it lives | Lifetime | Holds |
 |-------|----------------|----------|-------|
-| `AppState` | `src/appState.ts`, instantiated in `main.tsx` | App boot → page unload | Auth token, current user, anything truly global |
-| `<Page>State` | `src/pages/<page>PageState.ts`, instantiated by the page on mount | Page mount → unmount | Loaded data, drafts, modes, pagination, status flags |
+| Module-level globals | `src/auth.ts`, `src/utils/translationSettings.ts` | App boot → page unload | Auth token + current user, global settings (translation defaults, ...) |
+| `<Page>State` | `src/<spa>/pages/<page>PageState.ts`, instantiated by the page on mount | Page mount → unmount | Loaded data, drafts, modes, pagination, status flags |
 | `<Component>State` | Defined inline or in a sibling file, owned by the component | Component mount → unmount | Local UI state too noisy to lift |
 
-`AppState` is **long-lived** and small. It does not accumulate page data. Component state is reserved for genuinely component-local concerns (e.g., a transient hover index, a popover open flag) — most pages won't use it.
+**Globals are plain module state, not a MobX store, not a class.** Auth and global settings are read via plain function calls (`getToken()`, `getTranslationSettings()`). React components don't need to react to them — auth changes navigate away, settings changes are explicit user actions that re-read on next use. If a future global truly needs to be reactive in the UI, that's the moment to introduce a single small observable; until then, **don't**.
+
+Component state is reserved for genuinely component-local concerns (e.g., a transient hover index, a popover open flag, the input bar's translation buffer) — most pages won't have it.
 
 ## State is data + computed, never effectful methods
 
@@ -179,6 +181,16 @@ The empty-deps `useEffect` is the only deps array you should write. If you find 
 
 Don't use it. MobX observables + actions cover the same ground without indirection.
 
+### Custom hooks (`useX`)
+
+**Don't write them.** Anywhere a custom hook is tempting, the answer is one of:
+
+- It owns reactive UI state for a specific control (translate-with-revert on a textarea, autocomplete dropdown, ...) → write it as a **wrapper component** with a private `<Component>State` class instance owned via `useState(() => new XState())`.
+- It owns state for a whole page → it's `<Page>State`, not a hook.
+- It's effectful and was extracted "for reuse" → it's an external `(state, args, signal)` function colocated with the relevant state file.
+
+This is non-negotiable. A `useX` that returns `{ doThing, isThingHappening, ... }` is just a state class with worse ergonomics — you can't inspect it, you can't pass it down, you can't test it without a renderer. Replace it with a class.
+
 ## Async resource trio
 
 Every loadable resource on a state object follows the same shape:
@@ -202,14 +214,15 @@ A page with three loadables has three trios. There is no aggregation type — co
 
 | Concern | Layer |
 |---------|-------|
-| Auth token, current user | `AppState` |
+| Auth token, current user | Module-level (`auth.ts`) — plain functions |
+| Global settings (translation defaults, etc.) | Module-level (`utils/translationSettings.ts`) |
 | List of worlds for the worlds page | `WorldsPageState` |
 | Draft of a world being edited | `WorldPageState` |
 | Selected tab on a multi-tab settings page | `SettingsPageState` (or sub-slice) |
+| Translation buffer / canRevert for an input bar | `LlmInputState` — component-local class instance |
 | Hover index on a long list (UI only) | Component-local — small `class` instance via `useState(() => ...)` |
-| Theme | `AppState` (if persisted) |
 
-The default answer is "page state." Component state is rare; `AppState` is reserved for genuinely cross-page concerns.
+The default answer is "page state." Component state is for self-contained UI behaviors (input bar, autocomplete dropdown). Globals are plain module functions, never a class.
 
 ## Anti-patterns
 

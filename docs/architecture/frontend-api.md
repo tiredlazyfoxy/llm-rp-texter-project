@@ -15,7 +15,7 @@ src/
     pipelines.ts
     llmServers.ts
     ...
-  models/
+  types/
     world.ts           # World, WorldCreateRequest, WorldUpdateRequest, ...
     document.ts
     chat.ts
@@ -24,7 +24,7 @@ src/
     ...
 ```
 
-`api/` is **flat — one file per backend resource**. `models/` is **flat — one file per resource**, holding every DTO that crosses the wire for that resource.
+`api/` is **flat — one file per backend resource**. `types/` is **flat — one file per resource**, holding every DTO that crosses the wire for that resource.
 
 ## `api/client.ts` — the shared fetch wrapper
 
@@ -40,12 +40,7 @@ Sketch of the surface:
 
 ```ts
 // src/api/client.ts
-
-let getAuthToken: () => string | null = () => null;
-
-export function configureClient(opts: { getAuthToken: () => string | null }) {
-  getAuthToken = opts.getAuthToken;
-}
+import { getToken } from '../auth';
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public details?: unknown) {
@@ -61,7 +56,7 @@ export interface RequestOptions {
 
 export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getAuthToken();
+  const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`/api${path}`, {
@@ -80,26 +75,27 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 }
 ```
 
-## Auth token via injection
+## Auth token
 
-The api layer **does not import `AppState`**. At app boot, `main.tsx` calls `configureClient({ getAuthToken: () => appState.token })`, and the client reads through the closure.
+`client.ts` imports `getToken()` directly from `src/auth.ts`. Auth is module-level state (a plain `localStorage` read) — not a MobX store, not React state — so there's no circular-import risk and no observer concern.
 
-This keeps the dependency one-way:
+Dependency direction stays one-way:
 
-- `api/` → no imports from `appState` or `pages/`.
-- `pages/` and `appState` → import from `api/`.
+- `api/` imports from `auth.ts` (and only `auth.ts`).
+- `auth.ts` does not import from `api/`.
+- `pages/` and components import from `api/`.
 
-Tests can replace the getter with a stub.
+Tests can swap the auth module via the test runner's module mock; no runtime injection layer is needed.
 
 ## `api/<resource>.ts` — typed functions, one per endpoint
 
-Each resource module exports pure typed async functions corresponding to backend endpoints. Function signatures use DTOs from `models/`.
+Each resource module exports pure typed async functions corresponding to backend endpoints. Function signatures use DTOs from `types/`.
 
 ```ts
 // src/api/worlds.ts
 
 import { request } from './client';
-import type { World, WorldCreateRequest, WorldUpdateRequest } from '../models/world';
+import type { World, WorldCreateRequest, WorldUpdateRequest } from '../types/world';
 
 export const list = (signal?: AbortSignal): Promise<World[]> =>
   request<World[]>('/admin/worlds', { signal });
@@ -121,7 +117,7 @@ Conventions:
 
 - **`signal?: AbortSignal`** is always the last argument.
 - **Verbs from REST**: `list`, `get`, `create`, `update`, `remove` (or `del`). Avoid generic `fetch` / `save` names that hide intent.
-- **Return types are DTOs from `models/`**, never `any`, never inline types.
+- **Return types are DTOs from `types/`**, never `any`, never inline types.
 - **Pass payloads as typed request DTOs**, not raw partials.
 
 Import in state files via the resource namespace:
@@ -134,11 +130,11 @@ const worlds = await worldsApi.list(signal);
 
 This keeps call sites self-documenting (`worldsApi.list(...)`, `chatsApi.sendMessage(...)`).
 
-## `models/` — full API surface as DTOs
+## `types/` — full API surface as DTOs
 
-**Grep rule: if a type appears in any `api/` function signature, it lives in `models/`.**
+**Grep rule: if a type appears in any `api/` function signature, it lives in `types/`.**
 
-Each `models/<resource>.ts` exports:
+Each `types/<resource>.ts` exports:
 
 - The main shape (`World`).
 - Request shapes (`WorldCreateRequest`, `WorldUpdateRequest`).
@@ -146,7 +142,7 @@ Each `models/<resource>.ts` exports:
 - Enum-like literal unions (`type WorldStatus = 'draft' | 'public' | 'private' | 'archived'`).
 
 ```ts
-// src/models/world.ts
+// src/types/world.ts
 
 export type WorldStatus = 'draft' | 'public' | 'private' | 'archived';
 
@@ -181,7 +177,7 @@ Conventions:
 - **Single interface per concept** — wire shape == in-memory shape (we do no runtime transformation).
 - **One file per resource**, flat.
 - **No methods, no classes, no getters on data.** DTOs are pure shapes.
-- **State interfaces and component prop interfaces live with their state/component, not in `models/`.**
+- **State interfaces and component prop interfaces live with their state/component, not in `types/`.**
 
 ## No runtime validation
 
@@ -233,8 +229,8 @@ SSE-based endpoints (chat generation) live in their resource module too — typi
 ## Anti-patterns
 
 - `fetch(...)` in a state file or component. Move to `api/`.
-- `import { appState } from '../appState'` inside `api/`. Use injection.
-- A type that crosses the wire but lives outside `models/`. Move it.
-- `as any` on a response. Define the type in `models/`.
+- A backwards `auth → api → auth` import cycle. `auth.ts` must not import from `api/`.
+- A type that crosses the wire but lives outside `types/`. Move it.
+- `as any` on a response. Define the type in `types/`.
 - zod / io-ts / runtypes anywhere in the runtime path. Don't add them.
-- A `models/` type with methods or getters. Strip them; computed lives on state.
+- A `types/` type with methods or getters. Strip them; computed lives on state.

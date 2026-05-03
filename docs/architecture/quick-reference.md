@@ -287,21 +287,22 @@ Editor+ toggle in user settings. Controls UI visibility of tool call details, th
 Authoritative docs: `frontend.md` (overview), `frontend-state.md`, `frontend-pages.md`, `frontend-components.md`, `frontend-api.md`, `frontend-forms.md`, `frontend-layout.md`. The rules below are the condensed index — read the linked docs for reasoning and corner cases.
 
 ### Stack
-TypeScript + React + MobX + Vite. No Redux, no Zustand, no React Query, no React Context, no zod / runtime schema validation, no `useCallback`, no `useMemo`, no `useReducer`. `enforceActions: 'always'` is **off**.
+TypeScript + React + MobX + Vite. No Redux, no Zustand, no React Query, no React Context, no zod / runtime schema validation, no `useCallback`, no `useMemo`, no `useReducer`, no custom hooks. `enforceActions: 'always'` is **off**.
 
 ### Hard rules
 - **`observer` on every component.** No exceptions; missing `observer` is a code-review failure.
 - **No `useState` for reactive state.** Allowed only as a memoization primitive: `const [state] = useState(() => new XPageState())`.
 - **`useEffect` only at the page level**, only for mount-load + unmount-cleanup. Empty deps array. Never in leaf components, never for derivations, never for prop-watching.
 - **No `useCallback`.** Observer makes ref-stability irrelevant.
+- **No custom `useX` hooks.** Reusable stateful UI behavior is a wrapper component owning a `<Component>State` class via `useState(() => new XState())`.
 - **Pure props, no React Context.** Stores flow down as explicit props.
 
 ### State ladder
 | Layer | Lifetime | Holds |
 |-------|----------|-------|
-| `AppState` | App boot → unload | Auth token, current user |
+| Module-level globals | App boot → unload | Auth (`auth.ts`), global settings (`utils/translationSettings.ts`) — plain functions, not classes |
 | `<Page>State` | Page mount → unmount | Loaded data, drafts, modes, status flags |
-| `<Component>State` | Component mount → unmount | Local UI noise (rare) |
+| `<Component>State` | Component mount → unmount | Reusable UI behavior (input bar translate buffer, autocomplete dropdown) |
 
 State = observable fields + pure `get` computeds (validation, isDirty, isValid, canSubmit, filtered/sorted views). **No effectful methods on state.** All effectful operations are external functions `(state, args, signal)` colocated with page state, mutating via `runInAction` for multi-field changes. Single-field assignment from components (`state.search = e.target.value`) is fine.
 
@@ -328,10 +329,10 @@ No `AsyncValue<T>`, no `isLoading: boolean`, no `mobx-utils fromPromise`.
 - **Event handlers are inner closures** inside the component, closing over `state` and props. They are NOT extracted to top-level for size.
 - **Growing components split into observer subcomponents**, not into top-level handler functions. State stays on the page (or sub-slice as prop). Top-level functions are reserved for genuinely reusable code.
 
-### API and models
+### API and types
 - **All HTTP in `src/api/`.** State files never call `fetch`. One file per backend resource: `list`, `get`, `create`, `update`, `remove`. Every function takes optional `signal: AbortSignal` (last arg).
-- **`api/client.ts`** wraps fetch: base URL, auth header injection (via registered `getAuthToken`, no direct `appState` import), JSON parsing, `ApiError` normalization, `AbortSignal` pass-through.
-- **`src/models/`** holds the full API surface as DTOs. **Grep rule: if a type appears in any `api/` signature, it lives in `models/`.** State interfaces and component props live with their owners, not in `models/`.
+- **`api/client.ts`** wraps fetch: base URL, `Authorization` header (reads `getToken()` from `src/auth.ts` directly — no DI layer), JSON parsing, `ApiError` normalization, `AbortSignal` pass-through.
+- **`src/types/`** holds the full API surface as DTOs. **Grep rule: if a type appears in any `api/` signature, it lives in `types/`.** State interfaces and component props live with their owners, not in `types/`.
 - **No runtime validation.** `response.json() as World[]`. Backend (Pydantic) is the source of truth; mismatches are fixed at source.
 - **Tests mock the `api/` module**, not `fetch`.
 
@@ -343,19 +344,18 @@ No `AsyncValue<T>`, no `isLoading: boolean`, no `mobx-utils fromPromise`.
 - **Large forms**: per-section computed errors (`generalSectionErrors`, `npcSectionErrors`, ...), aggregated into `isFullyValid`.
 
 ### Folder layout
+Multi-page Vite build with three entries: `login/`, `user/`, `admin/`. Login is a separate entry — no router, no `<Page>State`. Both SPAs use React Router.
 ```
 src/
   api/             flat — client.ts + one file per resource (worlds.ts, chats.ts, ...)
-  models/          flat — one file per resource (world.ts, chat.ts, ...) — DTOs only
-  pages/           flat — XxxPage.tsx + xxxPageState.ts pairs (state class + load/save fns)
-  components/
-    common/        generic primitives (Button, Modal, Input, Select, Spinner, ErrorBanner)
-    <domain>/      page-aware components (worlds/, chats/, documents/, users/, pipelines/)
-  appState.ts      auth + current user
-  routes.tsx       React Router config; pages wrapped with key={pathParam} for remount
-  main.tsx         instantiates AppState; configures api/client; mounts router
+  types/           flat — one file per resource (world.ts, chat.ts, ...) — DTOs only
+  utils/           shared utilities (formatDate, translationSettings, ...)
+  auth.ts          module-level state — getToken / getCurrentUser / logout
+  user/            User SPA (main.tsx, routes.tsx, pages/, components/{common,chats,...})
+  admin/           Admin SPA (same shape)
+  login/           Login entry (main.tsx, Login.tsx) — no router
 ```
-**No** `types/`, `hooks/`, `stores/`, `services/`, `contexts/`, `selectors/` folders.
+**No** `models/`, `appState.ts`, `hooks/`, `stores/`, `services/`, `contexts/`, `selectors/` folders. No custom `useX` hooks anywhere.
 
 ## Implementation Progress
 

@@ -161,6 +161,46 @@ Each subcomponent:
 
 State **stays in the page** — the subcomponent does not own its own page-scoped state. (Genuinely component-local UI state, e.g., a popover open flag, is the only exception, and it's rare.)
 
+## Reusable stateful UI components (no custom hooks)
+
+When a piece of UI behavior is reusable and stateful — a translate-with-revert input, an autocomplete dropdown, a controllable preview pane — it is **a wrapper component owning a `<Component>State` class instance**, not a custom hook.
+
+```tsx
+// components/common/llmInputState.ts
+export class LlmInputState {
+  value = '';
+  isTranslating = false;
+  canRevert = false;
+  translateError: string | null = null;
+  // ... internal buffers ...
+  constructor() { makeAutoObservable(this); }
+}
+
+// External effectful functions in the same file:
+export function startTranslate(state: LlmInputState, fn: TranslateFn): void { /* ... */ }
+export function revertTranslate(state: LlmInputState): void { /* ... */ }
+
+// components/common/LlmInputBar.tsx
+export const LlmInputBar = observer(({ state, translateFn, busy, onSend, onStop, before, extras }: Props) => {
+  // textarea + translate + revert + send/stop, reading state.* and props
+});
+
+// Caller (page or another component):
+const [inputState] = useState(() => new LlmInputState());
+const onSend = () => sendMessage(inputState.value);
+return <LlmInputBar state={inputState} translateFn={translateChat} busy={chatBusy} onSend={onSend} onStop={stop} />;
+```
+
+Key shape rules:
+
+- **Caller owns the state instance** via `useState(() => new XState())` — same memoization primitive as page state.
+- **State-class methods are not API-effectful.** API/streaming work goes in external `(state, ...args)` functions in the same file.
+- **Slot props** (`before`, `extras`) handle page-specific variation cleanly. Don't add a flag prop for every minor visual tweak — slots compose.
+- **`busy` from outside the component** decouples external concerns (chat is streaming) from the component's internal state (translation in flight). Both can disable the input independently.
+- **No React Context** — state is passed as a prop. The component reads `state.value`, mutates `state.value` from `onChange`, and the caller reads `state.value` in its own handlers.
+
+This replaces every custom hook in the codebase. A `useTranslation` returning `{ isTranslating, handleTranslate, ... }` is the same data with worse ergonomics — you can't inspect it, can't pass it down, can't test it without a renderer.
+
 ## Slice props vs whole-state props
 
 Two patterns, both fine:
@@ -197,3 +237,4 @@ A sliced subcomponent is a step toward making it page-aware-but-not-page-coupled
 - A subcomponent fetching its own data via `useEffect`. Move the fetch to the page.
 - A "container component" / "presentational component" split as a rule. Components are just observers; orchestration sits at the page.
 - `useCallback` wrapping inner handlers. Delete it.
+- A custom `useX` hook that owns reactive state and returns handlers. Convert to a wrapper component owning a `<Component>State` class.

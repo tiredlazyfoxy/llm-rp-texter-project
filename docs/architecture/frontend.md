@@ -9,7 +9,7 @@ This document is the entry point. Detailed rules live in:
 - `frontend-state.md` — MobX, observer, useState/useEffect rules, async resource trio
 - `frontend-pages.md` — Page lifecycle, route ownership, URL-driven loads, query-param persistence
 - `frontend-components.md` — Component rules, generic vs page-aware, splitting growing components
-- `frontend-api.md` — `api/` layer, `models/` (DTOs), `client.ts`, no runtime validation
+- `frontend-api.md` — `api/` layer, `types/` (DTOs), `client.ts`, no runtime validation
 - `frontend-forms.md` — Draft state, validation as computed, submit flow, server vs client errors
 - `frontend-layout.md` — Folder structure, what lives where, grep rules
 
@@ -43,7 +43,7 @@ Three layers, each with a clear lifetime:
 
 | Layer | Lifetime | Holds |
 |-------|----------|-------|
-| `AppState` | App boot → unload | Auth token, current user |
+| Module-level globals | App boot → unload | Auth token (`auth.ts`), global settings (`utils/translationSettings.ts`). Plain module state — **not** a class, not a MobX store |
 | `<Page>State` | Page mount → unmount | Loaded data, drafts, modes, pagination, status flags |
 | `<Component>State` | Component mount → unmount | Local UI state too noisy to bubble up |
 
@@ -66,7 +66,7 @@ Three layers, each with a clear lifetime:
 - **No runtime validation at the API boundary.** Trust the TS types. `response.json() as World[]`. If the backend changes shape, fix at source — no double-bookkeeping with zod.
 - **All HTTP calls live in `src/api/`.** State files never call `fetch` directly.
 - **One `api/<resource>.ts` module per backend resource**, exporting typed async functions; each accepts an optional `AbortSignal`.
-- **`models/` holds the full API surface as DTOs.** Grep rule: if a type appears in any `api/` function signature, it lives in `models/`.
+- **`types/` holds the full API surface as DTOs.** Grep rule: if a type appears in any `api/` function signature, it lives in `types/`. (The folder is named `types/` for historical reasons; semantically it is the API DTO surface.)
 
 ### Async resource trio
 
@@ -89,34 +89,36 @@ No `AsyncValue<T>`, no `isLoading`, no `mobx-utils fromPromise`.
 
 ## Folder layout (canonical)
 
+The app is a Vite multi-page build with three entries: `login/` (separate entry, outside React Router), `user/` (User SPA), `admin/` (Admin SPA). Each SPA owns its own `pages/` and `components/`; `api/`, `types/`, `utils/`, and `auth.ts` are shared at `src/` root.
+
 ```
 src/
   api/                        # HTTP layer — flat, one file per resource
-    client.ts                 # fetch wrapper, auth injection, error normalization
+    client.ts                 # fetch wrapper, auth header, error normalization, AbortSignal
     worlds.ts
     documents.ts
     chats.ts
     users.ts
-  models/                     # full API surface — DTOs only, flat
+  types/                      # full API surface — DTOs only, flat (.d.ts or .ts)
     world.ts                  # World, WorldCreateRequest, WorldUpdateRequest, ...
     document.ts
     chat.ts
     user.ts
-  pages/                      # flat — page component + adjacent state file
-    WorldsPage.tsx
-    worldsPageState.ts        # interface/class + factory + load/save/delete functions
-    WorldPage.tsx
-    worldPageState.ts
-  components/                 # grouped by domain
-    common/                   # generic primitives — Button, Modal, Input, Select
-    worlds/                   # WorldRow, WorldEditForm, WorldList
-    documents/
-    chats/
-    users/
-  appState.ts                 # app-wide state at root (auth, current user)
-  routes.tsx
-  main.tsx
+  utils/                      # shared utilities (formatDate, translationSettings, ...)
+  user/                       # User SPA
+    main.tsx, App.tsx, routes.tsx
+    pages/                    # flat — page component + adjacent state file
+      ChatListPage.tsx
+      chatListPageState.ts    # state class + load/save/delete external functions
+    components/               # grouped by domain
+      common/                 # generic primitives — Button, Modal, LlmInputBar
+      chats/                  # ChatRow, MessageBubble, ChatInput
+  admin/                      # Admin SPA — same shape as user/
+  login/                      # Login entry (no router, no MobX page state)
+  auth.ts                     # current user / token — module-level state, not a class
 ```
+
+Login is a separate, simple entry: it doesn't carry the `<Page>State` machinery — it's a single screen with a small local form. Both SPAs use React Router with `key={id}`-based path-param remount; login does not.
 
 See `frontend-layout.md` for the complete grep rules and what lives where.
 
