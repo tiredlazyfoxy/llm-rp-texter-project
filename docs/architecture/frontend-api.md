@@ -30,7 +30,7 @@ src/
 
 Every resource module goes through `client.ts`. Direct `fetch()` calls outside `client.ts` are a code-review failure. The client is responsible for:
 
-- **Base URL** — `/api` in dev (Vite proxies to `:8085`), `/api` in prod (nginx mounts FastAPI).
+- **No URL rewriting.** The `url` argument is passed straight to `fetch`. Resource modules supply absolute paths (`/api/admin/worlds`, ...) — typically via a per-module `BASE` constant. Vite proxies `/api` to `:8085` in dev; nginx mounts FastAPI at `/api` in prod.
 - **Auth header injection** — reads the JWT from the registered token getter and attaches `Authorization: Bearer <token>`.
 - **JSON parsing** on success.
 - **Error normalization** — non-2xx responses become a typed `ApiError` with status, message, and (where present) a structured `details` object for field-level errors.
@@ -54,12 +54,12 @@ export interface RequestOptions {
   signal?: AbortSignal;
 }
 
-export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+export async function request<T>(url: string, opts: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(url, {
     method: opts.method ?? 'GET',
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
@@ -97,20 +97,22 @@ Each resource module exports pure typed async functions corresponding to backend
 import { request } from './client';
 import type { World, WorldCreateRequest, WorldUpdateRequest } from '../types/world';
 
+const BASE = '/api/admin/worlds';
+
 export const list = (signal?: AbortSignal): Promise<World[]> =>
-  request<World[]>('/admin/worlds', { signal });
+  request<World[]>(BASE, { signal });
 
 export const get = (id: string, signal?: AbortSignal): Promise<World> =>
-  request<World>(`/admin/worlds/${id}`, { signal });
+  request<World>(`${BASE}/${id}`, { signal });
 
 export const create = (payload: WorldCreateRequest, signal?: AbortSignal): Promise<World> =>
-  request<World>('/admin/worlds', { method: 'POST', body: payload, signal });
+  request<World>(BASE, { method: 'POST', body: payload, signal });
 
 export const update = (id: string, payload: WorldUpdateRequest, signal?: AbortSignal): Promise<World> =>
-  request<World>(`/admin/worlds/${id}`, { method: 'PUT', body: payload, signal });
+  request<World>(`${BASE}/${id}`, { method: 'PUT', body: payload, signal });
 
 export const remove = (id: string, signal?: AbortSignal): Promise<void> =>
-  request<void>(`/admin/worlds/${id}`, { method: 'DELETE', signal });
+  request<void>(`${BASE}/${id}`, { method: 'DELETE', signal });
 ```
 
 Conventions:

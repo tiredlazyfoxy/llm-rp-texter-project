@@ -71,6 +71,7 @@ When disabled: clean message display, brief status text only.
 
 - Dev server: `npx vite --port 8094`
 - Build: `npx vite build`
+- `tsc` runs are type-check only (`noEmit: true` is set in `frontend/tsconfig.json`); Vite owns emit. This prevents stray `.js` siblings from re-appearing next to `.tsx` sources.
 
 ## Production Docker
 

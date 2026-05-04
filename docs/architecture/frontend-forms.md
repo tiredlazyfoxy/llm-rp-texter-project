@@ -273,6 +273,10 @@ The modal is the one place where component-local class state is normal. The page
 
 After the modal saves, the standard pattern is: navigate to the new resource (which remounts that page and refetches), or close and let the parent list refetch on its next load. **No upward callback chain** to "refresh the parent list" — that's the cross-page rule from `frontend-pages.md`.
 
+When the draft class has only one consumer, declare it in the same file as the modal (the `WorldEditPage` `StatDraft`/`RuleDraft` precedent) — sibling `*Draft.ts` files only when the draft is shared across multiple consumers.
+
+Documented exceptions to the draft+observer pattern (cross-SPA shared modals on plain `useState`): see `frontend-components.md` § "Cross-SPA shared modals".
+
 ## Anti-patterns
 
 - A `validate()` method on state. Use `get errors`.

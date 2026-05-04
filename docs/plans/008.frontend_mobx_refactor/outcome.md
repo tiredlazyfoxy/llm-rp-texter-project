@@ -60,3 +60,14 @@ When all steps are done, the architect (or a final review pass) confirms:
 - Step 009: `frontend/tsconfig.json` now sets `"noEmit": true` so a stray `tsc` invocation can't re-emit `.js` siblings into `frontend/src/`. Possible impact: a one-line note in `frontend/CLAUDE.md` ("`tsc` is type-check only — Vite owns emit") would make the constraint discoverable; alternatively add `frontend/src/**/*.js` to the project-root `.gitignore` as a belt-and-suspenders guard.
 - Step 009: cross-SPA shared modals `ChangePasswordModal` and `TranslationSettingsModal` are kept on plain `useState` form fields with a documented exception in `components/CLAUDE.md`. Possible impact: `frontend-forms.md` (or `frontend-components.md`) could codify the "tiny single-screen modal with no reactive interaction outside its own form" exception explicitly so future callers know the bar for staying outside the canonical draft+observer pattern.
 - Step 009: `AppSidebar.tsx` and `UserSidebar.tsx` switched from `window.location.pathname` to `useLocation().pathname`. Possible impact: `frontend-pages.md` (or `quick-reference.md`) could note that any active-route highlighting in sidebars must use `useLocation()` — `window.location.*` reads inside an SPA bypass router-driven re-render and silently break on client-side navigation.
+
+---
+
+## Applied 2026-05-05
+
+- Up-front architecture changes (per `status.md`) were applied before steps began.
+- Per-step `frontend/**/CLAUDE.md` updates landed inside their respective steps (per the plan).
+- Verifier-fix doc edits to `frontend-api.md` (no `/api` auto-prefix; per-module `BASE`) and `frontend-pages.md` (`ctrl.abort(); state.dispose();`) accepted as-is.
+- Observation follow-ups applied: B1/B2 in `frontend-state.md`; B3/B4/B5 in `frontend-pages.md`; B6/B7/B8 in `frontend-components.md`; B9 in `frontend-forms.md`; B10 in `frontend/CLAUDE.md`; B11 in `quick-reference.md`.
+- Rejected: `WorldInfoModal` unused (already deleted in step 009); dead `isPipelinePrompt` branch (already removed in step 006); verification-regex narrowing (planner-process concern, not architecture).
+- Deferred to backlog: lifting duplicated `mapServerErrors` (across `worldEditPageState`/`pipelineEditPageState`/`documentEditPageState`) to a shared `utils/forms.ts` — code change, not a doc change.

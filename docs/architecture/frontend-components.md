@@ -201,6 +201,14 @@ Key shape rules:
 
 This replaces every custom hook in the codebase. A `useTranslation` returning `{ isTranslating, handleTranslate, ... }` is the same data with worse ergonomics — you can't inspect it, can't pass it down, can't test it without a renderer.
 
+**Imperative API escape valve.** When a wrapper component must expose a small named imperative API to its parent (e.g. `PlaceholderTextarea` → `insertAtCursor`), prefer a typed `controllerRef?: RefObject<XController | null>` published via mount/unmount `useEffect` over re-exposing internal DOM refs. Two- or three-method ceiling — anything wider is a sign the behavior should be lifted into observable state instead.
+
+**Disabled-state composition.** `LlmInputBar` derives the textarea-disabled state as `disabled || busy || isTranslating` — the textarea is greyed out in any of those conditions; callers don't get to enable it while sending is busy. If a future caller needs split control (textarea enabled while send is disabled, or vice versa), introduce separate `inputDisabled` / `sendDisabled` props rather than working around the combined check.
+
+## Cross-SPA shared modals — `useState` exception
+
+A tiny single-screen modal with no reactive interaction outside its own form (today: `ChangePasswordModal`, `TranslationSettingsModal` under `frontend/src/components/`) may stay on plain `useState` form fields and skip the `Draft` + `observer` pattern. The bar is: one screen, no shared state with the page, no cross-form validation. Migration trigger: if either grows new fields, cross-form validation, or shared state with the page, lift it to a draft class per `frontend-forms.md`.
+
 ## Slice props vs whole-state props
 
 Two patterns, both fine:

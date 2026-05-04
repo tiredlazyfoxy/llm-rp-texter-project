@@ -309,7 +309,7 @@ State = observable fields + pure `get` computeds (validation, isDirty, isValid, 
 ### Pages and routing
 - **Page owns the route.** One route = one page = one fresh state instance per navigation.
 - **Path-param change = remount via React Router `key`.** No deps-array `useEffect`.
-- **Query params** (filter/sort/mode) are the persistence layer for navigation/refresh/bookmark. Page state reads them on mount; event handlers mirror changes back. Never `useEffect` watching the query string.
+- **Query params** (filter/sort/mode) are the persistence layer for navigation/refresh/bookmark. Page state reads them on mount; event handlers mirror changes back. Never `useEffect` watching the query string. `WorldViewPage` mirrors the active tab to `?tab=…` as the canonical example.
 - **Each page is independently deep-linkable.** No "warm start" from a parent — detail pages refetch by id from the URL.
 - **No upward callbacks across pages.** Save → API → done. Returning to a parent remounts and refetches. Backend = single source of truth.
 - **Nested coexisting routes** share parent state via prop-drilling (Outlet context or explicit props).

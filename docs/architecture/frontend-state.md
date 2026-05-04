@@ -191,6 +191,26 @@ Don't use it. MobX observables + actions cover the same ground without indirecti
 
 This is non-negotiable. A `useX` that returns `{ doThing, isThingHappening, ... }` is just a state class with worse ergonomics — you can't inspect it, you can't pass it down, you can't test it without a renderer. Replace it with a class.
 
+### `autorun` for rare imperative side-effects
+
+When an imperative side-effect must fire whenever specific observables change (e.g. auto-scrolling a chat panel as messages stream), use a single `autorun` started in the mount `useEffect` and disposed in the cleanup. Read the specific fields the effect should react to — `autorun` tracks exactly what it reads. Modeled on `LlmChatPanel`:
+
+```tsx
+useEffect(() => {
+  const dispose = autorun(() => {
+    const last = state.messages[state.messages.length - 1];
+    void state.messages.length;
+    void last?.content?.length;
+    void last?.thinking?.length;
+    void last?.toolCalls?.length;
+    scrollToBottom();
+  });
+  return dispose;
+}, []);
+```
+
+This replaces a `useEffect` with a deps array watching reactive values — `autorun` re-runs precisely when any tracked observable changes, with no manual deps.
+
 ## Async resource trio
 
 Every loadable resource on a state object follows the same shape:
@@ -209,6 +229,8 @@ Rules:
 - **Status transitions** happen inside the load function via `runInAction` — components never touch `Status` directly.
 
 A page with three loadables has three trios. There is no aggregation type — components compose UI by reading the specific status they care about.
+
+Action errors (post-load mutations like edit/delete/compact) typically surface via a single `state.error: string | null` shared across the actions on a page state — see `chatPageState.ts`. Field-level error mapping (`serverErrors`) is reserved for form drafts (`worldEditPageState`, `pipelineEditPageState`); see `frontend-forms.md`.
 
 ## When state lives where
 

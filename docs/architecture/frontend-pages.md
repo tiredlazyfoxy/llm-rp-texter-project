@@ -49,9 +49,12 @@ export const WorldPage = observer(({ id }: { id: string }) => {
   const [state] = useState(() => new WorldPageState(id, searchParams));
 
   useEffect(() => {
-    const controller = new AbortController();
-    loadWorld(state, controller.signal);
-    return () => controller.abort();
+    const ctrl = new AbortController();
+    loadWorld(state, ctrl.signal);
+    return () => {
+      ctrl.abort();
+      state.dispose();
+    };
   }, []); // path-param changes remount the whole page; query params are not deps
 
   return (
@@ -137,6 +140,12 @@ Reasons:
 
 This is non-negotiable. Bandwidth on a small admin tool is not the bottleneck; consistency is.
 
+A page state may own ancillary lookup data its child components need rather than letting children fetch on their own — `ChatPageState.world: WorldInfo | null` is the example, populated inside `loadChat` via a `listPublicWorlds()` filter. The page does the lookup; children read it as a slice.
+
+## Create flow: shadow `/new` route vs inline modal
+
+When a create surface has more than two or three fields, prefer a "shadow" `/<resource>/new` route that reuses the edit page (POST on first save, PUT thereafter — see `PipelineEditPage`'s shadow/edit modes in `pipelineEditPageState.ts`) over an inline create modal. Worlds and users keep their inline create modals because their create surfaces are small.
+
 ## No upward callbacks across pages
 
 A common mistake: opening a modal child page that reports back to its parent ("the parent list should refresh now"). We don't do this.
@@ -186,6 +195,10 @@ Nested routes that coexist in the same React tree (e.g., `/admin/pipelines/:id` 
 ```
 
 `PipelineLayout` owns `PipelinePageState` and passes it (or a slice) to `StageEditor` via Outlet context or explicit props. This is allowed because the parent and child share a lifetime; if the parent path changes, both unmount together.
+
+## Active-route reads use `useLocation()`
+
+In-SPA active-route highlighting (sidebar links, tab indicators) must read `useLocation().pathname`. `window.location.*` reads bypass router-driven re-render and silently break on client-side navigation. Cross-SPA redirects via `window.location.href = '/login/'` (and root `/`) remain explicitly allowed — those leave the SPA entirely.
 
 ## Disposal
 
