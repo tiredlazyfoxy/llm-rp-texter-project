@@ -1,35 +1,35 @@
 import { getToken } from "../auth";
-import { authRequest } from "./request";
+import { request, throwApiError } from "./client";
 import type { DbStatusResponse, ReindexResult, SyncResult, TableStatus } from "../types/dbManagement";
 
 const BASE = "/api/admin/db";
 
-export async function getDbStatus(): Promise<TableStatus[]> {
-  const res = await authRequest<DbStatusResponse>(BASE);
+export async function getDbStatus(signal?: AbortSignal): Promise<TableStatus[]> {
+  const res = await request<DbStatusResponse>(BASE, { signal });
   return res.tables;
 }
 
-export async function createTable(tableName: string): Promise<void> {
-  await authRequest<void>(`${BASE}/tables/${tableName}/create`, {
+export async function createTable(tableName: string, signal?: AbortSignal): Promise<void> {
+  await request<void>(`${BASE}/tables/${tableName}/create`, {
     method: "POST",
+    signal,
   });
 }
 
-export async function syncTable(tableName: string): Promise<SyncResult> {
-  return authRequest<SyncResult>(`${BASE}/tables/${tableName}/sync`, {
+export async function syncTable(tableName: string, signal?: AbortSignal): Promise<SyncResult> {
+  return request<SyncResult>(`${BASE}/tables/${tableName}/sync`, {
     method: "POST",
+    signal,
   });
 }
 
-export async function exportDb(): Promise<void> {
+export async function exportDb(signal?: AbortSignal): Promise<void> {
   const token = getToken();
   const res = await fetch(`${BASE}/export`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
+    signal,
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(body.detail || res.statusText);
-  }
+  if (!res.ok) await throwApiError(res);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -39,13 +39,14 @@ export async function exportDb(): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-export async function reindexVectors(): Promise<ReindexResult> {
-  return authRequest<ReindexResult>(`${BASE}/reindex-vectors`, {
+export async function reindexVectors(signal?: AbortSignal): Promise<ReindexResult> {
+  return request<ReindexResult>(`${BASE}/reindex-vectors`, {
     method: "POST",
+    signal,
   });
 }
 
-export async function importDb(file: File): Promise<void> {
+export async function importDb(file: File, signal?: AbortSignal): Promise<void> {
   const token = getToken();
   const form = new FormData();
   form.append("file", file);
@@ -53,9 +54,7 @@ export async function importDb(file: File): Promise<void> {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: form,
+    signal,
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(body.detail || res.statusText);
-  }
+  if (!res.ok) await throwApiError(res);
 }

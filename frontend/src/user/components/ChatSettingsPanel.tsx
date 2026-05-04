@@ -11,7 +11,7 @@ import {
 } from "@mantine/core";
 import { observer } from "mobx-react-lite";
 import { chatStore } from "../stores/ChatStore";
-import { authRequest } from "../../api/request";
+import { request } from "../../api/client";
 import { getCurrentUser } from "../../auth";
 import { saveToolModel, saveTextModel } from "../../utils/modelSettings";
 
@@ -87,7 +87,7 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, o
     if (opened && session) {
       setToolModel(session.tool_model);
       setTextModel(session.text_model);
-      authRequest<{ models: EnabledModelInfo[] }>("/api/chats/models")
+      request<{ models: EnabledModelInfo[] }>("/api/chats/models")
         .then((res) => setAvailableModels(res.models))
         .catch(() => {});
     }

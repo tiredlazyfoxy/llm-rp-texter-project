@@ -1,19 +1,19 @@
 import type { LlmChatRequest, SSEHandlers, TranslateRequest } from "../types/llmChat";
 import type { EnabledModelInfo, EnabledModelsListResponse } from "../types/llmServer";
 import type { TranslateStreamHandlers } from "../hooks/useTranslation";
-import { authRequest } from "./request";
+import { request } from "./client";
 import { streamPost } from "./sse";
 import { streamTranslate } from "./translateStream";
 
 export function streamChat(
-  request: LlmChatRequest,
+  req: LlmChatRequest,
   handlers: SSEHandlers,
 ): AbortController {
-  return streamPost("/api/llm/chat", request, handlers);
+  return streamPost("/api/llm/chat", req, handlers);
 }
 
-export async function fetchEnabledModels(): Promise<EnabledModelInfo[]> {
-  const res = await authRequest<EnabledModelsListResponse>("/api/llm/models");
+export async function fetchEnabledModels(signal?: AbortSignal): Promise<EnabledModelInfo[]> {
+  const res = await request<EnabledModelsListResponse>("/api/llm/models", { signal });
   return res.models;
 }
 

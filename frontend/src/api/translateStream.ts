@@ -1,6 +1,6 @@
 import type { TranslateRequest } from "../types/llmChat";
 import type { TranslateStreamHandlers } from "../hooks/useTranslation";
-import { authHeaders } from "./request";
+import { authHeaders } from "./client";
 
 export function streamTranslate(
   url: string,

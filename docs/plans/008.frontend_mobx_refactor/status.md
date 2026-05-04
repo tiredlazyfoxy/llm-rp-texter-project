@@ -20,7 +20,7 @@ Already applied (locked decisions baked into the docs before any step is planned
 | Step | File                          | Status | Verifier | Date       |
 |------|-------------------------------|--------|----------|------------|
 | 001  | `001.routing_foundation.md`   | done   | PASS     | 2026-05-03 |
-| 002  | `002.api_client.md`           | planned | —       |            |
+| 002  | `002.api_client.md`           | done   | PASS     | 2026-05-04 |
 | 003  | `003.component_reorg.md`      | planned | —       |            |
 | 003b | `003b.hooks_to_components.md` | planned | —       |            |
 | 004  | `004.user_non_chat_pages.md`  | planned | —       |            |
@@ -42,7 +42,26 @@ Already applied (locked decisions baked into the docs before any step is planned
 - `frontend/src/user/CLAUDE.md` — note `routes.tsx` and `BrowserRouter` location
 - `frontend/src/admin/CLAUDE.md` — note `routes.tsx` and `BrowserRouter basename="/admin"`
 
+### Step 002 — API client.ts + ApiError + AbortSignal
+- `frontend/src/api/client.ts` — new: `request<T>`, `authHeaders`, `ApiError`, `throwApiError`, `RequestOptions`
+- `frontend/src/api/request.ts` — deleted (replaced by `client.ts`)
+- `frontend/src/api/admin.ts` — switch to `request`, add `signal?` to all 5 fns, plain-object bodies
+- `frontend/src/api/auth.ts` — internal `noAuthRequest` helper using `throwApiError`; `signal?` on all 5 fns
+- `frontend/src/api/chat.ts` — `signal?` on 16 JSON fns, plain-object bodies; streaming fns unchanged (re-import `authHeaders`/`request` from `./client`)
+- `frontend/src/api/dbManagement.ts` — `signal?` on 6 fns; export/import use `throwApiError`
+- `frontend/src/api/llmChat.ts` — `signal?` on `fetchEnabledModels`; rename param `request` -> `req` to avoid shadow
+- `frontend/src/api/llmServers.ts` — `signal?` on all 8 fns, plain-object bodies
+- `frontend/src/api/pipelines.ts` — `signal?` on all 6 fns, plain-object bodies
+- `frontend/src/api/sse.ts` — `authHeaders` import path -> `./client`
+- `frontend/src/api/translateStream.ts` — `authHeaders` import path -> `./client`
+- `frontend/src/api/userSettings.ts` — `signal?` on all 3 fns, plain-object body
+- `frontend/src/api/worlds.ts` — `signal?` on 24 JSON fns, plain-object bodies; multipart/blob fns use `throwApiError` and forward `signal`
+- `frontend/src/user/pages/CharacterSetupPage.tsx` — import `request` from `api/client`
+- `frontend/src/user/components/ChatSettingsPanel.tsx` — import `request` from `api/client`
+- `frontend/src/api/CLAUDE.md` — document new conventions, file list
+
 ## Notes & Issues
 
 - Step 001: many stray compiled `.js` files exist alongside `.tsx` files across `frontend/src/` (visible as untracked files). Out of scope for this step; they appear to be leftovers from a prior `tsc` run with emit. A future cleanup step (or a `tsconfig` `noEmit` check) should remove them and ensure they cannot be re-emitted.
 - Step 001: Verifier was self-run by the coder (no `step-verifier` agent invocation tool available in this session). All acceptance criteria walked through manually against code; build (`npm run build` = `tsc && vite build`) green; no `window.location.pathname` remains in either `App.tsx`; no page or login files modified.
+- Step 002: `step-verifier` agent returned PASS on all 11 acceptance criteria, build, and convention checks (run 2026-05-04). Live dev-server smoke test (criterion 9) was not executed — relies on a running backend; the build-time path is fully covered by tsc.

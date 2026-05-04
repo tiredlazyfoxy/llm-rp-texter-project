@@ -1,6 +1,6 @@
 import type { TranslateRequest } from "../types/llmChat";
 import type { TranslateStreamHandlers } from "../hooks/useTranslation";
-import { authHeaders, authRequest } from "./request";
+import { authHeaders, request } from "./client";
 import { streamTranslate } from "./translateStream";
 
 export interface ChatSSEHandlers {
@@ -22,61 +22,65 @@ export function translateTextChat(req: TranslateRequest, handlers: TranslateStre
   return streamTranslate("/api/chats/translate", req, handlers);
 }
 
-export async function listPublicWorlds(): Promise<WorldInfo[]> {
-  return authRequest<WorldInfo[]>("/api/chats/worlds");
+export async function listPublicWorlds(signal?: AbortSignal): Promise<WorldInfo[]> {
+  return request<WorldInfo[]>("/api/chats/worlds", { signal });
 }
 
-export async function createChat(req: CreateChatRequest): Promise<ChatSession> {
-  return authRequest<ChatSession>("/api/chats", {
+export async function createChat(req: CreateChatRequest, signal?: AbortSignal): Promise<ChatSession> {
+  return request<ChatSession>("/api/chats", {
     method: "POST",
-    body: JSON.stringify(req),
+    body: req,
+    signal,
   });
 }
 
-export async function listMyChats(): Promise<ChatSessionItem[]> {
-  const res = await authRequest<{ items: ChatSessionItem[] }>("/api/chats");
+export async function listMyChats(signal?: AbortSignal): Promise<ChatSessionItem[]> {
+  const res = await request<{ items: ChatSessionItem[] }>("/api/chats", { signal });
   return res.items;
 }
 
-export async function getChatDetail(chatId: string): Promise<ChatDetail> {
-  return authRequest<ChatDetail>(`/api/chats/${chatId}`);
+export async function getChatDetail(chatId: string, signal?: AbortSignal): Promise<ChatDetail> {
+  return request<ChatDetail>(`/api/chats/${chatId}`, { signal });
 }
 
-export async function continueChat(chatId: string, req: ContinueRequest): Promise<void> {
-  await authRequest(`/api/chats/${chatId}/continue`, {
+export async function continueChat(chatId: string, req: ContinueRequest, signal?: AbortSignal): Promise<void> {
+  await request(`/api/chats/${chatId}/continue`, {
     method: "POST",
-    body: JSON.stringify(req),
+    body: req,
+    signal,
   });
 }
 
-export async function rewindChat(chatId: string, req: RewindRequest): Promise<ChatDetail> {
-  return authRequest<ChatDetail>(`/api/chats/${chatId}/rewind`, {
+export async function rewindChat(chatId: string, req: RewindRequest, signal?: AbortSignal): Promise<ChatDetail> {
+  return request<ChatDetail>(`/api/chats/${chatId}/rewind`, {
     method: "POST",
-    body: JSON.stringify(req),
+    body: req,
+    signal,
   });
 }
 
-export async function updateChatSettings(chatId: string, req: UpdateChatSettingsRequest): Promise<void> {
-  await authRequest(`/api/chats/${chatId}/settings`, {
+export async function updateChatSettings(chatId: string, req: UpdateChatSettingsRequest, signal?: AbortSignal): Promise<void> {
+  await request(`/api/chats/${chatId}/settings`, {
     method: "PUT",
-    body: JSON.stringify(req),
+    body: req,
+    signal,
   });
 }
 
-export async function archiveChat(chatId: string): Promise<void> {
-  await authRequest(`/api/chats/${chatId}/archive`, { method: "PUT" });
+export async function archiveChat(chatId: string, signal?: AbortSignal): Promise<void> {
+  await request(`/api/chats/${chatId}/archive`, { method: "PUT", signal });
 }
 
-export async function deleteChat(chatId: string): Promise<void> {
-  await authRequest(`/api/chats/${chatId}`, { method: "DELETE" });
+export async function deleteChat(chatId: string, signal?: AbortSignal): Promise<void> {
+  await request(`/api/chats/${chatId}`, { method: "DELETE", signal });
 }
 
-export async function listChatMemories(chatId: string): Promise<ChatMemoryItem[]> {
-  return authRequest<ChatMemoryItem[]>(`/api/chats/${chatId}/memories`);
+export async function listChatMemories(chatId: string, signal?: AbortSignal): Promise<ChatMemoryItem[]> {
+  return request<ChatMemoryItem[]>(`/api/chats/${chatId}/memories`, { signal });
 }
 
-export async function deleteChatMemory(chatId: string, memoryId: string): Promise<void> {
-  await authRequest(`/api/chats/${chatId}/memories/${memoryId}`, { method: "DELETE" });
+export async function deleteChatMemory(chatId: string, memoryId: string, signal?: AbortSignal): Promise<void> {
+  await request(`/api/chats/${chatId}/memories/${memoryId}`, { method: "DELETE", signal });
 }
 
 export interface CompactSSEHandlers {
@@ -170,23 +174,25 @@ export function compactChatStream(
   return controller;
 }
 
-export async function unsummarizeLast(chatId: string, summaryId: string): Promise<ChatMessage[]> {
-  return authRequest<ChatMessage[]>(`/api/chats/${chatId}/summaries/${summaryId}`, {
+export async function unsummarizeLast(chatId: string, summaryId: string, signal?: AbortSignal): Promise<ChatMessage[]> {
+  return request<ChatMessage[]>(`/api/chats/${chatId}/summaries/${summaryId}`, {
     method: "DELETE",
+    signal,
   });
 }
 
-export async function listSummaries(chatId: string): Promise<ChatSummary[]> {
-  return authRequest<ChatSummary[]>(`/api/chats/${chatId}/summaries`);
+export async function listSummaries(chatId: string, signal?: AbortSignal): Promise<ChatSummary[]> {
+  return request<ChatSummary[]>(`/api/chats/${chatId}/summaries`, { signal });
 }
 
-export async function getOriginalMessages(chatId: string, summaryId: string): Promise<ChatMessage[]> {
-  return authRequest<ChatMessage[]>(`/api/chats/${chatId}/summaries/${summaryId}/messages`);
+export async function getOriginalMessages(chatId: string, summaryId: string, signal?: AbortSignal): Promise<ChatMessage[]> {
+  return request<ChatMessage[]>(`/api/chats/${chatId}/summaries/${summaryId}/messages`, { signal });
 }
 
-export async function regenerateSummary(chatId: string, summaryId: string): Promise<ChatSummary> {
-  return authRequest<ChatSummary>(`/api/chats/${chatId}/summaries/${summaryId}/regenerate`, {
+export async function regenerateSummary(chatId: string, summaryId: string, signal?: AbortSignal): Promise<ChatSummary> {
+  return request<ChatSummary>(`/api/chats/${chatId}/summaries/${summaryId}/regenerate`, {
     method: "POST",
+    signal,
   });
 }
 
@@ -319,15 +325,17 @@ export function regenerateMessage(
   return _streamChat(`/api/chats/${chatId}/regenerate`, body, handlers);
 }
 
-export async function editMessage(chatId: string, messageId: string, content: string): Promise<ChatDetail> {
-  return authRequest<ChatDetail>(`/api/chats/${chatId}/messages/${messageId}`, {
+export async function editMessage(chatId: string, messageId: string, content: string, signal?: AbortSignal): Promise<ChatDetail> {
+  return request<ChatDetail>(`/api/chats/${chatId}/messages/${messageId}`, {
     method: "PUT",
-    body: JSON.stringify({ content }),
+    body: { content },
+    signal,
   });
 }
 
-export async function deleteMessage(chatId: string, messageId: string): Promise<ChatDetail> {
-  return authRequest<ChatDetail>(`/api/chats/${chatId}/messages/${messageId}`, {
+export async function deleteMessage(chatId: string, messageId: string, signal?: AbortSignal): Promise<ChatDetail> {
+  return request<ChatDetail>(`/api/chats/${chatId}/messages/${messageId}`, {
     method: "DELETE",
+    signal,
   });
 }

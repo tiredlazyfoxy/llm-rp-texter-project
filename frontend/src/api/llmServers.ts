@@ -1,4 +1,4 @@
-import { authRequest } from "./request";
+import { request } from "./client";
 import type {
   AvailableModelsResponse,
   CreateLlmServerRequest,
@@ -9,39 +9,45 @@ import type {
 
 const BASE = "/api/admin/llm-servers";
 
-export async function listServers(): Promise<LlmServerItem[]> {
-  const res = await authRequest<LlmServersListResponse>(BASE);
+export async function listServers(signal?: AbortSignal): Promise<LlmServerItem[]> {
+  const res = await request<LlmServersListResponse>(BASE, { signal });
   return res.items;
 }
 
 export async function createServer(
   data: CreateLlmServerRequest,
+  signal?: AbortSignal,
 ): Promise<LlmServerItem> {
-  return authRequest<LlmServerItem>(BASE, {
+  return request<LlmServerItem>(BASE, {
     method: "POST",
-    body: JSON.stringify(data),
+    body: data,
+    signal,
   });
 }
 
 export async function updateServer(
   id: string,
   data: UpdateLlmServerRequest,
+  signal?: AbortSignal,
 ): Promise<LlmServerItem> {
-  return authRequest<LlmServerItem>(`${BASE}/${id}`, {
+  return request<LlmServerItem>(`${BASE}/${id}`, {
     method: "PUT",
-    body: JSON.stringify(data),
+    body: data,
+    signal,
   });
 }
 
-export async function deleteServer(id: string): Promise<void> {
-  return authRequest<void>(`${BASE}/${id}`, {
+export async function deleteServer(id: string, signal?: AbortSignal): Promise<void> {
+  return request<void>(`${BASE}/${id}`, {
     method: "DELETE",
+    signal,
   });
 }
 
-export async function probeModels(id: string): Promise<string[]> {
-  const res = await authRequest<AvailableModelsResponse>(
+export async function probeModels(id: string, signal?: AbortSignal): Promise<string[]> {
+  const res = await request<AvailableModelsResponse>(
     `${BASE}/${id}/available-models`,
+    { signal },
   );
   return res.models;
 }
@@ -49,25 +55,30 @@ export async function probeModels(id: string): Promise<string[]> {
 export async function setEnabledModels(
   id: string,
   models: string[],
+  signal?: AbortSignal,
 ): Promise<LlmServerItem> {
-  return authRequest<LlmServerItem>(`${BASE}/${id}/enabled-models`, {
+  return request<LlmServerItem>(`${BASE}/${id}/enabled-models`, {
     method: "PUT",
-    body: JSON.stringify({ enabled_models: models }),
+    body: { enabled_models: models },
+    signal,
   });
 }
 
 export async function setEmbedding(
   id: string,
   model: string,
+  signal?: AbortSignal,
 ): Promise<LlmServerItem> {
-  return authRequest<LlmServerItem>(`${BASE}/${id}/embedding`, {
+  return request<LlmServerItem>(`${BASE}/${id}/embedding`, {
     method: "PUT",
-    body: JSON.stringify({ model }),
+    body: { model },
+    signal,
   });
 }
 
-export async function clearEmbedding(): Promise<void> {
-  return authRequest<void>(`${BASE}/embedding`, {
+export async function clearEmbedding(signal?: AbortSignal): Promise<void> {
+  return request<void>(`${BASE}/embedding`, {
     method: "DELETE",
+    signal,
   });
 }

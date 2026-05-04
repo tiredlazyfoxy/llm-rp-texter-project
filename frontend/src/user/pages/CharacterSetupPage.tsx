@@ -12,7 +12,7 @@ import {
   Title,
 } from "@mantine/core";
 import { listPublicWorlds, createChat } from "../../api/chat";
-import { authRequest } from "../../api/request";
+import { request } from "../../api/client";
 import ReactMarkdown from "react-markdown";
 import { loadToolModel, loadTextModel, saveToolModel, saveTextModel } from "../../utils/modelSettings";
 
@@ -95,7 +95,7 @@ export function CharacterSetupPage() {
       if (w.locations.length > 0) setLocationId(w.locations[0].id);
     }).catch(() => {});
 
-    authRequest<{ models: EnabledModelInfo[] }>("/api/chats/models").then((res) => {
+    request<{ models: EnabledModelInfo[] }>("/api/chats/models").then((res) => {
       setAvailableModels(res.models);
       if (res.models.length > 0) {
         const ids = res.models.map((m) => m.model_id);

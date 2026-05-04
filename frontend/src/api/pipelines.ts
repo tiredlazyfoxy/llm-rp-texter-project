@@ -1,4 +1,4 @@
-import { authRequest } from "./request";
+import { request } from "./client";
 import type {
   CreatePipelineRequest,
   PipelineConfigOptions,
@@ -9,35 +9,38 @@ import type {
 
 const BASE = "/api/admin/pipelines";
 
-export async function listPipelines(): Promise<PipelineItem[]> {
-  const res = await authRequest<PipelinesListResponse>(BASE);
+export async function listPipelines(signal?: AbortSignal): Promise<PipelineItem[]> {
+  const res = await request<PipelinesListResponse>(BASE, { signal });
   return res.items;
 }
 
-export async function getPipeline(id: string): Promise<PipelineItem> {
-  return authRequest<PipelineItem>(`${BASE}/${id}`);
+export async function getPipeline(id: string, signal?: AbortSignal): Promise<PipelineItem> {
+  return request<PipelineItem>(`${BASE}/${id}`, { signal });
 }
 
-export async function createPipeline(data: CreatePipelineRequest): Promise<PipelineItem> {
-  return authRequest<PipelineItem>(BASE, {
+export async function createPipeline(data: CreatePipelineRequest, signal?: AbortSignal): Promise<PipelineItem> {
+  return request<PipelineItem>(BASE, {
     method: "POST",
-    body: JSON.stringify(data),
+    body: data,
+    signal,
   });
 }
 
-export async function updatePipeline(id: string, data: UpdatePipelineRequest): Promise<PipelineItem> {
-  return authRequest<PipelineItem>(`${BASE}/${id}`, {
+export async function updatePipeline(id: string, data: UpdatePipelineRequest, signal?: AbortSignal): Promise<PipelineItem> {
+  return request<PipelineItem>(`${BASE}/${id}`, {
     method: "PUT",
-    body: JSON.stringify(data),
+    body: data,
+    signal,
   });
 }
 
-export async function deletePipeline(id: string): Promise<void> {
-  return authRequest<void>(`${BASE}/${id}`, {
+export async function deletePipeline(id: string, signal?: AbortSignal): Promise<void> {
+  return request<void>(`${BASE}/${id}`, {
     method: "DELETE",
+    signal,
   });
 }
 
-export async function getPipelineConfigOptions(): Promise<PipelineConfigOptions> {
-  return authRequest<PipelineConfigOptions>(`${BASE}/config-options`);
+export async function getPipelineConfigOptions(signal?: AbortSignal): Promise<PipelineConfigOptions> {
+  return request<PipelineConfigOptions>(`${BASE}/config-options`, { signal });
 }

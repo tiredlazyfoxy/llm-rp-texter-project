@@ -1,5 +1,5 @@
 import type { SSEHandlers } from "../types/llmChat";
-import { authHeaders } from "./request";
+import { authHeaders } from "./client";
 
 /**
  * POST a JSON body and stream the response as server-sent events.
