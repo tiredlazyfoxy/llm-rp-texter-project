@@ -1,27 +1,36 @@
 import { useEffect, useState } from "react";
-import { Button, Container, Group, Skeleton, Title } from "@mantine/core";
+import { observer } from "mobx-react-lite";
+import { useNavigate } from "react-router-dom";
+import { Button, Container, Group, Skeleton, Text, Title } from "@mantine/core";
 import ReactMarkdown from "react-markdown";
-import { listPublicWorlds } from "../../api/chat";
 import { getCurrentUser } from "../../auth";
+import { WorldPageState, loadWorld } from "./worldPageState";
 
-function _worldIdFromPath(): string {
-  const match = window.location.pathname.match(/\/worlds\/(\d+)$/);
-  return match?.[1] ?? "";
+interface WorldPageProps {
+  worldId: string;
 }
 
-export function WorldPage() {
-  const worldId = _worldIdFromPath();
-  const [world, setWorld] = useState<WorldInfo | null>(null);
+export const WorldPage = observer(function WorldPage({ worldId }: WorldPageProps) {
+  const [state] = useState(() => new WorldPageState(worldId));
+  const navigate = useNavigate();
   const user = getCurrentUser();
   const canEdit = user?.role === "editor" || user?.role === "admin";
 
   useEffect(() => {
-    listPublicWorlds().then((worlds) => {
-      setWorld(worlds.find((w) => w.id === worldId) ?? null);
-    }).catch(() => {});
-  }, [worldId]);
+    const ctrl = new AbortController();
+    loadWorld(state, ctrl.signal);
+    return () => ctrl.abort();
+  }, []);
 
-  if (!world) {
+  if (state.worldStatus === "error") {
+    return (
+      <Container size="sm" py="xl">
+        <Text c="red">{state.worldError}</Text>
+      </Container>
+    );
+  }
+
+  if (state.world === null) {
     return (
       <Container size="sm" py="xl">
         <Skeleton height={32} mb="md" />
@@ -32,6 +41,7 @@ export function WorldPage() {
     );
   }
 
+  const world = state.world;
   return (
     <Container size="sm" py="xl">
       <Title order={2} mb="sm">{world.name}</Title>
@@ -39,7 +49,7 @@ export function WorldPage() {
         <ReactMarkdown>{world.description || "No description."}</ReactMarkdown>
       </div>
       <Group>
-        <Button component="a" href={`/worlds/${world.id}/new`}>
+        <Button onClick={() => navigate(`/worlds/${world.id}/new`)}>
           Start New Chat
         </Button>
         {canEdit && (
@@ -50,4 +60,4 @@ export function WorldPage() {
       </Group>
     </Container>
   );
-}
+});

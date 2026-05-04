@@ -23,7 +23,7 @@ Already applied (locked decisions baked into the docs before any step is planned
 | 002  | `002.api_client.md`           | done   | PASS     | 2026-05-04 |
 | 003  | `003.component_reorg.md`      | done   | PASS     | 2026-05-04 |
 | 003b | `003b.hooks_to_components.md` | done   | PASS     | 2026-05-04 |
-| 004  | `004.user_non_chat_pages.md`  | planned | —       |            |
+| 004  | `004.user_non_chat_pages.md`  | done   | PASS     | 2026-05-04 |
 | 005  | `005.chat_refactor.md`        | planned | —       |            |
 | 006  | `006.admin_worlds_domain.md`  | planned | —       |            |
 | 007  | `007.admin_pipelines_domain.md` | planned | —     |            |
@@ -79,6 +79,16 @@ Already applied (locked decisions baked into the docs before any step is planned
 - `frontend/src/admin/CLAUDE.md` — dropped `hooks/` line; added `PlaceholderTextarea` (+ `placeholderAutocompleteState.ts`) to the `pipelines/` listing
 - `frontend/src/components/CLAUDE.md` — new: documents `LlmInputBar` + `llmInputState.ts` alongside layout shells; codifies the wrapper-component-with-`<Component>State` pattern
 
+### Step 004 — User SPA non-chat pages
+- `frontend/src/user/pages/chatListPageState.ts` — new: `ChatListPageState` + `loadChats`, `deleteSelectedChat`
+- `frontend/src/user/pages/worldPageState.ts` — new: `WorldPageState(worldId)` + `loadWorld`
+- `frontend/src/user/pages/characterSetupPageState.ts` — new: `CharacterSetupPageState(worldId)` (placeholders/canSubmit computeds) + `loadCharacterSetup`, `submitCharacter`
+- `frontend/src/user/pages/ChatListPage.tsx` — observer rewrite: page-owned state, `useNavigate`, single mount/unmount `useEffect`
+- `frontend/src/user/pages/WorldPage.tsx` — observer rewrite: takes `worldId` prop, error path renders message instead of indefinite skeleton
+- `frontend/src/user/pages/CharacterSetupPage.tsx` — observer rewrite: takes `worldId` prop, uses `fetchModelsForSettings`, `ModelSection` wrapped in `observer` and inlined
+- `frontend/src/user/routes.tsx` — `WorldPageRoute`/`CharacterSetupPageRoute` now pass `worldId` as both `key` and prop
+- `frontend/src/user/CLAUDE.md` — page list shows page+state pairs; routes section drops stale `WorldSelectPage`, adds `/worlds/:worldId`
+
 ### Step 003 — Component folder reorg
 - `frontend/src/user/components/chats/ChatInput.tsx` — moved from `user/components/`; sibling-import paths updated to `../../`
 - `frontend/src/user/components/chats/ChatMemoriesModal.tsx` — moved; imports updated
@@ -112,3 +122,4 @@ Already applied (locked decisions baked into the docs before any step is planned
 - Step 002: `step-verifier` agent returned PASS on all 11 acceptance criteria, build, and convention checks (run 2026-05-04). Live dev-server smoke test (criterion 9) was not executed — relies on a running backend; the build-time path is fully covered by tsc.
 - Step 003b: planner missed `admin/pages/WorldFieldEditPage.tsx` as a fourth caller of `usePlaceholderAutocomplete`. Acceptance criteria #4/#5/#6 (no `hooks/` dirs, zero hook-name matches, build green) couldn't be met without touching it. Migrated minimally — the autocomplete branch was already dead (`isPipelinePrompt = false` constant), so the change is dead-code removal + conditional `<PlaceholderTextarea>` for the unreachable pipeline-prompt branch. No behavior change.
 - Step 003b: `step-verifier` agent not invoked from this CLI session; coder self-verified all 8 acceptance criteria — four new files exist, types moved, no hook imports remain in `.ts/.tsx`, both `hooks/` directories removed, grep clean across `.ts/.tsx`, `npm run build` green, CLAUDE.md updates applied. Live dev-server smoke (criterion 7) was not executed — relies on a running backend; the compile-time path is fully covered by tsc.
+- Step 004: `step-verifier` agent not invoked from this CLI session; coder self-verified all 12 acceptance criteria — three new state files exist with required classes + external fns, three pages observer-wrapped with single `useState(() => new ...)` + single mount/unmount `useEffect`, props/no-props split as specified, `routes.tsx` wrappers pass `worldId` as both `key` and prop, grep across the three pages returns zero matches for `window.location.pathname`, `window.location.href = `, `from "../../api/request"`, and any `useState(` other than `useState((`, `npm run build` green, `user/CLAUDE.md` refreshed, `ChatViewPage`/`ChatStore`/admin/components untouched. Live dev-server smoke (criterion 10) not executed — relies on a running backend; the compile-time path is fully covered by tsc.

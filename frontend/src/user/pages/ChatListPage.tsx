@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useNavigate } from "react-router-dom";
 import {
   ActionIcon,
   Button,
@@ -10,27 +12,22 @@ import {
   Title,
 } from "@mantine/core";
 import { IconTrash } from "@tabler/icons-react";
-import { listMyChats, deleteChat } from "../../api/chat";
 import { formatDate } from "../../utils/formatDate";
+import {
+  ChatListPageState,
+  loadChats,
+  deleteSelectedChat,
+} from "./chatListPageState";
 
-export function ChatListPage() {
-  const [chats, setChats] = useState<ChatSessionItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deleteTarget, setDeleteTarget] = useState<ChatSessionItem | null>(null);
+export const ChatListPage = observer(function ChatListPage() {
+  const [state] = useState(() => new ChatListPageState());
+  const navigate = useNavigate();
 
   useEffect(() => {
-    listMyChats()
-      .then(setChats)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    const ctrl = new AbortController();
+    loadChats(state, ctrl.signal);
+    return () => ctrl.abort();
   }, []);
-
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    await deleteChat(deleteTarget.id).catch(() => {});
-    setChats((prev) => prev.filter((c) => c.id !== deleteTarget.id));
-    setDeleteTarget(null);
-  }
 
   return (
     <Container size="lg" py="md">
@@ -38,9 +35,11 @@ export function ChatListPage() {
         <Title order={3}>My Chats</Title>
       </Group>
 
-      {loading ? (
+      {state.chatsStatus === "loading" || state.chatsStatus === "idle" ? (
         <Text c="dimmed">Loading…</Text>
-      ) : chats.length === 0 ? (
+      ) : state.chatsStatus === "error" ? (
+        <Text c="red">{state.chatsError}</Text>
+      ) : state.chats.length === 0 ? (
         <Text c="dimmed">No chats yet. Click a world in the sidebar to start one.</Text>
       ) : (
         <Table striped highlightOnHover>
@@ -54,11 +53,11 @@ export function ChatListPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {chats.map((chat) => (
+            {state.chats.map((chat) => (
               <Table.Tr
                 key={chat.id}
                 style={{ cursor: "pointer" }}
-                onClick={() => { window.location.href = `/chat/${chat.id}`; }}
+                onClick={() => navigate(`/chat/${chat.id}`)}
               >
                 <Table.Td>{chat.world_name}</Table.Td>
                 <Table.Td>{chat.character_name}</Table.Td>
@@ -69,7 +68,10 @@ export function ChatListPage() {
                     variant="subtle"
                     color="red"
                     size="sm"
-                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(chat); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      state.deleteTarget = chat;
+                    }}
                   >
                     <IconTrash size={14} />
                   </ActionIcon>
@@ -81,19 +83,31 @@ export function ChatListPage() {
       )}
 
       <Modal
-        opened={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
+        opened={state.deleteTarget !== null}
+        onClose={() => { state.deleteTarget = null; }}
         title="Delete chat?"
         size="sm"
       >
         <Text size="sm" mb="md">
-          Delete "{deleteTarget?.character_name}" in {deleteTarget?.world_name}? This cannot be undone.
+          Delete "{state.deleteTarget?.character_name}" in {state.deleteTarget?.world_name}? This cannot be undone.
         </Text>
+        {state.deleteStatus === "error" && (
+          <Text c="red" size="sm" mb="md">{state.deleteError}</Text>
+        )}
         <Group justify="flex-end">
-          <Button variant="subtle" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-          <Button color="red" onClick={handleDelete}>Delete</Button>
+          <Button variant="subtle" onClick={() => { state.deleteTarget = null; }}>Cancel</Button>
+          <Button
+            color="red"
+            loading={state.deleteStatus === "loading"}
+            onClick={() => {
+              const ctrl = new AbortController();
+              deleteSelectedChat(state, ctrl.signal);
+            }}
+          >
+            Delete
+          </Button>
         </Group>
       </Modal>
     </Container>
   );
-}
+});

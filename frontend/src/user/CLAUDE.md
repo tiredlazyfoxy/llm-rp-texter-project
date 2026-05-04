@@ -5,8 +5,12 @@ User SPA — player-facing chat interface (served at `/`).
 ```
 user/
   App.tsx, main.tsx
-  routes.tsx         — React Router route table (UserRoutes); per-path-param wrappers pass key={id}
-  pages/             — ChatListPage, WorldSelectPage, CharacterSetupPage, ChatViewPage
+  routes.tsx         — React Router route table (UserRoutes); per-path-param wrappers pass key={id} + worldId prop
+  pages/             — Each non-chat page is a (`<Page>.tsx` + `<page>PageState.ts`) pair:
+                       ChatListPage / chatListPageState,
+                       WorldPage    / worldPageState,
+                       CharacterSetupPage / characterSetupPageState,
+                       ChatViewPage (still on the legacy ChatStore singleton — refactored in step 005)
   components/
     UserSidebar.tsx  — layout shell (kept at top level, not a domain component)
     chats/           — ChatInput, ChatMemoriesModal, ChatSettingsPanel,
@@ -23,6 +27,6 @@ Routing uses `react-router-dom`'s `BrowserRouter` mounted in `App.tsx`; the `<Ro
 ## Routes
 
 - `/` — ChatListPage (user's existing chats)
-- `/worlds` — WorldSelectPage (pick a public world)
+- `/worlds/:worldId` — WorldPage (single world overview + Start New Chat / Edit World)
 - `/worlds/:worldId/new` — CharacterSetupPage (fill template, pick location/model)
 - `/chat/:chatId` — ChatViewPage (main chat with SSE streaming)

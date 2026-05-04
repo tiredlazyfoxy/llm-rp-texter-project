@@ -6,12 +6,12 @@ import { WorldPage } from "./pages/WorldPage";
 
 const WorldPageRoute = () => {
   const { worldId } = useParams<{ worldId: string }>();
-  return <WorldPage key={worldId} />;
+  return <WorldPage key={worldId} worldId={worldId!} />;
 };
 
 const CharacterSetupPageRoute = () => {
   const { worldId } = useParams<{ worldId: string }>();
-  return <CharacterSetupPage key={worldId} />;
+  return <CharacterSetupPage key={worldId} worldId={worldId!} />;
 };
 
 const ChatViewPageRoute = () => {

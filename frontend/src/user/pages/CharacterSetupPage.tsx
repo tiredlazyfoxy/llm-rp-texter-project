@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useNavigate } from "react-router-dom";
 import {
   Button,
   Container,
@@ -11,23 +13,16 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { listPublicWorlds, createChat } from "../../api/chat";
-import { request } from "../../api/client";
 import ReactMarkdown from "react-markdown";
-import { loadToolModel, loadTextModel, saveToolModel, saveTextModel } from "../../utils/modelSettings";
+import type { EnabledModelInfo } from "../../types/llmServer";
+import { saveToolModel, saveTextModel } from "../../utils/modelSettings";
+import {
+  CharacterSetupPageState,
+  loadCharacterSetup,
+  submitCharacter,
+} from "./characterSetupPageState";
 
-interface EnabledModelInfo {
-  server_id: string;
-  server_name: string;
-  model_id: string;
-}
-
-function _worldIdFromPath(): string {
-  const match = window.location.pathname.match(/\/worlds\/(\d+)\/new/);
-  return match?.[1] ?? "";
-}
-
-function ModelSection({
+const ModelSection = observer(function ModelSection({
   label,
   model,
   onChange,
@@ -69,66 +64,46 @@ function ModelSection({
       />
     </Stack>
   );
+});
+
+interface CharacterSetupPageProps {
+  worldId: string;
 }
 
-export function CharacterSetupPage() {
-  const worldId = _worldIdFromPath();
-  const [world, setWorld] = useState<WorldInfo | null>(null);
-  const [availableModels, setAvailableModels] = useState<EnabledModelInfo[]>([]);
-  const [placeholders, setPlaceholders] = useState<string[]>([]);
-  const [variables, setVariables] = useState<Record<string, string>>({});
-  const [locationId, setLocationId] = useState<string>("");
-  const [toolModel, setToolModel] = useState<ModelConfig>(loadToolModel);
-  const [textModel, setTextModel] = useState<ModelConfig>(loadTextModel);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+export const CharacterSetupPage = observer(function CharacterSetupPage({
+  worldId,
+}: CharacterSetupPageProps) {
+  const [state] = useState(() => new CharacterSetupPageState(worldId));
+  const navigate = useNavigate();
 
   useEffect(() => {
-    listPublicWorlds().then((worlds) => {
-      const w = worlds.find((w) => w.id === worldId);
-      if (!w) return;
-      setWorld(w);
-      // Extract {PLACEHOLDER} tokens
-      const phs = [...new Set([...w.character_template.matchAll(/\{([A-Z_]+)\}/g)].map((m) => m[1]))];
-      setPlaceholders(phs);
-      setVariables(Object.fromEntries(phs.map((p) => [p, ""])));
-      if (w.locations.length > 0) setLocationId(w.locations[0].id);
-    }).catch(() => {});
-
-    request<{ models: EnabledModelInfo[] }>("/api/chats/models").then((res) => {
-      setAvailableModels(res.models);
-      if (res.models.length > 0) {
-        const ids = res.models.map((m) => m.model_id);
-        // If saved model_id is not in available list, fall back to first
-        setToolModel((prev) => ids.includes(prev.model_id ?? "") ? prev : { ...prev, model_id: res.models[0].model_id });
-        setTextModel((prev) => ids.includes(prev.model_id ?? "") ? prev : { ...prev, model_id: res.models[0].model_id });
-      }
-    }).catch(() => {});
-  }, [worldId]);
+    const ctrl = new AbortController();
+    loadCharacterSetup(state, ctrl.signal);
+    return () => ctrl.abort();
+  }, []);
 
   async function handleSubmit() {
-    if (!world) return;
-    setError(null);
-    setSubmitting(true);
-    try {
-      const session = await createChat({
-        world_id: worldId,
-        character_name: variables["NAME"] || variables[placeholders[0]] || "Hero",
-        template_variables: variables,
-        starting_location_id: locationId,
-        tool_model: toolModel,
-        text_model: textModel,
-      });
-      window.location.href = `/chat/${session.id}`;
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSubmitting(false);
+    if (!state.canSubmit) return;
+    const ctrl = new AbortController();
+    const sessionId = await submitCharacter(state, ctrl.signal);
+    if (sessionId !== null) {
+      navigate(`/chat/${sessionId}`);
     }
   }
 
-  if (!world) return <Container size="md" py="md"><Text c="dimmed">Loading…</Text></Container>;
+  if (state.world === null) {
+    return (
+      <Container size="md" py="md">
+        {state.worldStatus === "error" ? (
+          <Text c="red">{state.worldError}</Text>
+        ) : (
+          <Text c="dimmed">Loading…</Text>
+        )}
+      </Container>
+    );
+  }
 
+  const world = state.world;
   return (
     <Container size="md" py="md">
       <Title order={3} mb="xs">{world.name}</Title>
@@ -138,45 +113,49 @@ export function CharacterSetupPage() {
 
       <Divider label="Character" mb="md" />
       <Stack gap="sm" mb="md">
-        {placeholders.map((ph) => (
+        {state.placeholders.map((ph) => (
           <TextInput
             key={ph}
             label={ph.charAt(0) + ph.slice(1).toLowerCase().replace(/_/g, " ")}
-            value={variables[ph] ?? ""}
-            onChange={(e) => setVariables((prev) => ({ ...prev, [ph]: e.target.value }))}
+            value={state.variables[ph] ?? ""}
+            onChange={(e) => { state.variables = { ...state.variables, [ph]: e.target.value }; }}
           />
         ))}
         <Select
           label="Starting location"
-          value={locationId}
+          value={state.locationId}
           data={world.locations.map((l) => ({ value: l.id, label: l.name }))}
-          onChange={(v) => setLocationId(v ?? "")}
+          onChange={(v) => { state.locationId = v ?? ""; }}
         />
       </Stack>
 
       <Divider label="Tooling model" mb="md" />
       <ModelSection
         label="Tooling model"
-        model={toolModel}
-        onChange={(m) => { setToolModel(m); saveToolModel(m); }}
-        availableModels={availableModels}
+        model={state.toolModel}
+        onChange={(m) => { state.toolModel = m; saveToolModel(m); }}
+        availableModels={state.availableModels}
       />
 
       <Divider label="Text model" my="md" />
       <ModelSection
         label="Text model"
-        model={textModel}
-        onChange={(m) => { setTextModel(m); saveTextModel(m); }}
-        availableModels={availableModels}
+        model={state.textModel}
+        onChange={(m) => { state.textModel = m; saveTextModel(m); }}
+        availableModels={state.availableModels}
       />
 
-      {error && <Text c="red" size="sm" mt="md">{error}</Text>}
+      {state.submitError && <Text c="red" size="sm" mt="md">{state.submitError}</Text>}
 
       <Group justify="flex-end" mt="lg">
-        <Button onClick={handleSubmit} loading={submitting}>
+        <Button
+          onClick={handleSubmit}
+          loading={state.submitStatus === "loading"}
+          disabled={!state.canSubmit}
+        >
           Start Adventure
         </Button>
       </Group>
     </Container>
   );
-}
+});
