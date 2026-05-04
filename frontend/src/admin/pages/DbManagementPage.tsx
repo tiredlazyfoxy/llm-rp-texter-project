@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { observer } from "mobx-react-lite";
 import {
   Alert,
   Badge,
@@ -20,7 +21,17 @@ import {
   IconUpload,
 } from "@tabler/icons-react";
 import type { TableStatus } from "../../types/dbManagement";
-import { createTable, exportDb, getDbStatus, importDb, reindexVectors, syncTable } from "../../api/dbManagement";
+import {
+  DbManagementPageState,
+  clearActionError,
+  clearTablesError,
+  createTableAction,
+  exportDbAction,
+  importDbAction,
+  loadDbStatus,
+  reindexVectorsAction,
+  syncTableAction,
+} from "./dbManagementPageState";
 
 // ---------------------------------------------------------------------------
 // Schema detail modal
@@ -144,42 +155,23 @@ function StatusBadge({ status }: { status: string }) {
 // Main page
 // ---------------------------------------------------------------------------
 
-export function DbManagementPage() {
-  const [tables, setTables] = useState<TableStatus[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+export const DbManagementPage = observer(function DbManagementPage() {
+  const [state] = useState(() => new DbManagementPageState());
 
-  // Schema detail modal
+  // Component-local UI state — modal target + hidden file input ref.
   const [detailTarget, setDetailTarget] = useState<TableStatus | null>(null);
-
-  // Hidden file input for import
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setTables(await getDbStatus());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load DB status");
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    const ctrl = new AbortController();
+    void loadDbStatus(state, ctrl.signal);
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
-
   const handleExport = async () => {
-    setActionLoading("export");
-    setError(null);
-    try {
-      await exportDb();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Export failed");
-    } finally {
-      setActionLoading(null);
-    }
+    const ctrl = new AbortController();
+    await exportDbAction(state, ctrl.signal);
   };
 
   const handleImportClick = () => {
@@ -190,63 +182,31 @@ export function DbManagementPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-
-    if (!window.confirm("Import will overwrite existing data. Continue?")) return;
-
-    setActionLoading("import");
-    setError(null);
-    try {
-      await importDb(file);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
-    } finally {
-      setActionLoading(null);
-    }
+    const ctrl = new AbortController();
+    await importDbAction(state, file, ctrl.signal);
   };
 
   const handleCreateTable = async (tableName: string) => {
-    setActionLoading(tableName);
-    setError(null);
-    try {
-      await createTable(tableName);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create table");
-    } finally {
-      setActionLoading(null);
-    }
+    const ctrl = new AbortController();
+    await createTableAction(state, tableName, ctrl.signal);
   };
 
   const handleSync = async (tableName: string) => {
-    setActionLoading(`sync:${tableName}`);
-    setError(null);
-    try {
-      await syncTable(tableName);
-      setDetailTarget(null);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Sync failed");
-    } finally {
-      setActionLoading(null);
-    }
+    const ctrl = new AbortController();
+    const ok = await syncTableAction(state, tableName, ctrl.signal);
+    if (ok) setDetailTarget(null);
   };
 
   const handleReindex = async () => {
-    if (!window.confirm("Rebuild vector index for all world documents? This may take a while.")) return;
+    const ctrl = new AbortController();
+    await reindexVectorsAction(state, ctrl.signal);
+  };
 
-    setActionLoading("reindex");
-    setError(null);
-    try {
-      const result = await reindexVectors();
-      if (!result.success) {
-        setError(result.error ?? "Reindex failed");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Reindex failed");
-    } finally {
-      setActionLoading(null);
-    }
+  const loading = state.tablesStatus === "loading" || state.tablesStatus === "idle";
+  const banner = state.actionError ?? state.tablesError;
+  const clearBanner = () => {
+    if (state.actionError) clearActionError(state);
+    else clearTablesError(state);
   };
 
   return (
@@ -259,7 +219,7 @@ export function DbManagementPage() {
             size="sm"
             leftSection={<IconDownload size={16} />}
             onClick={handleExport}
-            loading={actionLoading === "export"}
+            loading={state.actionLabel === "export"}
           >
             Export All
           </Button>
@@ -268,7 +228,7 @@ export function DbManagementPage() {
             size="sm"
             leftSection={<IconUpload size={16} />}
             onClick={handleImportClick}
-            loading={actionLoading === "import"}
+            loading={state.actionLabel === "import"}
           >
             Import
           </Button>
@@ -277,7 +237,7 @@ export function DbManagementPage() {
             size="sm"
             leftSection={<IconDatabaseSearch size={16} />}
             onClick={handleReindex}
-            loading={actionLoading === "reindex"}
+            loading={state.actionLabel === "reindex"}
           >
             Reindex Vectors
           </Button>
@@ -291,15 +251,15 @@ export function DbManagementPage() {
         </Group>
       </Group>
 
-      {error && (
-        <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>
-          {error}
+      {banner && (
+        <Alert color="red" mb="md" withCloseButton onClose={clearBanner}>
+          {banner}
         </Alert>
       )}
 
       {loading ? (
         <Group justify="center" py="xl"><Loader /></Group>
-      ) : tables.length === 0 ? (
+      ) : state.tables.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No registered models found.</Text>
       ) : (
         <Table striped highlightOnHover>
@@ -313,7 +273,7 @@ export function DbManagementPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {tables.map((t) => (
+            {state.tables.map((t) => (
               <Table.Tr key={t.table_name}>
                 <Table.Td><Text size="sm" fw={500}>{t.class_name}</Text></Table.Td>
                 <Table.Td><Text size="sm" c="dimmed">{t.table_name}</Text></Table.Td>
@@ -330,7 +290,7 @@ export function DbManagementPage() {
                         variant="light"
                         size="compact-xs"
                         leftSection={<IconPlus size={12} />}
-                        loading={actionLoading === t.table_name}
+                        loading={state.actionLabel === `create:${t.table_name}`}
                         onClick={() => handleCreateTable(t.table_name)}
                       >
                         Create
@@ -368,8 +328,8 @@ export function DbManagementPage() {
         table={detailTarget}
         onClose={() => setDetailTarget(null)}
         onSync={handleSync}
-        syncLoading={detailTarget !== null && actionLoading === `sync:${detailTarget.table_name}`}
+        syncLoading={detailTarget !== null && state.actionLabel === `sync:${detailTarget.table_name}`}
       />
     </Container>
   );
-}
+});

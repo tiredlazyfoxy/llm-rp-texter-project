@@ -6,7 +6,7 @@ Admin SPA — world and user management (served at `/admin`).
 admin/
   App.tsx, main.tsx
   routes.tsx         — React Router route table (AdminRoutes); per-path-param wrappers pass key={id} + path-param props
-  pages/             — Pages migrated to MobX use the (`<Page>.tsx` + `<page>PageState.ts`) pair pattern:
+  pages/             — All admin pages follow the (`<Page>.tsx` + `<page>PageState.ts`) pair pattern:
                        WorldsListPage        / worldsListPageState,
                        WorldViewPage         / worldViewPageState,
                        WorldEditPage         / worldEditPageState,
@@ -14,11 +14,15 @@ admin/
                        DocumentEditPage      / documentEditPageState,
                        PipelinesListPage     / pipelinesListPageState,
                        PipelineEditPage      / pipelineEditPageState,
-                       PipelineStageEditPage / pipelineStageEditPageState
-                       Other admin pages (LlmServersPage, DbManagementPage, UsersPage) still use raw
-                       useState/useEffect — migrated in later steps.
+                       PipelineStageEditPage / pipelineStageEditPageState,
+                       UsersPage             / usersPageState,
+                       LlmServersPage        / llmServersPageState,
+                       DbManagementPage      / dbManagementPageState
   components/
-    users/           — CreateUserModal, SetPasswordModal, SetRoleModal
+    users/           — CreateUserModal, SetPasswordModal, SetRoleModal — each is observer-wrapped
+                       and owns a component-local draft class (held via `useState(() => new XDraft())`)
+                       with external `submit*(draft, args, signal)` mutation fns colocated in the
+                       same file.
     pipelines/       — PlaceholderPanel, PlaceholderSuggestions, PlaceholderTextarea (+ placeholderAutocompleteState.ts).
                        PlaceholderTextarea exposes an optional `controllerRef` of type
                        `PlaceholderTextareaController` ({ insertAtCursor(text) }) for callers that

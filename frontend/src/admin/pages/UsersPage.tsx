@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { observer } from "mobx-react-lite";
 import {
   ActionIcon,
   Alert,
@@ -15,53 +16,57 @@ import {
 import { IconDots, IconLock, IconShield, IconUserOff, IconUserPlus } from "@tabler/icons-react";
 import { formatDate } from "../../utils/formatDate";
 import type { AdminUserResponse } from "../../types/admin";
-import { disableUser, listUsers } from "../../api/admin";
 import { CreateUserModal } from "../components/users/CreateUserModal";
 import { SetPasswordModal } from "../components/users/SetPasswordModal";
 import { SetRoleModal } from "../components/users/SetRoleModal";
+import {
+  UsersPageState,
+  clearUsersError,
+  disableUserAction,
+  loadUsers,
+} from "./usersPageState";
 
-export function UsersPage() {
-  const [users, setUsers] = useState<AdminUserResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+function isDisabled(user: AdminUserResponse): boolean {
+  return user.last_login === null && user.role !== "admin";
+}
 
+function fmtDate(iso: string | null): string {
+  return formatDate(iso, "Never");
+}
+
+function roleBadgeColor(role: string): string {
+  if (role === "admin") return "red";
+  if (role === "editor") return "blue";
+  return "gray";
+}
+
+export const UsersPage = observer(function UsersPage() {
+  const [state] = useState(() => new UsersPageState());
+
+  // Component-local UI flags / modal targets — not page data, per
+  // `frontend-state.md` line 41.
   const [createOpen, setCreateOpen] = useState(false);
   const [passwordTarget, setPasswordTarget] = useState<AdminUserResponse | null>(null);
   const [roleTarget, setRoleTarget] = useState<AdminUserResponse | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setUsers(await listUsers());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load users");
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    const ctrl = new AbortController();
+    void loadUsers(state, ctrl.signal);
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const refresh = () => {
+    const ctrl = new AbortController();
+    void loadUsers(state, ctrl.signal);
+  };
 
   const handleDisable = async (user: AdminUserResponse) => {
-    if (!window.confirm(`Disable user "${user.username}"? They will no longer be able to log in.`)) return;
-    try {
-      await disableUser(user.id);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to disable user");
-    }
+    const ctrl = new AbortController();
+    await disableUserAction(state, user, ctrl.signal);
   };
 
-  const isDisabled = (user: AdminUserResponse) => user.last_login === null && user.role !== "admin";
-
-  const fmtDate = (iso: string | null) => formatDate(iso, "Never");
-
-  const roleBadgeColor = (role: string) => {
-    if (role === "admin") return "red";
-    if (role === "editor") return "blue";
-    return "gray";
-  };
+  const loading = state.usersStatus === "loading" || state.usersStatus === "idle";
 
   return (
     <Container size="lg" py="md">
@@ -72,9 +77,9 @@ export function UsersPage() {
         </Button>
       </Group>
 
-      {error && (
-        <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>
-          {error}
+      {state.usersError && (
+        <Alert color="red" mb="md" withCloseButton onClose={() => clearUsersError(state)}>
+          {state.usersError}
         </Alert>
       )}
 
@@ -91,7 +96,7 @@ export function UsersPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {users.map((user) => (
+            {state.users.map((user) => (
               <Table.Tr key={user.id} style={isDisabled(user) ? { opacity: 0.5 } : undefined}>
                 <Table.Td>
                   <Text size="sm">{user.username}</Text>
@@ -166,4 +171,4 @@ export function UsersPage() {
       )}
     </Container>
   );
-}
+});

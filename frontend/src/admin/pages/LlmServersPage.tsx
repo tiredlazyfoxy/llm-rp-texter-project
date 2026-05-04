@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { makeAutoObservable, runInAction } from "mobx";
+import { observer } from "mobx-react-lite";
 import {
   ActionIcon,
   Alert,
@@ -30,24 +32,130 @@ import {
 } from "@tabler/icons-react";
 import type { LlmServerItem } from "../../types/llmServer";
 import {
-  clearEmbedding,
   createServer,
-  deleteServer,
-  listServers,
   probeModels,
   setEmbedding,
   setEnabledModels,
   updateServer,
 } from "../../api/llmServers";
+import {
+  LlmServersPageState,
+  clearEmbeddingAction,
+  clearServersError,
+  deleteServerAction,
+  loadServers,
+} from "./llmServersPageState";
 
-// ---------------------------------------------------------------------------
-// Server form modal (create + edit)
-// ---------------------------------------------------------------------------
+type AsyncStatus = "idle" | "loading" | "ready" | "error";
 
 const BACKEND_OPTIONS = [
   { value: "llama-swap", label: "llama-swap" },
   { value: "openai", label: "OpenAI-compatible" },
 ];
+
+// ---------------------------------------------------------------------------
+// Server form modal — component-local draft
+// ---------------------------------------------------------------------------
+
+class ServerFormDraft {
+  name = "";
+  backendType = "openai";
+  baseUrl = "";
+  apiKey = "";
+  isActive = true;
+
+  saveStatus: AsyncStatus = "idle";
+  saveError: string | null = null;
+
+  constructor() {
+    makeAutoObservable(this);
+  }
+
+  loadFrom(server: LlmServerItem | null): void {
+    if (server) {
+      this.name = server.name;
+      this.backendType = server.backend_type;
+      this.baseUrl = server.base_url;
+      this.apiKey = "";
+      this.isActive = server.is_active;
+    } else {
+      this.name = "";
+      this.backendType = "openai";
+      this.baseUrl = "";
+      this.apiKey = "";
+      this.isActive = true;
+    }
+    this.saveStatus = "idle";
+    this.saveError = null;
+  }
+
+  get errors(): { name?: string; baseUrl?: string } {
+    const e: { name?: string; baseUrl?: string } = {};
+    if (!this.name.trim()) e.name = "Name is required";
+    if (!this.baseUrl.trim()) e.baseUrl = "Base URL is required";
+    return e;
+  }
+
+  get isValid(): boolean {
+    return Object.keys(this.errors).length === 0;
+  }
+
+  get canSubmit(): boolean {
+    return this.isValid && this.saveStatus !== "loading";
+  }
+}
+
+function clearServerFormError(draft: ServerFormDraft): void {
+  draft.saveError = null;
+}
+
+async function submitServerForm(
+  draft: ServerFormDraft,
+  serverId: string | null,
+  signal: AbortSignal,
+): Promise<LlmServerItem | null> {
+  if (!draft.canSubmit) return null;
+  draft.saveStatus = "loading";
+  draft.saveError = null;
+  try {
+    let saved: LlmServerItem;
+    if (serverId !== null) {
+      saved = await updateServer(
+        serverId,
+        {
+          name: draft.name.trim(),
+          backend_type: draft.backendType,
+          base_url: draft.baseUrl.trim(),
+          ...(draft.apiKey ? { api_key: draft.apiKey } : {}),
+          is_active: draft.isActive,
+        },
+        signal,
+      );
+    } else {
+      saved = await createServer(
+        {
+          name: draft.name.trim(),
+          backend_type: draft.backendType,
+          base_url: draft.baseUrl.trim(),
+          api_key: draft.apiKey || null,
+          is_active: draft.isActive,
+        },
+        signal,
+      );
+    }
+    runInAction(() => {
+      draft.saveStatus = "ready";
+    });
+    return saved;
+  } catch (err) {
+    if (signal.aborted) return null;
+    runInAction(() => {
+      draft.saveStatus = "error";
+      draft.saveError = err instanceof Error ? err.message : "Failed to save server";
+    });
+    return null;
+  }
+}
 
 interface ServerFormModalProps {
   opened: boolean;
@@ -57,135 +165,182 @@ interface ServerFormModalProps {
   onModels?: (server: LlmServerItem) => void;
 }
 
-function ServerFormModal({ opened, server, onClose, onSaved, onModels }: ServerFormModalProps) {
+const ServerFormModal = observer(function ServerFormModal({
+  opened,
+  server,
+  onClose,
+  onSaved,
+  onModels,
+}: ServerFormModalProps) {
+  const [draft] = useState(() => new ServerFormDraft());
   const isEdit = server !== null;
 
-  const [name, setName] = useState("");
-  const [backendType, setBackendType] = useState("openai");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [isActive, setIsActive] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
-    if (opened && server) {
-      setName(server.name);
-      setBackendType(server.backend_type);
-      setBaseUrl(server.base_url);
-      setApiKey("");
-      setIsActive(server.is_active);
-    } else if (opened) {
-      setName("");
-      setBackendType("openai");
-      setBaseUrl("");
-      setApiKey("");
-      setIsActive(true);
-    }
-    setError(null);
-    setLoading(false);
-  }, [opened, server]);
-
-  const handleClose = () => {
-    onClose();
-  };
+    if (opened) draft.loadFrom(server);
+  }, [opened, server, draft]);
 
   const handleSubmit = async () => {
-    setError(null);
-    if (!name.trim()) { setError("Name is required"); return; }
-    if (!baseUrl.trim()) { setError("Base URL is required"); return; }
-
-    setLoading(true);
-    try {
-      if (isEdit) {
-        await updateServer(server.id, {
-          name: name.trim(),
-          backend_type: backendType,
-          base_url: baseUrl.trim(),
-          ...(apiKey ? { api_key: apiKey } : {}),
-          is_active: isActive,
-        });
-      } else {
-        await createServer({
-          name: name.trim(),
-          backend_type: backendType,
-          base_url: baseUrl.trim(),
-          api_key: apiKey || null,
-          is_active: isActive,
-        });
-      }
-      handleClose();
+    if (!draft.canSubmit) return;
+    const ctrl = new AbortController();
+    const saved = await submitServerForm(draft, server?.id ?? null, ctrl.signal);
+    if (saved) {
       onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save server");
-    } finally {
-      setLoading(false);
+      onClose();
     }
   };
 
   return (
-    <Modal opened={opened} onClose={handleClose} title={isEdit ? "Edit Server" : "Add Server"} size="md">
+    <Modal opened={opened} onClose={onClose} title={isEdit ? "Edit Server" : "Add Server"} size="md">
       <Stack>
-        {error && (
-          <Alert color="red" withCloseButton onClose={() => setError(null)}>
-            {error}
+        {draft.saveError && (
+          <Alert color="red" withCloseButton onClose={() => clearServerFormError(draft)}>
+            {draft.saveError}
           </Alert>
         )}
 
         <TextInput
           label="Name"
           placeholder="e.g. Local llama-swap"
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
+          value={draft.name}
+          onChange={(e) => { draft.name = e.currentTarget.value; }}
+          error={draft.errors.name}
         />
         <Select
           label="Backend Type"
           data={BACKEND_OPTIONS}
-          value={backendType}
-          onChange={(v) => v && setBackendType(v)}
+          value={draft.backendType}
+          onChange={(v) => { if (v) draft.backendType = v; }}
         />
         <TextInput
           label="Base URL"
           placeholder="e.g. http://localhost:8080/v1"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.currentTarget.value)}
+          value={draft.baseUrl}
+          onChange={(e) => { draft.baseUrl = e.currentTarget.value; }}
+          error={draft.errors.baseUrl}
         />
         <PasswordInput
           label="API Key"
           placeholder={isEdit ? "(unchanged if empty)" : "(optional)"}
           description="Supports $ENV_VAR_NAME syntax"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.currentTarget.value)}
+          value={draft.apiKey}
+          onChange={(e) => { draft.apiKey = e.currentTarget.value; }}
         />
         <Switch
           label="Active"
-          checked={isActive}
-          onChange={(e) => setIsActive(e.currentTarget.checked)}
+          checked={draft.isActive}
+          onChange={(e) => { draft.isActive = e.currentTarget.checked; }}
         />
 
         <Group justify="space-between">
-          {isEdit && onModels ? (
+          {isEdit && server && onModels ? (
             <Button
               variant="light"
               size="sm"
               leftSection={<IconList size={14} />}
-              onClick={() => { handleClose(); onModels(server); }}
+              onClick={() => { onClose(); onModels(server); }}
             >
               Select Models
             </Button>
           ) : <span />}
-          <Button onClick={handleSubmit} loading={loading}>
+          <Button
+            onClick={handleSubmit}
+            disabled={!draft.canSubmit}
+            loading={draft.saveStatus === "loading"}
+          >
             {isEdit ? "Save" : "Create"}
           </Button>
         </Group>
       </Stack>
     </Modal>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
-// Models modal
+// Models modal — component-local draft (probe + multi-select)
 // ---------------------------------------------------------------------------
+
+class ModelsModalDraft {
+  available: string[] = [];
+  selected: Set<string> = new Set();
+  filter = "";
+
+  probeStatus: AsyncStatus = "idle";
+  probeError: string | null = null;
+
+  saveStatus: AsyncStatus = "idle";
+  saveError: string | null = null;
+
+  constructor() {
+    makeAutoObservable(this);
+  }
+
+  reset(initialSelected: string[]): void {
+    this.available = [];
+    this.selected = new Set(initialSelected);
+    this.filter = "";
+    this.probeStatus = "idle";
+    this.probeError = null;
+    this.saveStatus = "idle";
+    this.saveError = null;
+  }
+
+  toggle(modelId: string): void {
+    const next = new Set(this.selected);
+    if (next.has(modelId)) next.delete(modelId);
+    else next.add(modelId);
+    this.selected = next;
+  }
+}
+
+function clearModelsModalSaveError(draft: ModelsModalDraft): void {
+  draft.saveError = null;
+}
+
+async function probeModelsAction(
+  draft: ModelsModalDraft,
+  serverId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  draft.probeStatus = "loading";
+  draft.probeError = null;
+  try {
+    const models = await probeModels(serverId, signal);
+    runInAction(() => {
+      draft.available = models;
+      draft.probeStatus = "ready";
+    });
+  } catch (err) {
+    if (signal.aborted) return;
+    runInAction(() => {
+      draft.available = [];
+      draft.probeStatus = "error";
+      draft.probeError = err instanceof Error ? err.message : "Failed to probe server";
+    });
+  }
+}
+
+async function submitEnabledModels(
+  draft: ModelsModalDraft,
+  serverId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  draft.saveStatus = "loading";
+  draft.saveError = null;
+  try {
+    await setEnabledModels(serverId, Array.from(draft.selected).sort(), signal);
+    runInAction(() => {
+      draft.saveStatus = "ready";
+    });
+    return true;
+  } catch (err) {
+    if (signal.aborted) return false;
+    runInAction(() => {
+      draft.saveStatus = "error";
+      draft.saveError = err instanceof Error ? err.message : "Failed to save models";
+    });
+    return false;
+  }
+}
 
 interface ModelsModalProps {
   opened: boolean;
@@ -194,86 +349,57 @@ interface ModelsModalProps {
   onSaved: () => void;
 }
 
-function ModelsModal({ opened, server, onClose, onSaved }: ModelsModalProps) {
-  const [available, setAvailable] = useState<string[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState("");
-  const [probing, setProbing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const ModelsModal = observer(function ModelsModal({
+  opened,
+  server,
+  onClose,
+  onSaved,
+}: ModelsModalProps) {
+  const [draft] = useState(() => new ModelsModalDraft());
 
   useEffect(() => {
     if (!opened || !server) return;
-    setFilter("");
-    setError(null);
-    setSaving(false);
-
-    // Initialize selected from current enabled models
-    setSelected(new Set(server.enabled_models));
-
-    // Probe for available models
-    setProbing(true);
-    probeModels(server.id)
-      .then((models) => {
-        setAvailable(models);
-      })
-      .catch((e) => {
-        setError(e instanceof Error ? e.message : "Failed to probe server");
-        setAvailable([]);
-      })
-      .finally(() => setProbing(false));
-  }, [opened, server]);
+    draft.reset(server.enabled_models);
+    const ctrl = new AbortController();
+    void probeModelsAction(draft, server.id, ctrl.signal);
+    return () => ctrl.abort();
+  }, [opened, server, draft]);
 
   if (!server) return null;
 
   // Union of probed + already enabled
-  const allModels = Array.from(new Set([...available, ...server.enabled_models])).sort();
-  const filtered = filter
-    ? allModels.filter((m) => m.toLowerCase().includes(filter.toLowerCase()))
+  const allModels = Array.from(new Set([...draft.available, ...server.enabled_models])).sort();
+  const filtered = draft.filter
+    ? allModels.filter((m) => m.toLowerCase().includes(draft.filter.toLowerCase()))
     : allModels;
 
-  const toggleModel = (modelId: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(modelId)) {
-        next.delete(modelId);
-      } else {
-        next.add(modelId);
-      }
-      return next;
-    });
-  };
-
   const handleSave = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      await setEnabledModels(server.id, Array.from(selected).sort());
-      onClose();
+    const ctrl = new AbortController();
+    const ok = await submitEnabledModels(draft, server.id, ctrl.signal);
+    if (ok) {
       onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save models");
-    } finally {
-      setSaving(false);
+      onClose();
     }
   };
+
+  const error = draft.probeError ?? draft.saveError;
 
   return (
     <Modal opened={opened} onClose={onClose} title={`Models — ${server.name}`} size="md">
       <Stack>
         {error && (
-          <Alert color="red" withCloseButton onClose={() => setError(null)}>
+          <Alert color="red" withCloseButton onClose={() => clearModelsModalSaveError(draft)}>
             {error}
           </Alert>
         )}
 
         <TextInput
           placeholder="Filter models..."
-          value={filter}
-          onChange={(e) => setFilter(e.currentTarget.value)}
+          value={draft.filter}
+          onChange={(e) => { draft.filter = e.currentTarget.value; }}
         />
 
-        {probing ? (
+        {draft.probeStatus === "loading" ? (
           <Group justify="center" py="md"><Loader size="sm" /><Text size="sm" c="dimmed">Probing server...</Text></Group>
         ) : filtered.length === 0 ? (
           <Text size="sm" c="dimmed" ta="center" py="md">No models found</Text>
@@ -283,27 +409,108 @@ function ModelsModal({ opened, server, onClose, onSaved }: ModelsModalProps) {
               <Checkbox
                 key={modelId}
                 label={modelId}
-                checked={selected.has(modelId)}
-                onChange={() => toggleModel(modelId)}
+                checked={draft.selected.has(modelId)}
+                onChange={() => draft.toggle(modelId)}
               />
             ))}
           </Stack>
         )}
 
         <Group justify="space-between">
-          <Text size="sm" c="dimmed">{selected.size} selected</Text>
-          <Button onClick={handleSave} loading={saving}>
+          <Text size="sm" c="dimmed">{draft.selected.size} selected</Text>
+          <Button onClick={handleSave} loading={draft.saveStatus === "loading"}>
             Save
           </Button>
         </Group>
       </Stack>
     </Modal>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
-// Embedding modal (single model selection)
+// Embedding modal — component-local draft (single-model radio pick)
 // ---------------------------------------------------------------------------
+
+class EmbeddingModalDraft {
+  available: string[] = [];
+  selected: string | null = null;
+  filter = "";
+
+  probeStatus: AsyncStatus = "idle";
+  probeError: string | null = null;
+
+  saveStatus: AsyncStatus = "idle";
+  saveError: string | null = null;
+
+  constructor() {
+    makeAutoObservable(this);
+  }
+
+  reset(initialSelected: string | null): void {
+    this.available = [];
+    this.selected = initialSelected;
+    this.filter = "";
+    this.probeStatus = "idle";
+    this.probeError = null;
+    this.saveStatus = "idle";
+    this.saveError = null;
+  }
+
+  get canSubmit(): boolean {
+    return this.selected !== null && this.saveStatus !== "loading";
+  }
+}
+
+function clearEmbeddingModalSaveError(draft: EmbeddingModalDraft): void {
+  draft.saveError = null;
+}
+
+async function probeEmbeddingModels(
+  draft: EmbeddingModalDraft,
+  serverId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  draft.probeStatus = "loading";
+  draft.probeError = null;
+  try {
+    const models = await probeModels(serverId, signal);
+    runInAction(() => {
+      draft.available = models;
+      draft.probeStatus = "ready";
+    });
+  } catch (err) {
+    if (signal.aborted) return;
+    runInAction(() => {
+      draft.available = [];
+      draft.probeStatus = "error";
+      draft.probeError = err instanceof Error ? err.message : "Failed to probe server";
+    });
+  }
+}
+
+async function submitEmbedding(
+  draft: EmbeddingModalDraft,
+  serverId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (!draft.canSubmit || draft.selected === null) return false;
+  draft.saveStatus = "loading";
+  draft.saveError = null;
+  try {
+    await setEmbedding(serverId, draft.selected, signal);
+    runInAction(() => {
+      draft.saveStatus = "ready";
+    });
+    return true;
+  } catch (err) {
+    if (signal.aborted) return false;
+    runInAction(() => {
+      draft.saveStatus = "error";
+      draft.saveError = err instanceof Error ? err.message : "Failed to set embedding";
+    });
+    return false;
+  }
+}
 
 interface EmbeddingModalProps {
   opened: boolean;
@@ -312,73 +519,61 @@ interface EmbeddingModalProps {
   onSaved: () => void;
 }
 
-function EmbeddingModal({ opened, server, onClose, onSaved }: EmbeddingModalProps) {
-  const [available, setAvailable] = useState<string[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
-  const [probing, setProbing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const EmbeddingModal = observer(function EmbeddingModal({
+  opened,
+  server,
+  onClose,
+  onSaved,
+}: EmbeddingModalProps) {
+  const [draft] = useState(() => new EmbeddingModalDraft());
 
   useEffect(() => {
     if (!opened || !server) return;
-    setFilter("");
-    setError(null);
-    setSaving(false);
-    setSelected(server.embedding_model);
-
-    setProbing(true);
-    probeModels(server.id)
-      .then((models) => setAvailable(models))
-      .catch((e) => {
-        setError(e instanceof Error ? e.message : "Failed to probe server");
-        setAvailable([]);
-      })
-      .finally(() => setProbing(false));
-  }, [opened, server]);
+    draft.reset(server.embedding_model);
+    const ctrl = new AbortController();
+    void probeEmbeddingModels(draft, server.id, ctrl.signal);
+    return () => ctrl.abort();
+  }, [opened, server, draft]);
 
   if (!server) return null;
 
-  const filtered = filter
-    ? available.filter((m) => m.toLowerCase().includes(filter.toLowerCase()))
-    : available;
+  const filtered = draft.filter
+    ? draft.available.filter((m) => m.toLowerCase().includes(draft.filter.toLowerCase()))
+    : draft.available;
 
   const handleSave = async () => {
-    if (!selected) { setError("Select an embedding model"); return; }
-    setSaving(true);
-    setError(null);
-    try {
-      await setEmbedding(server.id, selected);
-      onClose();
+    if (!draft.canSubmit) return;
+    const ctrl = new AbortController();
+    const ok = await submitEmbedding(draft, server.id, ctrl.signal);
+    if (ok) {
       onSaved();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to set embedding");
-    } finally {
-      setSaving(false);
+      onClose();
     }
   };
+
+  const error = draft.probeError ?? draft.saveError;
 
   return (
     <Modal opened={opened} onClose={onClose} title={`Set Embedding — ${server.name}`} size="md">
       <Stack>
         {error && (
-          <Alert color="red" withCloseButton onClose={() => setError(null)}>
+          <Alert color="red" withCloseButton onClose={() => clearEmbeddingModalSaveError(draft)}>
             {error}
           </Alert>
         )}
 
         <TextInput
           placeholder="Filter models..."
-          value={filter}
-          onChange={(e) => setFilter(e.currentTarget.value)}
+          value={draft.filter}
+          onChange={(e) => { draft.filter = e.currentTarget.value; }}
         />
 
-        {probing ? (
+        {draft.probeStatus === "loading" ? (
           <Group justify="center" py="md"><Loader size="sm" /><Text size="sm" c="dimmed">Probing server...</Text></Group>
         ) : filtered.length === 0 ? (
           <Text size="sm" c="dimmed" ta="center" py="md">No models found</Text>
         ) : (
-          <Radio.Group value={selected ?? ""} onChange={setSelected}>
+          <Radio.Group value={draft.selected ?? ""} onChange={(v) => { draft.selected = v || null; }}>
             <Stack gap={4} style={{ maxHeight: 400, overflowY: "auto" }}>
               {filtered.map((modelId) => (
                 <Radio key={modelId} value={modelId} label={modelId} />
@@ -388,47 +583,43 @@ function EmbeddingModal({ opened, server, onClose, onSaved }: EmbeddingModalProp
         )}
 
         <Group justify="flex-end">
-          <Button onClick={handleSave} loading={saving} disabled={!selected}>
+          <Button
+            onClick={handleSave}
+            loading={draft.saveStatus === "loading"}
+            disabled={!draft.canSubmit}
+          >
             Set Embedding
           </Button>
         </Group>
       </Stack>
     </Modal>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
-export function LlmServersPage() {
-  const [servers, setServers] = useState<LlmServerItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export const LlmServersPage = observer(function LlmServersPage() {
+  const [state] = useState(() => new LlmServersPageState());
 
-  // Form modal state
+  // Component-local UI flags / modal targets — transient, not page data.
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<LlmServerItem | null>(null);
-
-  // Models modal state
   const [modelsTarget, setModelsTarget] = useState<LlmServerItem | null>(null);
-
-  // Embedding modal state
   const [embeddingTarget, setEmbeddingTarget] = useState<LlmServerItem | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setServers(await listServers());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load servers");
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    const ctrl = new AbortController();
+    void loadServers(state, ctrl.signal);
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const refresh = () => {
+    const ctrl = new AbortController();
+    void loadServers(state, ctrl.signal);
+  };
 
   const handleCreate = () => {
     setEditTarget(null);
@@ -441,28 +632,16 @@ export function LlmServersPage() {
   };
 
   const handleDelete = async (server: LlmServerItem) => {
-    if (!window.confirm(`Delete server "${server.name}"? This cannot be undone.`)) return;
-    try {
-      await deleteServer(server.id);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete server");
-    }
-  };
-
-  const handleModels = (server: LlmServerItem) => {
-    setModelsTarget(server);
+    const ctrl = new AbortController();
+    await deleteServerAction(state, server, ctrl.signal);
   };
 
   const handleClearEmbedding = async (server: LlmServerItem) => {
-    if (!window.confirm(`Remove embedding designation from "${server.name}"?`)) return;
-    try {
-      await clearEmbedding();
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to clear embedding");
-    }
+    const ctrl = new AbortController();
+    await clearEmbeddingAction(state, server, ctrl.signal);
   };
+
+  const loading = state.serversStatus === "loading" || state.serversStatus === "idle";
 
   return (
     <Container size="lg" py="md">
@@ -473,15 +652,15 @@ export function LlmServersPage() {
         </Button>
       </Group>
 
-      {error && (
-        <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>
-          {error}
+      {state.serversError && (
+        <Alert color="red" mb="md" withCloseButton onClose={() => clearServersError(state)}>
+          {state.serversError}
         </Alert>
       )}
 
       {loading ? (
         <Group justify="center" py="xl"><Loader /></Group>
-      ) : servers.length === 0 ? (
+      ) : state.servers.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No LLM servers configured yet.</Text>
       ) : (
         <Table striped highlightOnHover>
@@ -497,7 +676,7 @@ export function LlmServersPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {servers.map((server) => (
+            {state.servers.map((server) => (
               <Table.Tr key={server.id} style={!server.is_active ? { opacity: 0.5 } : undefined}>
                 <Table.Td>
                   <Group gap="xs">
@@ -536,7 +715,7 @@ export function LlmServersPage() {
                     <Menu.Dropdown>
                       <Menu.Item
                         leftSection={<IconList size={14} />}
-                        onClick={() => handleModels(server)}
+                        onClick={() => setModelsTarget(server)}
                       >
                         Models
                       </Menu.Item>
@@ -584,7 +763,7 @@ export function LlmServersPage() {
         server={editTarget}
         onClose={() => setFormOpen(false)}
         onSaved={refresh}
-        onModels={handleModels}
+        onModels={(s) => setModelsTarget(s)}
       />
 
       <ModelsModal
@@ -602,4 +781,4 @@ export function LlmServersPage() {
       />
     </Container>
   );
-}
+});
