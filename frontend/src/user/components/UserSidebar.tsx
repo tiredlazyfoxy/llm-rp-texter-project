@@ -14,6 +14,7 @@ import {
   IconMessage,
   IconWorld,
 } from "@tabler/icons-react";
+import { useLocation } from "react-router-dom";
 import { listMyChats, listPublicWorlds } from "../../api/chat";
 import { formatDate } from "../../utils/formatDate";
 
@@ -72,7 +73,7 @@ export function UserSidebar() {
     });
   }
 
-  const path = window.location.pathname;
+  const path = useLocation().pathname;
 
   return (
     <nav

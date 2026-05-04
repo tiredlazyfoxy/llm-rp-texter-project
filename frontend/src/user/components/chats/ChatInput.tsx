@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActionIcon, Badge, Group, Loader, Text, Tooltip } from "@mantine/core";
 import { IconGripHorizontal, IconRefresh } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
@@ -58,7 +58,7 @@ export const ChatInput = observer(function ChatInput({ state }: ChatInputProps) 
     document.addEventListener("pointerup", onUp);
   }
 
-  const oocPreview = useMemo(() => extractUserInstructions(value).userInstructions, [value]);
+  const oocPreview = extractUserInstructions(value).userInstructions;
 
   async function handleSend() {
     const text = value.trim();

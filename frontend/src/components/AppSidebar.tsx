@@ -3,6 +3,7 @@ import {
   IconLayoutSidebarLeftCollapse,
   type Icon,
 } from "@tabler/icons-react";
+import { useLocation } from "react-router-dom";
 
 export interface NavItem {
   icon: Icon;
@@ -75,7 +76,7 @@ export function AppSidebar({ collapsed, onToggle, navItems, logoHref }: AppSideb
 }
 
 function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
-  const path = window.location.pathname;
+  const path = useLocation().pathname;
   // Trailing-slash hrefs (like "/admin/") match exactly; others match as prefix
   const exactOnly = item.href.endsWith("/");
   const pathNorm = path.replace(/\/+$/, "");

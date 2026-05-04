@@ -31,7 +31,8 @@ One `<SSS>.<name>.md` per invocation.
 - Adding symbols not specified by the step
 - "Improving" adjacent code or renaming things the step named
 - Editing `docs/architecture/` (architect's) or `docs/plans/backlog/` (planner's)
-- Editing step files themselves (use the escape valve)
+- Editing any file in `docs/architecture/` or `docs/plans/backlog/` even for reference is strictly forbidden.
+- Editing step files themselves (use the escape valve) is forbidden.
 - Modifying the planner-authored sections of `outcome.md`
 - Skipping tests or typecheck
 

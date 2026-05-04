@@ -16,7 +16,6 @@ user/
     chats/           — ChatInput, ChatMemoriesModal, ChatSettingsPanel,
                        MessageBubble, MessageHistory, StatsPanel,
                        SummaryBlock, ToolCallTrace
-    worlds/          — WorldInfoModal
 ```
 
 `UserSidebar.tsx` lives at the top level of `components/` as a layout-shell exception — it is not a domain component and does not belong under any per-domain subfolder.
