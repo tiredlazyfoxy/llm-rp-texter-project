@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useNavigate } from "react-router-dom";
 import {
   Alert,
   Badge,
@@ -14,137 +16,76 @@ import {
   Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
-import { fetchEnabledModels } from "../../api/llmChat";
-import type { EnabledModelInfo } from "../../types/llmServer";
-import type { PipelineConfig, PipelineConfigOptions } from "../../types/pipeline";
 import { LlmChatPanel } from "../components/llm/LlmChatPanel";
 import { PlaceholderPanel } from "../components/pipelines/PlaceholderPanel";
-import { PlaceholderTextarea } from "../components/pipelines/PlaceholderTextarea";
 import {
-  getPipeline,
-  getPipelineConfigOptions,
-  updatePipeline,
-} from "../../api/pipelines";
+  PlaceholderTextarea,
+  type PlaceholderTextareaController,
+} from "../components/pipelines/PlaceholderTextarea";
+import {
+  PipelineStageEditPageState,
+  loadDefaultTemplate,
+  loadStage,
+  saveStage,
+} from "./pipelineStageEditPageState";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function extractIds(): { pipelineId: string; stageIndex: number } | null {
-  const m = window.location.pathname.match(/\/admin\/pipelines\/(\d+)\/stage\/(\d+)/);
-  if (!m) return null;
-  return { pipelineId: m[1], stageIndex: parseInt(m[2]) };
+interface PipelineStageEditPageProps {
+  pipelineId: string;
+  stageIndex: number;
 }
 
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
-
-export function PipelineStageEditPage() {
-  const ids = extractIds();
-  const pipelineId = ids?.pipelineId ?? "";
-  const stageIndex = ids?.stageIndex ?? 0;
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  const [content, setContent] = useState("");
-  const [originalContent, setOriginalContent] = useState("");
-  const [pipelineConfig, setPipelineConfig] = useState<PipelineConfig>({ stages: [] });
-  const [stepType, setStepType] = useState("");
-  const [stageName, setStageName] = useState("");
-  const [stageTools, setStageTools] = useState<string[]>([]);
-  const [stageEnabled, setStageEnabled] = useState(true);
-  const [stageModelId, setStageModelId] = useState<string | null>(null);
-  const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
-  const [enabledModels, setEnabledModels] = useState<EnabledModelInfo[]>([]);
-
-  const load = useCallback(async () => {
-    if (!pipelineId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [p, opts] = await Promise.all([
-        getPipeline(pipelineId),
-        getPipelineConfigOptions(),
-      ]);
-      setConfigOptions(opts);
-      const parsed: PipelineConfig = JSON.parse(p.pipeline_config || "{}");
-      const config = { stages: parsed.stages || [] };
-      setPipelineConfig(config);
-      if (stageIndex >= config.stages.length) {
-        setError(`Stage ${stageIndex} not found`);
-        return;
-      }
-      const stage = config.stages[stageIndex];
-      setContent(stage.prompt);
-      setOriginalContent(stage.prompt);
-      setStepType(stage.step_type);
-      setStageName(stage.name || "");
-      setStageTools(stage.tools || []);
-      setStageEnabled(stage.enabled !== false);
-      setStageModelId(stage.model_id ?? null);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [pipelineId, stageIndex]);
+export const PipelineStageEditPage = observer(function PipelineStageEditPage({
+  pipelineId,
+  stageIndex,
+}: PipelineStageEditPageProps) {
+  const [state] = useState(() => new PipelineStageEditPageState(pipelineId, stageIndex));
+  const navigate = useNavigate();
+  const controllerRef = useRef<PlaceholderTextareaController | null>(null);
 
   useEffect(() => {
-    void load();
-    fetchEnabledModels().then(setEnabledModels).catch(() => {});
-  }, [load]);
+    const ctrl = new AbortController();
+    void loadStage(state, ctrl.signal);
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleApply = async () => {
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const updated: PipelineConfig = {
-        stages: pipelineConfig.stages.map((s, i) =>
-          i === stageIndex
-            ? { ...s, prompt: content, enabled: stageEnabled, model_id: stageModelId }
-            : s,
-        ),
-      };
-      await updatePipeline(pipelineId, { pipeline_config: JSON.stringify(updated) });
-      setPipelineConfig(updated);
-      setOriginalContent(content);
-      setSuccess("Applied.");
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSaving(false);
+    if (!state.canSubmit) return;
+    const ctrl = new AbortController();
+    await saveStage(state, ctrl.signal);
+    if (state.successMessage) {
+      setTimeout(() => {
+        if (state.successMessage) state.successMessage = null;
+      }, 3000);
     }
   };
 
-  const insertPlaceholder = (name: string) => {
-    setContent((c) => c + `{${name}}`);
+  const handleLoadDefault = () => {
+    if (!state.configOptions) return;
+    if (state.content && !window.confirm("Replace current content with default template?")) return;
+    loadDefaultTemplate(state);
   };
 
-  const loadDefaultTemplate = () => {
-    if (!configOptions) return;
-    const templates = configOptions.default_templates;
-    const isToolStep = stepType === "tool" || stepType === "planning";
-    const template = isToolStep ? templates.tool : templates.writer;
-    if (content && !window.confirm("Replace current content with default template?")) return;
-    setContent(template);
+  const handleInsertPlaceholder = (name: string) => {
+    const text = `{${name}}`;
+    if (controllerRef.current) {
+      controllerRef.current.insertAtCursor(text);
+    } else {
+      state.content = state.content + text;
+    }
   };
 
-  const originalStage = pipelineConfig.stages[stageIndex];
-  const isDirty =
-    content !== originalContent ||
-    (originalStage && (originalStage.enabled !== false) !== stageEnabled) ||
-    (originalStage && (originalStage.model_id ?? null) !== stageModelId);
-
-  if (loading) {
+  if (state.loadStatus === "loading" || state.loadStatus === "idle") {
     return (
       <Container pt="xl">
         <Loader />
+      </Container>
+    );
+  }
+  if (state.loadStatus === "error") {
+    return (
+      <Container pt="xl">
+        <Alert color="red">{state.loadError}</Alert>
       </Container>
     );
   }
@@ -157,45 +98,53 @@ export function PipelineStageEditPage() {
           <Button
             variant="subtle"
             leftSection={<IconArrowLeft size={16} />}
-            onClick={() => { window.location.href = `/admin/pipelines/${pipelineId}`; }}
+            onClick={() => navigate(`/pipelines/${pipelineId}`)}
           >
             Back
           </Button>
           <Title order={4}>
             <Text span c="dimmed" size="sm" mr={6}>Pipeline stage {stageIndex + 1}</Text>
-            {stageName && <Text span size="sm" fw={600} mr={6}>{stageName}</Text>}
-            <Badge variant="light" color={(stepType === "tool" || stepType === "planning") ? "violet" : "teal"}>
-              {stepType}
+            {state.stageName && <Text span size="sm" fw={600} mr={6}>{state.stageName}</Text>}
+            <Badge variant="light" color={(state.stepType === "tool" || state.stepType === "planning") ? "violet" : "teal"}>
+              {state.stepType}
             </Badge>
           </Title>
         </Group>
         <Group>
-          {configOptions && (
-            <Button variant="default" size="compact-sm" onClick={loadDefaultTemplate}>
+          {state.configOptions && (
+            <Button variant="default" size="compact-sm" onClick={handleLoadDefault}>
               Load Default Template
             </Button>
           )}
-          {isDirty && <Button onClick={handleApply} loading={saving}>Apply</Button>}
+          {state.isDirty && (
+            <Button
+              onClick={handleApply}
+              disabled={!state.canSubmit}
+              loading={state.saveStatus === "loading"}
+            >
+              Apply
+            </Button>
+          )}
         </Group>
       </Group>
 
-      {error && <Alert color="red" mb="md">{error}</Alert>}
-      {success && <Alert color="green" mb="md">{success}</Alert>}
+      {state.saveError && <Alert color="red" mb="md">{state.saveError}</Alert>}
+      {state.successMessage && <Alert color="green" mb="md">{state.successMessage}</Alert>}
 
       <Paper p="sm" withBorder mb="md">
         <Group gap="md" wrap="nowrap">
           <Checkbox
             label="Stage enabled"
-            checked={stageEnabled}
-            onChange={e => setStageEnabled(e.currentTarget.checked)}
+            checked={state.stageEnabled}
+            onChange={(e) => { state.stageEnabled = e.currentTarget.checked; }}
           />
           <Select
             label="Model override"
             description="Leave empty to use the session model"
             placeholder="Session model"
-            data={enabledModels.map(m => ({ value: m.model_id, label: m.model_id }))}
-            value={stageModelId}
-            onChange={setStageModelId}
+            data={state.enabledModels.map((m) => ({ value: m.model_id, label: m.model_id }))}
+            value={state.stageModelId}
+            onChange={(v) => { state.stageModelId = v; }}
             searchable
             clearable
             w={320}
@@ -207,9 +156,10 @@ export function PipelineStageEditPage() {
         {/* Prompt textarea */}
         <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
           <PlaceholderTextarea
-            value={content}
-            onChange={setContent}
-            placeholders={configOptions?.placeholders ?? []}
+            value={state.content}
+            onChange={(v) => { state.content = v; }}
+            placeholders={state.configOptions?.placeholders ?? []}
+            controllerRef={controllerRef}
             textareaProps={{
               autosize: true,
               minRows: 12,
@@ -219,20 +169,20 @@ export function PipelineStageEditPage() {
         </div>
 
         {/* Placeholder reference panel */}
-        {configOptions && (
+        {state.configOptions && (
           <PlaceholderPanel
-            placeholders={configOptions.placeholders}
-            content={content}
-            onInsert={insertPlaceholder}
+            placeholders={state.configOptions.placeholders}
+            content={state.content}
+            onInsert={handleInsertPlaceholder}
           />
         )}
 
         {/* Enabled tools for this stage (read-only) */}
-        {stageTools.length > 0 && (
+        {state.stageTools.length > 0 && (
           <Paper p="sm" withBorder>
             <Text size="sm" fw={500} mb="xs">Enabled Tools</Text>
             <Group gap="xs">
-              {stageTools.map(t => (
+              {state.stageTools.map((t) => (
                 <Badge key={t} size="sm" variant="light">{t}</Badge>
               ))}
             </Group>
@@ -241,12 +191,12 @@ export function PipelineStageEditPage() {
 
         {/* LLM chat panel — world-agnostic for pipeline prompts (no worldId passed) */}
         <LlmChatPanel
-          currentContent={content}
+          currentContent={state.content}
           fieldType="pipeline_prompt"
-          onApply={(text) => setContent(text)}
-          onAppend={(text) => setContent((prev) => prev + "\n\n" + text)}
+          onApply={(text) => { state.content = text; }}
+          onAppend={(text) => { state.content = state.content + "\n\n" + text; }}
         />
       </Stack>
     </Container>
   );
-}
+});

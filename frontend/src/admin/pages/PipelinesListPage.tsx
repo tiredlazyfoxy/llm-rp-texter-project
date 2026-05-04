@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useNavigate } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
@@ -7,104 +9,19 @@ import {
   Container,
   Group,
   Loader,
-  Modal,
-  Select,
-  Stack,
   Table,
   Text,
-  TextInput,
-  Textarea,
   Title,
 } from "@mantine/core";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { formatDate } from "../../utils/formatDate";
 import { getCurrentUser } from "../../auth";
-import type { CreatePipelineRequest, PipelineItem } from "../../types/pipeline";
-import { createPipeline, deletePipeline, listPipelines } from "../../api/pipelines";
-
-// ---------------------------------------------------------------------------
-// Create pipeline modal
-// ---------------------------------------------------------------------------
-
-interface CreatePipelineModalProps {
-  opened: boolean;
-  onClose: () => void;
-  onCreated: (pipeline: PipelineItem) => void;
-}
-
-function CreatePipelineModal({ opened, onClose, onCreated }: CreatePipelineModalProps) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [kind, setKind] = useState("simple");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (opened) {
-      setName("");
-      setDescription("");
-      setKind("simple");
-      setError(null);
-    }
-  }, [opened]);
-
-  const handleSubmit = async () => {
-    if (!name.trim()) {
-      setError("Name is required");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const req: CreatePipelineRequest = {
-        name: name.trim(),
-        description: description.trim() || undefined,
-        kind,
-      };
-      const created = await createPipeline(req);
-      onCreated(created);
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create pipeline");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Modal opened={opened} onClose={onClose} title="Create Pipeline">
-      <Stack>
-        {error && <Alert color="red">{error}</Alert>}
-        <TextInput
-          label="Name"
-          value={name}
-          onChange={e => setName(e.currentTarget.value)}
-          required
-        />
-        <Select
-          label="Kind"
-          data={[
-            { value: "simple", label: "Simple" },
-            { value: "chain", label: "Chain Pipeline" },
-            { value: "agentic", label: "Agentic (coming soon)", disabled: true },
-          ]}
-          value={kind}
-          onChange={v => setKind(v || "simple")}
-        />
-        <Textarea
-          label="Description"
-          value={description}
-          onChange={e => setDescription(e.currentTarget.value)}
-          minRows={3}
-        />
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} loading={loading}>Create</Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
-}
+import type { PipelineItem } from "../../types/pipeline";
+import {
+  PipelinesListPageState,
+  deletePipeline,
+  loadPipelines,
+} from "./pipelinesListPageState";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -120,69 +37,56 @@ function kindColor(kind: string): string {
 // Main page
 // ---------------------------------------------------------------------------
 
-export function PipelinesListPage() {
-  const [pipelines, setPipelines] = useState<PipelineItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
+export const PipelinesListPage = observer(function PipelinesListPage() {
+  const [state] = useState(() => new PipelinesListPageState());
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-
-  const isAdmin = getCurrentUser()?.role === "admin";
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setPipelines(await listPipelines());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load pipelines");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const ctrl = new AbortController();
+    void loadPipelines(state, ctrl.signal);
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleCreated = (pipeline: PipelineItem) => {
-    window.location.href = `/admin/pipelines/${pipeline.id}`;
-  };
+  const isAdmin = getCurrentUser()?.role === "admin";
 
   const handleDelete = async (pipeline: PipelineItem, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!window.confirm(`Delete pipeline "${pipeline.name}"?`)) return;
-    try {
-      await deletePipeline(pipeline.id);
-      await refresh();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/referenced/i.test(msg)) {
-        setError("This pipeline is referenced by one or more worlds — re-point them first.");
-      } else {
-        setError(msg);
-      }
-    }
+    const ctrl = new AbortController();
+    await deletePipeline(state, pipeline.id, ctrl.signal);
   };
+
+  const loading =
+    state.pipelinesStatus === "loading" || state.pipelinesStatus === "idle";
 
   return (
     <Container size="lg" py="md">
       <Group justify="space-between" mb="md">
         <Title order={3}>Pipelines</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setCreateOpen(true)}>
+        <Button
+          leftSection={<IconPlus size={16} />}
+          onClick={() => navigate("/pipelines/new")}
+        >
           Create Pipeline
         </Button>
       </Group>
 
-      {error && (
-        <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>
-          {error}
+      {state.pipelinesError && (
+        <Alert
+          color="red"
+          mb="md"
+          withCloseButton
+          onClose={() => { state.pipelinesError = null; }}
+        >
+          {state.pipelinesError}
         </Alert>
       )}
 
       {loading ? (
         <Group justify="center" py="xl"><Loader /></Group>
-      ) : pipelines.length === 0 ? (
+      ) : state.pipelines.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">
           No pipelines yet. Create one to get started.
         </Text>
@@ -198,7 +102,7 @@ export function PipelinesListPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {pipelines.map(p => {
+            {state.pipelines.map((p) => {
               const hovered = hoveredId === p.id;
               const rowProps = {
                 style: {
@@ -207,7 +111,7 @@ export function PipelinesListPage() {
                 },
                 onMouseEnter: () => setHoveredId(p.id),
                 onMouseLeave: () => setHoveredId(null),
-                onClick: () => { window.location.href = `/admin/pipelines/${p.id}`; },
+                onClick: () => navigate(`/pipelines/${p.id}`),
               };
               return (
                 <Table.Tr key={p.id} {...rowProps}>
@@ -242,12 +146,6 @@ export function PipelinesListPage() {
           </Table.Tbody>
         </Table>
       )}
-
-      <CreatePipelineModal
-        opened={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={handleCreated}
-      />
     </Container>
   );
-}
+});

@@ -156,6 +156,34 @@ export function applySelection(
   dismiss(state);
 }
 
+/**
+ * Insert `text` at the textarea's current caret position. Used to
+ * implement the optional `controllerRef.insertAtCursor` exposed by
+ * `PlaceholderTextarea`. Caret is restored just past the inserted
+ * text via `requestAnimationFrame`.
+ */
+export function insertAtCursor(
+  state: PlaceholderAutocompleteState,
+  text: string,
+  value: string,
+  setValue: (v: string) => void,
+): void {
+  const ta = state.textareaRef.current;
+  if (!ta) {
+    setValue(value + text);
+    return;
+  }
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const newValue = value.substring(0, start) + text + value.substring(end);
+  setValue(newValue);
+  const newPos = start + text.length;
+  requestAnimationFrame(() => {
+    ta.selectionStart = ta.selectionEnd = newPos;
+    ta.focus();
+  });
+}
+
 /** Arrow up/down navigate, Enter/Tab apply, Escape dismiss. */
 export function handleKeyDown(
   state: PlaceholderAutocompleteState,

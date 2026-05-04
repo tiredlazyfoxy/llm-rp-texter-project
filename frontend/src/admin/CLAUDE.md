@@ -7,17 +7,24 @@ admin/
   App.tsx, main.tsx
   routes.tsx         — React Router route table (AdminRoutes); per-path-param wrappers pass key={id} + path-param props
   pages/             — Pages migrated to MobX use the (`<Page>.tsx` + `<page>PageState.ts`) pair pattern:
-                       WorldsListPage     / worldsListPageState,
-                       WorldViewPage      / worldViewPageState,
-                       WorldEditPage      / worldEditPageState,
-                       WorldFieldEditPage / worldFieldEditPageState,
-                       DocumentEditPage   / documentEditPageState
-                       Other admin pages (PipelinesList, PipelineEdit, PipelineStageEdit, LlmServersPage,
-                       DbManagementPage, UsersPage) still use raw useState/useEffect — migrated in later steps.
+                       WorldsListPage        / worldsListPageState,
+                       WorldViewPage         / worldViewPageState,
+                       WorldEditPage         / worldEditPageState,
+                       WorldFieldEditPage    / worldFieldEditPageState,
+                       DocumentEditPage      / documentEditPageState,
+                       PipelinesListPage     / pipelinesListPageState,
+                       PipelineEditPage      / pipelineEditPageState,
+                       PipelineStageEditPage / pipelineStageEditPageState
+                       Other admin pages (LlmServersPage, DbManagementPage, UsersPage) still use raw
+                       useState/useEffect — migrated in later steps.
   components/
     users/           — CreateUserModal, SetPasswordModal, SetRoleModal
-    pipelines/       — PlaceholderPanel, PlaceholderSuggestions, PlaceholderTextarea (+ placeholderAutocompleteState.ts)
-    llm/             — LlmChatPanel
+    pipelines/       — PlaceholderPanel, PlaceholderSuggestions, PlaceholderTextarea (+ placeholderAutocompleteState.ts).
+                       PlaceholderTextarea exposes an optional `controllerRef` of type
+                       `PlaceholderTextareaController` ({ insertAtCursor(text) }) for callers that
+                       need cursor-position insertion (e.g. PipelineStageEditPage's PlaceholderPanel).
+    llm/             — LlmChatPanel (+ llmChatPanelState.ts) — public props unchanged; per-mount
+                       internal state class with external (state, args, signal) mutation fns.
 ```
 
 The `admin/components/` top level holds no loose files — every component lives in its domain subfolder.
@@ -32,7 +39,7 @@ Routing uses `react-router-dom`'s `BrowserRouter` with `basename="/admin"` mount
 - `/admin/worlds/:id/field/:fieldName` — WorldFieldEditPage (AI-assisted editing of `description` / `initial_message`; `system_prompt` is no longer a world field — it lives on the Pipeline)
 - `/admin/worlds/:id/documents/:docId/edit` — DocumentEditPage
 - `/admin/pipelines` — PipelinesListPage
-- `/admin/pipelines/new` — PipelineEditPage in **shadow mode**: a frontend-only draft (not in DB). With `?cloneFrom=<sourceId>` the form pre-fills from the source pipeline; Save materializes the record via `POST /api/admin/pipelines` and redirects to `/admin/pipelines/<new-id>`; Back discards.
+- `/admin/pipelines/new` — PipelineEditPage in **shadow mode**: a frontend-only draft (not in DB). Starts blank by default; with `?cloneFrom=<sourceId>` the form pre-fills from the source pipeline. Save materializes the record via `POST /api/admin/pipelines` and redirects to `/admin/pipelines/<new-id>`; Back discards. The `?cloneFrom` query param is read in the route wrapper via `useSearchParams` and passed as the `cloneFromId` prop — pages do not read `window.location.search`.
 - `/admin/pipelines/:id` — PipelineEditPage in **edit mode** (existing record).
 - `/admin/pipelines/:id/stage/:stageIndex` — PipelineStageEditPage (pipeline stage prompt editor with LLM chat)
 - `/admin/llm-servers` — LlmServersPage

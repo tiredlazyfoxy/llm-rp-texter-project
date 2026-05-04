@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import {
   ActionIcon,
@@ -28,196 +30,92 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { getCurrentUser } from "../../auth";
-import { fetchEnabledModels } from "../../api/llmChat";
-import type { EnabledModelInfo } from "../../types/llmServer";
-import type {
-  PipelineConfig,
-  PipelineConfigOptions,
-  PipelineItem,
-  PipelineStage,
-  UpdatePipelineRequest,
-} from "../../types/pipeline";
 import {
-  createPipeline,
-  deletePipeline,
-  getPipeline,
-  getPipelineConfigOptions,
-  updatePipeline,
-} from "../../api/pipelines";
+  PipelineEditPageState,
+  addStage,
+  deleteCurrentPipeline,
+  loadPipelineEdit,
+  removeStage,
+  reorderStages,
+  savePipeline,
+  seedChainStages,
+  toggleStageExpanded,
+  updateStage,
+} from "./pipelineEditPageState";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Page props
 // ---------------------------------------------------------------------------
 
-type PageMode = "edit" | "shadow";
-interface RouteInfo { mode: PageMode; pipelineId: string | null; cloneFromId: string | null; }
-
-function parseRoute(): RouteInfo {
-  const path = window.location.pathname;
-  if (path === "/admin/pipelines/new") {
-    const cloneFrom = new URLSearchParams(window.location.search).get("cloneFrom");
-    return { mode: "shadow", pipelineId: null, cloneFromId: cloneFrom };
-  }
-  const m = path.match(/\/admin\/pipelines\/(\d+)$/);
-  return { mode: "edit", pipelineId: m ? m[1] : null, cloneFromId: null };
+interface PipelineEditPageProps {
+  pipelineId: string | null;
+  cloneFromId: string | null;
 }
 
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
+export const PipelineEditPage = observer(function PipelineEditPage({
+  pipelineId,
+  cloneFromId,
+}: PipelineEditPageProps) {
+  const [state] = useState(() => new PipelineEditPageState(pipelineId, cloneFromId));
+  const navigate = useNavigate();
 
-export function PipelineEditPage() {
-  const route = parseRoute();
-  const { mode, pipelineId, cloneFromId } = route;
-  const shadowAgentConfigRef = useRef<string>("{}");
-  const [pipeline, setPipeline] = useState<PipelineItem | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  // Form state
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [kind, setKind] = useState("simple");
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [simpleTools, setSimpleTools] = useState<string[]>([]);
-  const [pipelineConfig, setPipelineConfig] = useState<PipelineConfig>({ stages: [] });
-
-  // Static config + models
-  const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
-  const [enabledModels, setEnabledModels] = useState<EnabledModelInfo[]>([]);
-  const [expandedStages, setExpandedStages] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    const ctrl = new AbortController();
+    void loadPipelineEdit(state, ctrl.signal);
+    return () => ctrl.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isAdmin = getCurrentUser()?.role === "admin";
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      if (mode === "shadow") {
-        if (!cloneFromId) {
-          setError("Missing cloneFrom parameter");
-          return;
-        }
-        const src = await getPipeline(cloneFromId);
-        setName(`${src.name} (clone)`);
-        setDescription(src.description);
-        setKind(src.kind);
-        setSystemPrompt(src.system_prompt);
-        try { setSimpleTools(JSON.parse(src.simple_tools || "[]")); } catch { setSimpleTools([]); }
-        try {
-          const parsed = JSON.parse(src.pipeline_config || "{}");
-          setPipelineConfig({ stages: parsed.stages || [] });
-        } catch {
-          setPipelineConfig({ stages: [] });
-        }
-        shadowAgentConfigRef.current = src.agent_config ?? "{}";
-        return;
-      }
-      if (!pipelineId) return;
-      const p = await getPipeline(pipelineId);
-      setPipeline(p);
-      setName(p.name);
-      setDescription(p.description);
-      setKind(p.kind);
-      setSystemPrompt(p.system_prompt);
-      try { setSimpleTools(JSON.parse(p.simple_tools || "[]")); } catch { setSimpleTools([]); }
-      try {
-        const parsed = JSON.parse(p.pipeline_config || "{}");
-        setPipelineConfig({ stages: parsed.stages || [] });
-      } catch {
-        setPipelineConfig({ stages: [] });
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load pipeline");
-    } finally {
-      setLoading(false);
-    }
-  }, [mode, pipelineId, cloneFromId]);
-
-  useEffect(() => {
-    void load();
-    getPipelineConfigOptions().then(setConfigOptions).catch(() => {});
-    fetchEnabledModels().then(setEnabledModels).catch(() => {});
-  }, [load]);
-
   const handleSave = async () => {
-    if (!name.trim()) { setError("Name is required"); return; }
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      if (mode === "shadow") {
-        const created = await createPipeline({
-          name,
-          description,
-          kind,
-          system_prompt: systemPrompt,
-          simple_tools: JSON.stringify(simpleTools),
-          pipeline_config: JSON.stringify(pipelineConfig),
-          agent_config: shadowAgentConfigRef.current,
-        });
-        window.location.href = `/admin/pipelines/${created.id}`;
-        return;
-      }
-      if (!pipelineId) return;
-      const req: UpdatePipelineRequest = {
-        name,
-        description,
-        kind,
-        system_prompt: systemPrompt,
-        simple_tools: JSON.stringify(simpleTools),
-        pipeline_config: JSON.stringify(pipelineConfig),
-      };
-      const updated = await updatePipeline(pipelineId, req);
-      setPipeline(updated);
-      setSuccess("Pipeline saved");
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save pipeline");
-    } finally {
-      setSaving(false);
+    if (!state.canSubmit) return;
+    const ctrl = new AbortController();
+    const newId = await savePipeline(state, ctrl.signal);
+    if (newId !== null) {
+      // Shadow → edit transition: navigate to the freshly created record.
+      navigate(`/pipelines/${newId}`);
+      return;
+    }
+    if (state.saveSuccess) {
+      setTimeout(() => {
+        if (state.saveSuccess) state.saveSuccess = null;
+      }, 3000);
     }
   };
 
   const handleDelete = async () => {
-    if (!pipelineId) return;
-    if (!window.confirm(`Delete pipeline "${name}"?`)) return;
-    try {
-      await deletePipeline(pipelineId);
-      window.location.href = "/admin/pipelines";
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/referenced/i.test(msg)) {
-        setError("This pipeline is referenced by one or more worlds — re-point them first.");
-      } else {
-        setError(msg);
-      }
-    }
+    if (state.mode !== "edit" || !state.pipelineId) return;
+    if (!window.confirm(`Delete pipeline "${state.draft.name}"?`)) return;
+    const ctrl = new AbortController();
+    const ok = await deleteCurrentPipeline(state, ctrl.signal);
+    if (ok) navigate("/pipelines");
   };
 
-  if (mode === "edit" && !pipelineId) {
-    return <Container py="md"><Alert color="red">Invalid pipeline ID</Alert></Container>;
+  if (state.loadStatus === "loading" || state.loadStatus === "idle") {
+    return (
+      <Container py="md">
+        <Group justify="center" py="xl"><Loader /></Group>
+      </Container>
+    );
   }
-  if (mode === "shadow" && !cloneFromId) {
-    return <Container py="md"><Alert color="red">Missing cloneFrom parameter</Alert></Container>;
-  }
-
-  if (loading) {
-    return <Container py="md"><Group justify="center" py="xl"><Loader /></Group></Container>;
+  if (state.loadStatus === "error") {
+    return <Container py="md"><Alert color="red">{state.loadError}</Alert></Container>;
   }
 
   // ---- Tools select data (grouped by category) -----------------------------
 
-  const toolsData = configOptions
+  const opts = state.configOptions;
+  const toolsData = opts
     ? Object.entries(
-        configOptions.tools.reduce<Record<string, { value: string; label: string }[]>>((acc, t) => {
+        opts.tools.reduce<Record<string, { value: string; label: string }[]>>((acc, t) => {
           (acc[t.category] ??= []).push({ value: t.name, label: t.name });
           return acc;
         }, {}),
       ).map(([group, items]) => ({ group, items }))
     : [];
+
+  const stages = state.draft.pipeline_config.stages;
 
   // ---- Render --------------------------------------------------------------
 
@@ -228,26 +126,28 @@ export function PipelineEditPage() {
           <Button
             variant="subtle"
             leftSection={<IconArrowLeft size={16} />}
-            onClick={() => { window.location.href = "/admin/pipelines"; }}
+            onClick={() => navigate("/pipelines")}
           >
             Back
           </Button>
           <Title order={3}>
-            {mode === "shadow" ? (name || "New pipeline (clone)") : (pipeline?.name || "Edit Pipeline")}
+            {state.mode === "shadow"
+              ? (state.draft.name || "New pipeline")
+              : (state.pipeline?.name || "Edit Pipeline")}
           </Title>
         </Group>
         <Group>
-          {mode === "edit" && (
+          {state.mode === "edit" && state.pipelineId && (
             <Button
               variant="light"
               leftSection={<IconCopy size={16} />}
-              onClick={() => { window.location.href = `/admin/pipelines/new?cloneFrom=${pipelineId}`; }}
-              disabled={loading || saving}
+              onClick={() => navigate(`/pipelines/new?cloneFrom=${state.pipelineId}`)}
+              disabled={state.saveStatus === "loading"}
             >
               Clone
             </Button>
           )}
-          {isAdmin && mode === "edit" && (
+          {isAdmin && state.mode === "edit" && (
             <Button
               variant="light"
               color="red"
@@ -257,12 +157,26 @@ export function PipelineEditPage() {
               Delete
             </Button>
           )}
-          <Button onClick={handleSave} loading={saving}>Save</Button>
+          <Button
+            onClick={handleSave}
+            disabled={!state.canSubmit}
+            loading={state.saveStatus === "loading"}
+          >
+            Save
+          </Button>
         </Group>
       </Group>
 
-      {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>{error}</Alert>}
-      {success && <Alert color="green" mb="md" withCloseButton onClose={() => setSuccess(null)}>{success}</Alert>}
+      {state.saveError && (
+        <Alert color="red" mb="md" withCloseButton onClose={() => { state.saveError = null; }}>
+          {state.saveError}
+        </Alert>
+      )}
+      {state.saveSuccess && (
+        <Alert color="green" mb="md" withCloseButton onClose={() => { state.saveSuccess = null; }}>
+          {state.saveSuccess}
+        </Alert>
+      )}
 
       {/* Basics */}
       <Paper p="md" mb="md" withBorder>
@@ -270,8 +184,12 @@ export function PipelineEditPage() {
           <Group grow>
             <TextInput
               label="Name"
-              value={name}
-              onChange={e => setName(e.currentTarget.value)}
+              value={state.draft.name}
+              onChange={(e) => {
+                state.draft.name = e.currentTarget.value;
+                if (state.serverErrors.name) delete state.serverErrors.name;
+              }}
+              error={state.errors.name}
               required
             />
             <Select
@@ -281,25 +199,18 @@ export function PipelineEditPage() {
                 { value: "chain", label: "Chain Pipeline" },
                 { value: "agentic", label: "Agentic (coming soon)", disabled: true },
               ]}
-              value={kind}
-              onChange={v => {
+              value={state.draft.kind}
+              onChange={(v) => {
                 const next = v || "simple";
-                setKind(next);
-                if (next === "chain" && pipelineConfig.stages.length === 0) {
-                  setPipelineConfig({
-                    stages: [
-                      { step_type: "tool", name: "", prompt: "", max_agent_steps: 10, tools: [], enabled: true, model_id: null },
-                      { step_type: "writer", name: "", prompt: "", max_agent_steps: null, tools: [], enabled: true, model_id: null },
-                    ],
-                  });
-                }
+                state.draft.kind = next;
+                if (next === "chain") seedChainStages(state);
               }}
             />
           </Group>
           <Textarea
             label="Description"
-            value={description}
-            onChange={e => setDescription(e.currentTarget.value)}
+            value={state.draft.description}
+            onChange={(e) => { state.draft.description = e.currentTarget.value; }}
             minRows={2}
           />
         </Stack>
@@ -308,24 +219,24 @@ export function PipelineEditPage() {
       {/* Mode body */}
       <Paper p="md" mb="md" withBorder>
         <Stack>
-          {kind === "simple" && (
+          {state.draft.kind === "simple" && (
             <>
               <Textarea
                 label="System Prompt Template"
                 description="Use {PLACEHOLDER} tokens for runtime injection."
-                value={systemPrompt}
-                onChange={e => setSystemPrompt(e.currentTarget.value)}
+                value={state.draft.system_prompt}
+                onChange={(e) => { state.draft.system_prompt = e.currentTarget.value; }}
                 autosize
                 minRows={8}
                 styles={{ input: { fontFamily: "monospace" } }}
               />
-              {configOptions && (
+              {opts && (
                 <MultiSelect
                   label="Enabled Tools"
                   description="Tools available to the LLM in simple mode. Empty = all tools."
                   data={toolsData}
-                  value={simpleTools}
-                  onChange={setSimpleTools}
+                  value={state.draft.simple_tools}
+                  onChange={(v) => { state.draft.simple_tools = v; }}
                   searchable
                   clearable
                 />
@@ -333,7 +244,7 @@ export function PipelineEditPage() {
             </>
           )}
 
-          {kind === "chain" && (
+          {state.draft.kind === "chain" && (
             <Stack gap="xs">
               <Group justify="space-between">
                 <Text fw={500} size="sm">Pipeline Stages</Text>
@@ -345,35 +256,15 @@ export function PipelineEditPage() {
                     {
                       value: "writer",
                       label: "Writer",
-                      disabled: pipelineConfig.stages.some(s => s.step_type === "writer" || s.step_type === "writing"),
+                      disabled: stages.some(
+                        (s) => s.step_type === "writer" || s.step_type === "writing",
+                      ),
                     },
                   ]}
                   value={null}
-                  onChange={v => {
+                  onChange={(v) => {
                     if (!v) return;
-                    const newStage: PipelineStage = {
-                      step_type: v,
-                      name: "",
-                      prompt: "",
-                      max_agent_steps: v === "tool" ? 10 : null,
-                      tools: [],
-                      enabled: true,
-                      model_id: null,
-                    };
-                    if (v === "tool") {
-                      const writerIdx = pipelineConfig.stages.findIndex(
-                        s => s.step_type === "writer" || s.step_type === "writing",
-                      );
-                      if (writerIdx !== -1) {
-                        setPipelineConfig(prev => {
-                          const stages = [...prev.stages];
-                          stages.splice(writerIdx, 0, newStage);
-                          return { stages };
-                        });
-                        return;
-                      }
-                    }
-                    setPipelineConfig(prev => ({ stages: [...prev.stages, newStage] }));
+                    addStage(state, v);
                   }}
                   clearable
                   w={160}
@@ -381,16 +272,16 @@ export function PipelineEditPage() {
               </Group>
 
               {/* Validation warnings */}
-              {pipelineConfig.stages.length > 0 && (() => {
+              {stages.length > 0 && (() => {
                 const warnings: string[] = [];
-                const last = pipelineConfig.stages[pipelineConfig.stages.length - 1];
+                const last = stages[stages.length - 1];
                 if (last.step_type !== "writer" && last.step_type !== "writing") {
                   warnings.push("Last stage should be a writer step");
                 }
-                if (!pipelineConfig.stages.some(s => s.step_type === "writer" || s.step_type === "writing")) {
+                if (!stages.some((s) => s.step_type === "writer" || s.step_type === "writing")) {
                   warnings.push("Pipeline needs at least one writer stage");
                 }
-                pipelineConfig.stages.forEach((s, i) => {
+                stages.forEach((s, i) => {
                   if ((s.step_type === "tool" || s.step_type === "planning") && s.tools.length === 0) {
                     warnings.push(`Stage ${i + 1}: no tools selected`);
                   }
@@ -402,11 +293,12 @@ export function PipelineEditPage() {
                 ) : null;
               })()}
 
-              {pipelineConfig.stages.length === 0 ? (
+              {stages.length === 0 ? (
                 <Text c="dimmed" size="sm">No stages defined.</Text>
               ) : (
-                pipelineConfig.stages.map((stage, idx) => {
+                stages.map((stage, idx) => {
                   const stageEnabled = stage.enabled !== false;
+                  const expanded = state.expandedStages.has(idx);
                   return (
                     <Paper key={idx} p="xs" withBorder style={{ opacity: stageEnabled ? 1 : 0.55 }}>
                       <Stack gap={4}>
@@ -415,11 +307,7 @@ export function PipelineEditPage() {
                             <Checkbox
                               size="xs"
                               checked={stageEnabled}
-                              onChange={e => {
-                                const stages = [...pipelineConfig.stages];
-                                stages[idx] = { ...stages[idx], enabled: e.currentTarget.checked };
-                                setPipelineConfig({ stages });
-                              }}
+                              onChange={(e) => updateStage(state, idx, { enabled: e.currentTarget.checked })}
                               title={stageEnabled ? "Disable stage" : "Enable stage"}
                             />
                             <Badge size="sm" variant="light" circle>{idx + 1}</Badge>
@@ -430,11 +318,7 @@ export function PipelineEditPage() {
                                   size="xs"
                                   placeholder="Stage name"
                                   value={stage.name || ""}
-                                  onChange={e => {
-                                    const stages = [...pipelineConfig.stages];
-                                    stages[idx] = { ...stages[idx], name: e.currentTarget.value };
-                                    setPipelineConfig({ stages });
-                                  }}
+                                  onChange={(e) => updateStage(state, idx, { name: e.currentTarget.value })}
                                   styles={stageEnabled ? undefined : { input: { textDecoration: "line-through" } }}
                                   w={150}
                                 />
@@ -443,14 +327,11 @@ export function PipelineEditPage() {
                                   placeholder="Max steps"
                                   title="Max agent steps"
                                   value={stage.max_agent_steps ?? 10}
-                                  onChange={v => {
-                                    const stages = [...pipelineConfig.stages];
-                                    stages[idx] = {
-                                      ...stages[idx],
+                                  onChange={(v) =>
+                                    updateStage(state, idx, {
                                       max_agent_steps: typeof v === "number" ? v : 10,
-                                    };
-                                    setPipelineConfig({ stages });
-                                  }}
+                                    })
+                                  }
                                   min={1}
                                   max={50}
                                   w={80}
@@ -471,13 +352,9 @@ export function PipelineEditPage() {
                               size="xs"
                               placeholder="Session model"
                               title="Override model for this stage"
-                              data={enabledModels.map(m => ({ value: m.model_id, label: m.model_id }))}
+                              data={state.enabledModels.map((m) => ({ value: m.model_id, label: m.model_id }))}
                               value={stage.model_id ?? null}
-                              onChange={v => {
-                                const stages = [...pipelineConfig.stages];
-                                stages[idx] = { ...stages[idx], model_id: v };
-                                setPipelineConfig({ stages });
-                              }}
+                              onChange={(v) => updateStage(state, idx, { model_id: v })}
                               searchable
                               clearable
                               w={200}
@@ -488,34 +365,26 @@ export function PipelineEditPage() {
                               variant="subtle"
                               size="sm"
                               disabled={idx === 0}
-                              onClick={() => {
-                                const stages = [...pipelineConfig.stages];
-                                [stages[idx - 1], stages[idx]] = [stages[idx], stages[idx - 1]];
-                                setPipelineConfig({ stages });
-                              }}
+                              onClick={() => reorderStages(state, idx, idx - 1)}
                             >
                               <IconArrowUp size={14} />
                             </ActionIcon>
                             <ActionIcon
                               variant="subtle"
                               size="sm"
-                              disabled={idx === pipelineConfig.stages.length - 1}
-                              onClick={() => {
-                                const stages = [...pipelineConfig.stages];
-                                [stages[idx], stages[idx + 1]] = [stages[idx + 1], stages[idx]];
-                                setPipelineConfig({ stages });
-                              }}
+                              disabled={idx === stages.length - 1}
+                              onClick={() => reorderStages(state, idx, idx + 1)}
                             >
                               <IconArrowDown size={14} />
                             </ActionIcon>
                             <ActionIcon
                               variant="subtle"
                               size="sm"
-                              title={mode === "shadow" ? "Save the clone first to edit stage prompts" : "Edit Prompt"}
-                              disabled={mode === "shadow"}
+                              title={state.mode === "shadow" ? "Save the pipeline first to edit stage prompts" : "Edit Prompt"}
+                              disabled={state.mode === "shadow"}
                               onClick={() => {
-                                if (mode === "shadow" || !pipelineId) return;
-                                window.location.href = `/admin/pipelines/${pipelineId}/stage/${idx}`;
+                                if (state.mode === "shadow" || !state.pipelineId) return;
+                                navigate(`/pipelines/${state.pipelineId}/stage/${idx}`);
                               }}
                             >
                               <IconSparkles size={14} />
@@ -524,26 +393,19 @@ export function PipelineEditPage() {
                               variant="subtle"
                               size="sm"
                               color="red"
-                              onClick={() => {
-                                const stages = pipelineConfig.stages.filter((_, i) => i !== idx);
-                                setPipelineConfig({ stages });
-                              }}
+                              onClick={() => removeStage(state, idx)}
                             >
                               <IconTrash size={14} />
                             </ActionIcon>
                           </Group>
                         </Group>
-                        {configOptions && (
+                        {opts && (
                           <MultiSelect
                             size="xs"
                             placeholder="Select tools..."
                             data={toolsData}
                             value={stage.tools || []}
-                            onChange={v => {
-                              const stages = [...pipelineConfig.stages];
-                              stages[idx] = { ...stages[idx], tools: v };
-                              setPipelineConfig({ stages });
-                            }}
+                            onChange={(v) => updateStage(state, idx, { tools: v })}
                             searchable
                             clearable
                           />
@@ -553,16 +415,12 @@ export function PipelineEditPage() {
                             style={{
                               cursor: "pointer",
                               overflow: "hidden",
-                              maxHeight: expandedStages.has(idx) ? undefined : "7.5em",
+                              maxHeight: expanded ? undefined : "7.5em",
                               position: "relative",
                               fontSize: "var(--mantine-font-size-sm)",
                               color: "var(--mantine-color-dimmed)",
                             }}
-                            onClick={() => setExpandedStages(prev => {
-                              const next = new Set(prev);
-                              if (next.has(idx)) next.delete(idx); else next.add(idx);
-                              return next;
-                            })}
+                            onClick={() => toggleStageExpanded(state, idx)}
                           >
                             <ReactMarkdown>{stage.prompt}</ReactMarkdown>
                           </div>
@@ -577,11 +435,11 @@ export function PipelineEditPage() {
             </Stack>
           )}
 
-          {kind === "agentic" && (
+          {state.draft.kind === "agentic" && (
             <Alert color="blue">Agent configuration coming soon</Alert>
           )}
         </Stack>
       </Paper>
     </Container>
   );
-}
+});

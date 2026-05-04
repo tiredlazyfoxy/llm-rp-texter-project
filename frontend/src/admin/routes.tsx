@@ -1,4 +1,4 @@
-import { Routes, Route, useParams } from "react-router-dom";
+import { Routes, Route, useParams, useSearchParams } from "react-router-dom";
 import { UsersPage } from "./pages/UsersPage";
 import { WorldsListPage } from "./pages/WorldsListPage";
 import { WorldViewPage } from "./pages/WorldViewPage";
@@ -40,14 +40,39 @@ const DocumentEditPageRoute = () => {
   return <DocumentEditPage key={`${worldId}:${docId}`} worldId={worldId!} docId={docId!} />;
 };
 
+const PipelineNewRoute = () => {
+  const [searchParams] = useSearchParams();
+  const cloneFromId = searchParams.get("cloneFrom");
+  return (
+    <PipelineEditPage
+      key="new"
+      pipelineId={null}
+      cloneFromId={cloneFromId}
+    />
+  );
+};
+
 const PipelineEditPageRoute = () => {
   const { pipelineId } = useParams<{ pipelineId: string }>();
-  return <PipelineEditPage key={pipelineId} />;
+  return (
+    <PipelineEditPage
+      key={pipelineId}
+      pipelineId={pipelineId!}
+      cloneFromId={null}
+    />
+  );
 };
 
 const PipelineStageEditPageRoute = () => {
   const { pipelineId, stageIndex } = useParams<{ pipelineId: string; stageIndex: string }>();
-  return <PipelineStageEditPage key={`${pipelineId}:${stageIndex}`} />;
+  const idx = parseInt(stageIndex ?? "0", 10);
+  return (
+    <PipelineStageEditPage
+      key={`${pipelineId}:${stageIndex}`}
+      pipelineId={pipelineId!}
+      stageIndex={Number.isFinite(idx) ? idx : 0}
+    />
+  );
 };
 
 export function AdminRoutes() {
@@ -60,7 +85,7 @@ export function AdminRoutes() {
       <Route path="/worlds/:worldId/field/:fieldName" element={<WorldFieldEditPageRoute />} />
       <Route path="/worlds/:worldId/documents/:docId/edit" element={<DocumentEditPageRoute />} />
       <Route path="/pipelines" element={<PipelinesListPage />} />
-      <Route path="/pipelines/new" element={<PipelineEditPage key="new" />} />
+      <Route path="/pipelines/new" element={<PipelineNewRoute />} />
       <Route path="/pipelines/:pipelineId" element={<PipelineEditPageRoute />} />
       <Route path="/pipelines/:pipelineId/stage/:stageIndex" element={<PipelineStageEditPageRoute />} />
       <Route path="/llm-servers" element={<LlmServersPage />} />
