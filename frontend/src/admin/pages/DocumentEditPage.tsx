@@ -18,7 +18,7 @@ import {
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import type { DocumentItem } from "../../types/world";
-import { LlmChatPanel } from "../components/LlmChatPanel";
+import { LlmChatPanel } from "../components/llm/LlmChatPanel";
 import {
   createLink,
   deleteLink,

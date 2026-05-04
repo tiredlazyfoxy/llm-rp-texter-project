@@ -7,8 +7,8 @@ import {
   Stack,
   Text,
 } from "@mantine/core";
-import type { AdminUserResponse } from "../../types/admin";
-import { setUserRole } from "../../api/admin";
+import type { AdminUserResponse } from "../../../types/admin";
+import { setUserRole } from "../../../api/admin";
 
 interface SetRoleModalProps {
   opened: boolean;

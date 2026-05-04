@@ -2,7 +2,7 @@ import { Badge, Collapse, Group, Progress, Stack, Text, UnstyledButton } from "@
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import { useState } from "react";
-import { chatStore } from "../stores/ChatStore";
+import { chatStore } from "../../stores/ChatStore";
 
 function StatRow({
   name,

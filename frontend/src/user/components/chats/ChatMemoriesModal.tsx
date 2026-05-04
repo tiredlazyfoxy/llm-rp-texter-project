@@ -10,8 +10,8 @@ import {
 } from "@mantine/core";
 import { IconBrain, IconChevronDown, IconChevronRight, IconTrash } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
-import { chatStore } from "../stores/ChatStore";
-import { formatDate } from "../../utils/formatDate";
+import { chatStore } from "../../stores/ChatStore";
+import { formatDate } from "../../../utils/formatDate";
 
 export const ChatMemoriesButton = observer(function ChatMemoriesButton() {
   const [opened, setOpened] = useState(false);

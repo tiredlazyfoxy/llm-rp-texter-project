@@ -10,10 +10,10 @@ import {
   Text,
 } from "@mantine/core";
 import { observer } from "mobx-react-lite";
-import { chatStore } from "../stores/ChatStore";
-import { request } from "../../api/client";
-import { getCurrentUser } from "../../auth";
-import { saveToolModel, saveTextModel } from "../../utils/modelSettings";
+import { chatStore } from "../../stores/ChatStore";
+import { request } from "../../../api/client";
+import { getCurrentUser } from "../../../auth";
+import { saveToolModel, saveTextModel } from "../../../utils/modelSettings";
 
 interface EnabledModelInfo {
   server_id: string;

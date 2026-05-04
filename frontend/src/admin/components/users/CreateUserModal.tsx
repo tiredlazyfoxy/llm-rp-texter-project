@@ -4,28 +4,37 @@ import {
   Button,
   Modal,
   PasswordInput,
+  Select,
   Stack,
-  Text,
+  TextInput,
 } from "@mantine/core";
-import type { AdminUserResponse } from "../../types/admin";
-import { setUserPassword } from "../../api/admin";
+import { createUser } from "../../../api/admin";
 
-interface SetPasswordModalProps {
+interface CreateUserModalProps {
   opened: boolean;
-  user: AdminUserResponse;
   onClose: () => void;
-  onSaved: () => void;
+  onCreated: () => void;
 }
 
-export function SetPasswordModal({ opened, user, onClose, onSaved }: SetPasswordModalProps) {
+const ROLE_OPTIONS = [
+  { value: "player", label: "Player" },
+  { value: "editor", label: "Editor" },
+  { value: "admin", label: "Admin" },
+];
+
+export function CreateUserModal({ opened, onClose, onCreated }: CreateUserModalProps) {
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [role, setRole] = useState<string>("player");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reset = () => {
+    setUsername("");
     setPassword("");
     setPasswordConfirm("");
+    setRole("player");
     setError(null);
     setLoading(false);
   };
@@ -38,6 +47,10 @@ export function SetPasswordModal({ opened, user, onClose, onSaved }: SetPassword
   const handleSubmit = async () => {
     setError(null);
 
+    if (!username.trim()) {
+      setError("Username is required");
+      return;
+    }
     if (password !== passwordConfirm) {
       setError("Passwords do not match");
       return;
@@ -49,32 +62,37 @@ export function SetPasswordModal({ opened, user, onClose, onSaved }: SetPassword
 
     setLoading(true);
     try {
-      await setUserPassword(user.id, {
+      await createUser({
+        username: username.trim(),
         password,
         password_confirm: passwordConfirm,
+        role: role as "admin" | "editor" | "player",
       });
       handleClose();
-      onSaved();
+      onCreated();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to set password");
+      setError(e instanceof Error ? e.message : "Failed to create user");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Modal opened={opened} onClose={handleClose} title="Set Password" size="sm">
+    <Modal opened={opened} onClose={handleClose} title="Create User" size="sm">
       <Stack>
-        <Text size="sm" c="dimmed">Setting password for <strong>{user.username}</strong></Text>
-
         {error && (
           <Alert color="red" withCloseButton onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
+        <TextInput
+          label="Username"
+          value={username}
+          onChange={(e) => setUsername(e.currentTarget.value)}
+        />
         <PasswordInput
-          label="New Password"
+          label="Password"
           value={password}
           onChange={(e) => setPassword(e.currentTarget.value)}
         />
@@ -83,9 +101,15 @@ export function SetPasswordModal({ opened, user, onClose, onSaved }: SetPassword
           value={passwordConfirm}
           onChange={(e) => setPasswordConfirm(e.currentTarget.value)}
         />
+        <Select
+          label="Role"
+          data={ROLE_OPTIONS}
+          value={role}
+          onChange={(v) => v && setRole(v)}
+        />
 
         <Button onClick={handleSubmit} loading={loading}>
-          Set Password
+          Create
         </Button>
       </Stack>
     </Modal>

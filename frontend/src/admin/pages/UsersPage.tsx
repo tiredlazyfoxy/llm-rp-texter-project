@@ -16,9 +16,9 @@ import { IconDots, IconLock, IconShield, IconUserOff, IconUserPlus } from "@tabl
 import { formatDate } from "../../utils/formatDate";
 import type { AdminUserResponse } from "../../types/admin";
 import { disableUser, listUsers } from "../../api/admin";
-import { CreateUserModal } from "../components/CreateUserModal";
-import { SetPasswordModal } from "../components/SetPasswordModal";
-import { SetRoleModal } from "../components/SetRoleModal";
+import { CreateUserModal } from "../components/users/CreateUserModal";
+import { SetPasswordModal } from "../components/users/SetPasswordModal";
+import { SetRoleModal } from "../components/users/SetRoleModal";
 
 export function UsersPage() {
   const [users, setUsers] = useState<AdminUserResponse[]>([]);

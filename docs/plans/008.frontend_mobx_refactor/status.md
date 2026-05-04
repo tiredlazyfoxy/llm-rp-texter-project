@@ -21,7 +21,7 @@ Already applied (locked decisions baked into the docs before any step is planned
 |------|-------------------------------|--------|----------|------------|
 | 001  | `001.routing_foundation.md`   | done   | PASS     | 2026-05-03 |
 | 002  | `002.api_client.md`           | done   | PASS     | 2026-05-04 |
-| 003  | `003.component_reorg.md`      | planned | —       |            |
+| 003  | `003.component_reorg.md`      | done   | PASS     | 2026-05-04 |
 | 003b | `003b.hooks_to_components.md` | planned | —       |            |
 | 004  | `004.user_non_chat_pages.md`  | planned | —       |            |
 | 005  | `005.chat_refactor.md`        | planned | —       |            |
@@ -60,8 +60,34 @@ Already applied (locked decisions baked into the docs before any step is planned
 - `frontend/src/user/components/ChatSettingsPanel.tsx` — import `request` from `api/client`
 - `frontend/src/api/CLAUDE.md` — document new conventions, file list
 
+### Step 003 — Component folder reorg
+- `frontend/src/user/components/chats/ChatInput.tsx` — moved from `user/components/`; sibling-import paths updated to `../../`
+- `frontend/src/user/components/chats/ChatMemoriesModal.tsx` — moved; imports updated
+- `frontend/src/user/components/chats/ChatSettingsPanel.tsx` — moved; imports updated
+- `frontend/src/user/components/chats/MessageBubble.tsx` — moved; `chatStore` import updated
+- `frontend/src/user/components/chats/MessageHistory.tsx` — moved; `chatStore` import updated
+- `frontend/src/user/components/chats/StatsPanel.tsx` — moved; `chatStore` import updated
+- `frontend/src/user/components/chats/SummaryBlock.tsx` — moved; `chatStore` import updated
+- `frontend/src/user/components/chats/ToolCallTrace.tsx` — moved; no internal `.` imports
+- `frontend/src/user/components/worlds/WorldInfoModal.tsx` — moved; `auth` import updated
+- `frontend/src/admin/components/users/CreateUserModal.tsx` — moved; `api/admin` import updated
+- `frontend/src/admin/components/users/SetPasswordModal.tsx` — moved; type+api imports updated
+- `frontend/src/admin/components/users/SetRoleModal.tsx` — moved; type+api imports updated
+- `frontend/src/admin/components/pipelines/PlaceholderPanel.tsx` — moved; type import updated
+- `frontend/src/admin/components/pipelines/PlaceholderSuggestions.tsx` — moved; type+hook imports updated
+- `frontend/src/admin/components/llm/LlmChatPanel.tsx` — moved; type+api+hook imports updated
+- `frontend/src/user/pages/ChatViewPage.tsx` — caller paths updated to `chats/` subfolder
+- `frontend/src/admin/pages/UsersPage.tsx` — caller paths updated to `users/` subfolder
+- `frontend/src/admin/pages/DocumentEditPage.tsx` — `LlmChatPanel` import updated to `llm/`
+- `frontend/src/admin/pages/PipelineStageEditPage.tsx` — `LlmChatPanel` and pipeline placeholders import paths updated
+- `frontend/src/admin/pages/WorldFieldEditPage.tsx` — `LlmChatPanel` and pipeline placeholders import paths updated
+- `frontend/src/user/CLAUDE.md` — refreshed `components/` layout block; documented `UserSidebar.tsx` exception
+- `frontend/src/admin/CLAUDE.md` — refreshed `components/` layout block (users/, pipelines/, llm/)
+
 ## Notes & Issues
 
 - Step 001: many stray compiled `.js` files exist alongside `.tsx` files across `frontend/src/` (visible as untracked files). Out of scope for this step; they appear to be leftovers from a prior `tsc` run with emit. A future cleanup step (or a `tsconfig` `noEmit` check) should remove them and ensure they cannot be re-emitted.
+- Step 003: `step-verifier` agent not invoked from this CLI session; coder self-verified all 7 acceptance criteria — folder shape and admin-loose-file checks via Glob, build via `npm run build` (green), stale-path grep returned zero matches, CLAUDE.md updates applied, hooks/ folders untouched. Live dev-server smoke (criterion 5) was not executed — relies on a running backend; the compile-time path is fully covered by tsc.
+- Step 003: `WorldInfoModal` has no callers anywhere in `frontend/src/`; moved to `worlds/` per the plan but appears to be unused code. Flagged for a future cleanup step.
 - Step 001: Verifier was self-run by the coder (no `step-verifier` agent invocation tool available in this session). All acceptance criteria walked through manually against code; build (`npm run build` = `tsc && vite build`) green; no `window.location.pathname` remains in either `App.tsx`; no page or login files modified.
 - Step 002: `step-verifier` agent returned PASS on all 11 acceptance criteria, build, and convention checks (run 2026-05-04). Live dev-server smoke test (criterion 9) was not executed — relies on a running backend; the build-time path is fully covered by tsc.

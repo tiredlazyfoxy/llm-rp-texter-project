@@ -2,7 +2,7 @@ import { ActionIcon, Card, Group, Loader, Stack, Text, Tooltip } from "@mantine/
 import { IconArrowBackUp, IconChevronDown, IconChevronUp, IconRefresh } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import ReactMarkdown from "react-markdown";
-import { chatStore } from "../stores/ChatStore";
+import { chatStore } from "../../stores/ChatStore";
 import { MessageBubble } from "./MessageBubble";
 
 interface SummaryBlockProps {

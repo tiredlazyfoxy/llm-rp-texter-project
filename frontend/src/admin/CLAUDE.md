@@ -7,9 +7,13 @@ admin/
   App.tsx, main.tsx
   routes.tsx         — React Router route table (AdminRoutes); per-path-param wrappers pass key={id}
   pages/             — WorldsList, WorldView, WorldEdit, WorldFieldEdit, DocumentEdit, PipelinesList, PipelineEdit, PipelineStageEdit, LlmServersPage, DbManagementPage
-  components/        — LlmChatPanel, PlaceholderPanel, PlaceholderSuggestions
-  hooks/             — usePlaceholderAutocomplete (inline {PLACEHOLDER} autocomplete)
+  components/
+    users/           — CreateUserModal, SetPasswordModal, SetRoleModal
+    pipelines/       — PlaceholderPanel, PlaceholderSuggestions
+    llm/             — LlmChatPanel
 ```
+
+The `admin/components/` top level holds no loose files — every component lives in its domain subfolder.
 
 Routing uses `react-router-dom`'s `BrowserRouter` with `basename="/admin"` mounted in `App.tsx`; the `<Routes>` table in `routes.tsx` is written without the `/admin` prefix.
 

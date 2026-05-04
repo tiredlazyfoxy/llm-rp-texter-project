@@ -24,7 +24,7 @@ import {
 import { observer } from "mobx-react-lite";
 import ReactMarkdown from "react-markdown";
 import { ToolCallTrace } from "./ToolCallTrace";
-import { chatStore } from "../stores/ChatStore";
+import { chatStore } from "../../stores/ChatStore";
 
 interface StreamingToolCall {
   tool_name: string;

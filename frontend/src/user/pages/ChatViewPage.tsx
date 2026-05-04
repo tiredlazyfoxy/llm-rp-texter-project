@@ -9,11 +9,11 @@ import {
 import { IconSettings } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import { chatStore } from "../stores/ChatStore";
-import { MessageHistory } from "../components/MessageHistory";
-import { ChatInput } from "../components/ChatInput";
-import { StatsPanel } from "../components/StatsPanel";
-import { ChatSettingsPanel } from "../components/ChatSettingsPanel";
-import { ChatMemoriesButton } from "../components/ChatMemoriesModal";
+import { MessageHistory } from "../components/chats/MessageHistory";
+import { ChatInput } from "../components/chats/ChatInput";
+import { StatsPanel } from "../components/chats/StatsPanel";
+import { ChatSettingsPanel } from "../components/chats/ChatSettingsPanel";
+import { ChatMemoriesButton } from "../components/chats/ChatMemoriesModal";
 
 function _chatIdFromPath(): string {
   const match = window.location.pathname.match(/\/chat\/(\d+)/);

@@ -1,6 +1,6 @@
 import { Button, Group, Modal, ScrollArea, Title } from "@mantine/core";
 import ReactMarkdown from "react-markdown";
-import { getCurrentUser } from "../../auth";
+import { getCurrentUser } from "../../../auth";
 
 interface WorldInfoModalProps {
   world: WorldInfo | null;

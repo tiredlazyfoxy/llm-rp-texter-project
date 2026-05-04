@@ -3,7 +3,7 @@ import { ActionIcon, Alert, Button, Card, Divider, Group, Loader, Stack, Text, T
 import { IconAlertTriangle, IconFold, IconRefresh, IconTrash } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import ReactMarkdown from "react-markdown";
-import { chatStore } from "../stores/ChatStore";
+import { chatStore } from "../../stores/ChatStore";
 import { MessageBubble } from "./MessageBubble";
 import { SummaryBlock } from "./SummaryBlock";
 import { ToolCallTrace } from "./ToolCallTrace";

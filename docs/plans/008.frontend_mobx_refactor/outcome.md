@@ -45,3 +45,4 @@ When all steps are done, the architect (or a final review pass) confirms:
 ## Observations
 
 - Step 001: many stray compiled `.js` files exist next to `.tsx` files across `frontend/src/` (untracked). Possible impact: add a guard to `frontend/CLAUDE.md` (or the cleanup step) noting `tsconfig.json` should keep `noEmit` true (Vite handles emit) and the leftover `.js` files should be removed; consider a `.gitignore` rule for `src/**/*.js` to prevent accidental check-in.
+- Step 003: `WorldInfoModal` (now under `frontend/src/user/components/worlds/`) is imported nowhere in `frontend/src/`. Possible impact: cleanup step should either delete it or restore the call site if a "world info" affordance was intended on the chat page.
