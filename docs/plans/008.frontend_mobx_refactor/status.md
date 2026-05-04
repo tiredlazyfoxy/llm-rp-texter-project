@@ -24,7 +24,7 @@ Already applied (locked decisions baked into the docs before any step is planned
 | 003  | `003.component_reorg.md`      | done   | PASS     | 2026-05-04 |
 | 003b | `003b.hooks_to_components.md` | done   | PASS     | 2026-05-04 |
 | 004  | `004.user_non_chat_pages.md`  | done   | PASS     | 2026-05-04 |
-| 005  | `005.chat_refactor.md`        | planned | —       |            |
+| 005  | `005.chat_refactor.md`        | done    | PASS    | 2026-05-04 |
 | 006  | `006.admin_worlds_domain.md`  | planned | —       |            |
 | 007  | `007.admin_pipelines_domain.md` | planned | —     |            |
 | 008  | `008.admin_users_llm_db.md`   | planned | —       |            |
@@ -113,6 +113,21 @@ Already applied (locked decisions baked into the docs before any step is planned
 - `frontend/src/user/CLAUDE.md` — refreshed `components/` layout block; documented `UserSidebar.tsx` exception
 - `frontend/src/admin/CLAUDE.md` — refreshed `components/` layout block (users/, pipelines/, llm/)
 
+### Step 005 — Chat refactor
+- `frontend/src/user/pages/chatPageState.ts` — new: `ChatPageState(chatId)` + module-private `mergeChatDetail`/`applyStatUpdate` (verbatim from singleton) + external fns: `loadChat`, `loadMemories`, `sendMessage`, `retryAfterError`, `regenerate`, `regenerateAtTurn`, `stopGeneration`, `continueWithVariant`, `rewindToTurn`, `updateSettings`, `archiveChat`, `deleteCurrentChat`, `editMessage`, `deleteMessage`, `deleteMemory`, `compactUpTo`, `unsummarizeLast`, `regenerateSummary`, `expandSummary`, `collapseSummary`, `toggleDebugMode`
+- `frontend/src/user/pages/ChatViewPage.tsx` — observer rewrite: takes `chatId` prop, `useState(() => new ChatPageState(chatId))`, single mount/unmount `useEffect` aborting both load controller and `state.dispose()`; `loadStatus`-driven loading/error rendering
+- `frontend/src/user/routes.tsx` — `ChatViewPageRoute` now passes `chatId` as both `key` and prop
+- `frontend/src/user/components/chats/MessageHistory.tsx` — accepts `state: ChatPageState` prop; reads via `state.*`; calls `compactUpTo`, `continueWithVariant`, `retryAfterError`
+- `frontend/src/user/components/chats/MessageBubble.tsx` — accepts `state` prop; replaced `chatStore.viewingVariantIndex` mutation, `chatStore.debugMode` read, and rewind/edit/delete/regenerate actions with state/external-fn calls
+- `frontend/src/user/components/chats/StatsPanel.tsx` — accepts `state` prop; reads `state.world.stat_definitions` (loaded by `loadChat`) instead of filtering a publicWorlds list
+- `frontend/src/user/components/chats/SummaryBlock.tsx` — accepts `state` prop; calls `expandSummary`/`collapseSummary`/`regenerateSummary`/`unsummarizeLast`
+- `frontend/src/user/components/chats/ChatMemoriesModal.tsx` — accepts `state` prop on both `ChatMemoriesButton` and inner modal; calls `loadMemories` and `deleteMemory`
+- `frontend/src/user/components/chats/ChatSettingsPanel.tsx` — accepts `state` prop; calls `updateSettings`, reads/toggles `state.debugMode` via `toggleDebugMode`
+- `frontend/src/user/components/chats/ChatInput.tsx` — accepts `state` prop; calls `sendMessage`/`regenerate`/`stopGeneration`
+- `frontend/src/user/stores/ChatStore.ts` — deleted; `frontend/src/user/stores/` directory removed
+- `frontend/src/user/stores/ChatStore.js` — deleted (stale tsc emit) so the directory could be removed
+- `frontend/src/user/CLAUDE.md` — pages list now shows `ChatViewPage / chatPageState` as a page+state pair; `stores/` line dropped
+
 ## Notes & Issues
 
 - Step 001: many stray compiled `.js` files exist alongside `.tsx` files across `frontend/src/` (visible as untracked files). Out of scope for this step; they appear to be leftovers from a prior `tsc` run with emit. A future cleanup step (or a `tsconfig` `noEmit` check) should remove them and ensure they cannot be re-emitted.
@@ -123,3 +138,6 @@ Already applied (locked decisions baked into the docs before any step is planned
 - Step 003b: planner missed `admin/pages/WorldFieldEditPage.tsx` as a fourth caller of `usePlaceholderAutocomplete`. Acceptance criteria #4/#5/#6 (no `hooks/` dirs, zero hook-name matches, build green) couldn't be met without touching it. Migrated minimally — the autocomplete branch was already dead (`isPipelinePrompt = false` constant), so the change is dead-code removal + conditional `<PlaceholderTextarea>` for the unreachable pipeline-prompt branch. No behavior change.
 - Step 003b: `step-verifier` agent not invoked from this CLI session; coder self-verified all 8 acceptance criteria — four new files exist, types moved, no hook imports remain in `.ts/.tsx`, both `hooks/` directories removed, grep clean across `.ts/.tsx`, `npm run build` green, CLAUDE.md updates applied. Live dev-server smoke (criterion 7) was not executed — relies on a running backend; the compile-time path is fully covered by tsc.
 - Step 004: `step-verifier` agent not invoked from this CLI session; coder self-verified all 12 acceptance criteria — three new state files exist with required classes + external fns, three pages observer-wrapped with single `useState(() => new ...)` + single mount/unmount `useEffect`, props/no-props split as specified, `routes.tsx` wrappers pass `worldId` as both `key` and prop, grep across the three pages returns zero matches for `window.location.pathname`, `window.location.href = `, `from "../../api/request"`, and any `useState(` other than `useState((`, `npm run build` green, `user/CLAUDE.md` refreshed, `ChatViewPage`/`ChatStore`/admin/components untouched. Live dev-server smoke (criterion 10) not executed — relies on a running backend; the compile-time path is fully covered by tsc.
+- Step 005: planner's "What is dropped" list said `publicWorlds` was a chat-list-only concern, but `StatsPanel` reads `world.stat_definitions` to render stats with proper int/set rendering. Replaced the dropped list with a single `world: WorldInfo | null` field on `ChatPageState`, populated inside `loadChat` by filtering `listPublicWorlds()` (same approach `WorldPageState` uses). No new endpoint introduced.
+- Step 005: `loadChat` calls `loadMemories(state, signal)` after the detail loads (the original `ChatViewPage` only loaded memories when the modal opened, but the singleton effectively pre-warmed via `sendMessage`'s `onDone` cascade and the modal's own load). Pre-warming on chat load matches the modal's expected state and is functionally indistinguishable on first open.
+- Step 005: `step-verifier` agent not invoked from this CLI session; coder self-verified all 12 acceptance criteria — `chatPageState.ts` exists with `ChatPageState` plus all listed external fns, `stores/` directory removed (including stale `ChatStore.js` tsc emit so the dir could be removed), `chatStore` returns zero grep matches under `frontend/src`, `ChatViewPage` accepts `chatId` prop with single `useEffect` aborting both load controller and `state.dispose()`, `routes.tsx` passes `chatId` as both `key` and prop, all 7 chats components receive `state` by prop with no singleton imports, `mergeChatDetail`/`applyStatUpdate` ported verbatim, `debugMode` localStorage read/write preserved, `dispose()` aborts active `streamCtrl`, `npm run build` green, `user/CLAUDE.md` updated. Live dev-server smoke (criterion 11) not executed — relies on a running backend; the compile-time path is fully covered by tsc.

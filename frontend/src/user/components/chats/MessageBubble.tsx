@@ -24,7 +24,14 @@ import {
 import { observer } from "mobx-react-lite";
 import ReactMarkdown from "react-markdown";
 import { ToolCallTrace } from "./ToolCallTrace";
-import { chatStore } from "../../stores/ChatStore";
+import {
+  ChatPageState,
+  deleteMessage,
+  editMessage,
+  regenerate,
+  regenerateAtTurn,
+  rewindToTurn,
+} from "../../pages/chatPageState";
 
 interface StreamingToolCall {
   tool_name: string;
@@ -33,6 +40,7 @@ interface StreamingToolCall {
 }
 
 interface MessageBubbleProps {
+  state: ChatPageState;
   message: ChatMessage;
   isStreaming?: boolean;
   streamingContent?: string;
@@ -70,6 +78,7 @@ function ThinkingSection({ label, content }: { label: string; content: string })
 }
 
 export const MessageBubble = observer(function MessageBubble({
+  state,
   message,
   isStreaming,
   streamingContent,
@@ -101,7 +110,7 @@ export const MessageBubble = observer(function MessageBubble({
 
   // Track which variant the user is viewing for auto-commit on send
   useEffect(() => {
-    chatStore.viewingVariantIndex = isViewingVariant ? displayIndex : null;
+    state.viewingVariantIndex = isViewingVariant ? displayIndex : null;
   }, [isViewingVariant, displayIndex]);
 
   const isUser = message.role === "user";
@@ -109,7 +118,7 @@ export const MessageBubble = observer(function MessageBubble({
   const content = isStreaming
     ? streamingContent ?? ""
     : viewedVariant ? viewedVariant.content : message.content;
-  const debug = chatStore.debugMode;
+  const debug = state.debugMode;
   const isSummarized = false; // Messages in active list are not summarized
   const currentTurn = currentTurnProp ?? 0;
 
@@ -132,7 +141,7 @@ export const MessageBubble = observer(function MessageBubble({
 
   async function handleRewind() {
     if (!confirm(`Rewind to turn ${message.turn_number - 1}?`)) return;
-    await chatStore.rewindToTurn(message.turn_number - 1);
+    await rewindToTurn(state, message.turn_number - 1);
   }
 
   async function handleEdit() {
@@ -146,19 +155,19 @@ export const MessageBubble = observer(function MessageBubble({
     const text = editValue.trim();
     if (!text) return;
     setEditing(false);
-    await chatStore.editMessage(message.id, text);
+    await editMessage(state, message.id, text);
   }
 
   async function handleDelete() {
     if (!confirm("Delete this message?")) return;
-    await chatStore.deleteMessage(message.id);
+    await deleteMessage(state, message.id);
   }
 
   async function handleRegenerate() {
     if (message.turn_number === currentTurn) {
-      await chatStore.regenerate();
+      await regenerate(state);
     } else {
-      await chatStore.regenerateAtTurn(message.turn_number);
+      await regenerateAtTurn(state, message.turn_number);
     }
   }
 

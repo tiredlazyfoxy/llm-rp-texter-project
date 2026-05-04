@@ -8,29 +8,31 @@ import {
 } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
-import { chatStore } from "../stores/ChatStore";
+import { ChatPageState, loadChat } from "./chatPageState";
 import { MessageHistory } from "../components/chats/MessageHistory";
 import { ChatInput } from "../components/chats/ChatInput";
 import { StatsPanel } from "../components/chats/StatsPanel";
 import { ChatSettingsPanel } from "../components/chats/ChatSettingsPanel";
 import { ChatMemoriesButton } from "../components/chats/ChatMemoriesModal";
 
-function _chatIdFromPath(): string {
-  const match = window.location.pathname.match(/\/chat\/(\d+)/);
-  return match?.[1] ?? "";
+interface ChatViewPageProps {
+  chatId: string;
 }
 
-export const ChatViewPage = observer(function ChatViewPage() {
-  const chatId = _chatIdFromPath();
+export const ChatViewPage = observer(function ChatViewPage({ chatId }: ChatViewPageProps) {
+  const [state] = useState(() => new ChatPageState(chatId));
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const session = chatStore.currentChat?.session;
 
   useEffect(() => {
-    chatStore.loadPublicWorlds().catch(() => {});
-    chatStore.loadChatDetail(chatId);
-  }, [chatId]);
+    const ctrl = new AbortController();
+    loadChat(state, ctrl.signal);
+    return () => {
+      ctrl.abort();
+      state.dispose();
+    };
+  }, []);
 
-  if (chatStore.isLoading) {
+  if (state.loadStatus === "loading" || state.loadStatus === "idle") {
     return (
       <div style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center" }}>
         <Text c="dimmed">Loading…</Text>
@@ -38,10 +40,11 @@ export const ChatViewPage = observer(function ChatViewPage() {
     );
   }
 
+  const session = state.currentChat?.session;
   if (!session) {
     return (
       <div style={{ display: "flex", height: "100%", alignItems: "center", justifyContent: "center" }}>
-        <Text c="dimmed">Chat not found.</Text>
+        <Text c="dimmed">{state.loadError ?? "Chat not found."}</Text>
       </div>
     );
   }
@@ -64,7 +67,7 @@ export const ChatViewPage = observer(function ChatViewPage() {
           )}
         </Group>
         <Group gap="xs">
-          <ChatMemoriesButton />
+          <ChatMemoriesButton state={state} />
           <Tooltip label="Settings">
             <ActionIcon variant="subtle" color="gray" size="md" onClick={() => setSettingsOpen(true)}>
               <IconSettings size={18} />
@@ -76,13 +79,13 @@ export const ChatViewPage = observer(function ChatViewPage() {
       {/* Main area */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
-          <MessageHistory />
-          <ChatInput />
+          <MessageHistory state={state} />
+          <ChatInput state={state} />
         </div>
-        <StatsPanel />
+        <StatsPanel state={state} />
       </div>
 
-      <ChatSettingsPanel opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ChatSettingsPanel state={state} opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 });

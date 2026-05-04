@@ -16,7 +16,7 @@ const CharacterSetupPageRoute = () => {
 
 const ChatViewPageRoute = () => {
   const { chatId } = useParams<{ chatId: string }>();
-  return <ChatViewPage key={chatId} />;
+  return <ChatViewPage key={chatId} chatId={chatId!} />;
 };
 
 export function UserRoutes() {

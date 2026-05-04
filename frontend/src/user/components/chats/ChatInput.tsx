@@ -5,7 +5,12 @@ import { observer } from "mobx-react-lite";
 import { translateTextChat } from "../../../api/chat";
 import { LlmInputBar } from "../../../components/LlmInputBar";
 import { extractUserInstructions } from "../../../utils/oocParser";
-import { chatStore } from "../../stores/ChatStore";
+import {
+  ChatPageState,
+  regenerate,
+  sendMessage,
+  stopGeneration,
+} from "../../pages/chatPageState";
 
 const STORAGE_KEY = "chatInputHeight";
 const DEFAULT_HEIGHT = 120;
@@ -16,17 +21,21 @@ function loadHeight(): number {
   return stored ? Math.max(MIN_HEIGHT, Number(stored)) : DEFAULT_HEIGHT;
 }
 
-export const ChatInput = observer(function ChatInput() {
+interface ChatInputProps {
+  state: ChatPageState;
+}
+
+export const ChatInput = observer(function ChatInput({ state }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [height, setHeight] = useState(loadHeight);
-  const disabled = chatStore.currentChat?.session.status !== "active";
+  const disabled = state.currentChat?.session.status !== "active";
 
   // Clear local input when backend ack clears pendingInput
   useEffect(() => {
-    if (!chatStore.pendingInput && chatStore.isSending) {
+    if (!state.pendingInput && state.isSending) {
       setValue("");
     }
-  }, [chatStore.pendingInput]);
+  }, [state.pendingInput]);
 
   function handleResizeStart(e: React.PointerEvent) {
     e.preventDefault();
@@ -53,14 +62,14 @@ export const ChatInput = observer(function ChatInput() {
 
   async function handleSend() {
     const text = value.trim();
-    if (!text || chatStore.isSending) return;
+    if (!text || state.isSending) return;
     const { content, userInstructions } = extractUserInstructions(text);
-    await chatStore.sendMessage(content, userInstructions ?? undefined);
+    await sendMessage(state, content, userInstructions ?? undefined);
   }
 
   async function handleRegenerate() {
-    if (chatStore.isSending) return;
-    await chatStore.regenerate();
+    if (state.isSending) return;
+    await regenerate(state);
   }
 
   const before = (
@@ -73,22 +82,22 @@ export const ChatInput = observer(function ChatInput() {
           OOC: {oocPreview}
         </Text>
       )}
-      {chatStore.isSending && chatStore.currentStatus && (
+      {state.isSending && state.currentStatus && (
         <Group gap="xs" mb={4} align="center">
           <Loader size={12} />
-          {chatStore.currentPhase && (
-            <Badge size="xs" variant="light" color={chatStore.currentPhase === "planning" ? "violet" : "teal"}>
-              {chatStore.currentPhase === "planning" ? "Planning" : "Writing"}
+          {state.currentPhase && (
+            <Badge size="xs" variant="light" color={state.currentPhase === "planning" ? "violet" : "teal"}>
+              {state.currentPhase === "planning" ? "Planning" : "Writing"}
             </Badge>
           )}
-          <Text size="xs" c="dimmed">{chatStore.currentStatus}</Text>
+          <Text size="xs" c="dimmed">{state.currentStatus}</Text>
         </Group>
       )}
     </>
   );
 
   const showRegenerate =
-    !chatStore.isSending && chatStore.activeMessages.some((m) => m.role === "assistant");
+    !state.isSending && state.activeMessages.some((m) => m.role === "assistant");
 
   const extras = showRegenerate ? (
     <Tooltip label="Regenerate">
@@ -117,9 +126,9 @@ export const ChatInput = observer(function ChatInput() {
           value={value}
           onChange={setValue}
           translateFn={translateTextChat}
-          busy={chatStore.isSending}
+          busy={state.isSending}
           onSend={handleSend}
-          onStop={() => chatStore.stopGeneration()}
+          onStop={() => stopGeneration(state)}
           disabled={disabled}
           placeholder={disabled ? "Chat archived" : "Type your message… (Enter to send, Shift+Enter for newline)"}
           before={before}

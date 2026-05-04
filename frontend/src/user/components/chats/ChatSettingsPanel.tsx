@@ -10,7 +10,11 @@ import {
   Text,
 } from "@mantine/core";
 import { observer } from "mobx-react-lite";
-import { chatStore } from "../../stores/ChatStore";
+import {
+  ChatPageState,
+  toggleDebugMode,
+  updateSettings,
+} from "../../pages/chatPageState";
 import { request } from "../../../api/client";
 import { getCurrentUser } from "../../../auth";
 import { saveToolModel, saveTextModel } from "../../../utils/modelSettings";
@@ -22,6 +26,7 @@ interface EnabledModelInfo {
 }
 
 interface ChatSettingsPanelProps {
+  state: ChatPageState;
   opened: boolean;
   onClose: () => void;
 }
@@ -76,8 +81,8 @@ function ModelSection({
   );
 }
 
-export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, onClose }: ChatSettingsPanelProps) {
-  const session = chatStore.currentChat?.session;
+export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, opened, onClose }: ChatSettingsPanelProps) {
+  const session = state.currentChat?.session;
   const [toolModel, setToolModel] = useState<ModelConfig>(session?.tool_model ?? { model_id: null, temperature: 0.7, repeat_penalty: 1.0, top_p: 1.0 });
   const [textModel, setTextModel] = useState<ModelConfig>(session?.text_model ?? { model_id: null, temperature: 0.7, repeat_penalty: 1.0, top_p: 1.0 });
   const [availableModels, setAvailableModels] = useState<EnabledModelInfo[]>([]);
@@ -97,7 +102,7 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, o
     setSaving(true);
     saveToolModel(toolModel);
     saveTextModel(textModel);
-    await chatStore.updateSettings({ tool_model: toolModel, text_model: textModel });
+    await updateSettings(state, { tool_model: toolModel, text_model: textModel });
     setSaving(false);
     onClose();
   }
@@ -133,8 +138,8 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ opened, o
             <Switch
               label="Debug mode"
               description="Show tool calls, thinking, generation plans"
-              checked={chatStore.debugMode}
-              onChange={() => chatStore.toggleDebugMode()}
+              checked={state.debugMode}
+              onChange={() => toggleDebugMode(state)}
             />
           </>
         )}

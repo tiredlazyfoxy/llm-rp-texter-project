@@ -10,14 +10,22 @@ import {
 } from "@mantine/core";
 import { IconBrain, IconChevronDown, IconChevronRight, IconTrash } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
-import { chatStore } from "../../stores/ChatStore";
+import {
+  ChatPageState,
+  deleteMemory,
+  loadMemories,
+} from "../../pages/chatPageState";
 import { formatDate } from "../../../utils/formatDate";
 
-export const ChatMemoriesButton = observer(function ChatMemoriesButton() {
+interface ChatMemoriesButtonProps {
+  state: ChatPageState;
+}
+
+export const ChatMemoriesButton = observer(function ChatMemoriesButton({ state }: ChatMemoriesButtonProps) {
   const [opened, setOpened] = useState(false);
 
   function handleOpen() {
-    chatStore.loadMemories().catch(() => {});
+    loadMemories(state).catch(() => {});
     setOpened(true);
   }
 
@@ -28,22 +36,23 @@ export const ChatMemoriesButton = observer(function ChatMemoriesButton() {
           <IconBrain size={18} />
         </ActionIcon>
       </Tooltip>
-      <ChatMemoriesModal opened={opened} onClose={() => setOpened(false)} />
+      <ChatMemoriesModal state={state} opened={opened} onClose={() => setOpened(false)} />
     </>
   );
 });
 
 interface ChatMemoriesModalProps {
+  state: ChatPageState;
   opened: boolean;
   onClose: () => void;
 }
 
-const ChatMemoriesModal = observer(function ChatMemoriesModal({ opened, onClose }: ChatMemoriesModalProps) {
-  const memories = chatStore.memories;
+const ChatMemoriesModal = observer(function ChatMemoriesModal({ state, opened, onClose }: ChatMemoriesModalProps) {
+  const memories = state.memories;
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (opened) chatStore.loadMemories().catch(() => {});
+    if (opened) loadMemories(state).catch(() => {});
   }, [opened]);
 
   function toggleExpand(id: string) {
@@ -91,7 +100,7 @@ const ChatMemoriesModal = observer(function ChatMemoriesModal({ opened, onClose 
                     variant="subtle"
                     color="red"
                     size="sm"
-                    onClick={() => chatStore.deleteMemory(mem.id)}
+                    onClick={() => deleteMemory(state, mem.id)}
                   >
                     <IconTrash size={14} />
                   </ActionIcon>

@@ -2,7 +2,7 @@ import { Badge, Collapse, Group, Progress, Stack, Text, UnstyledButton } from "@
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import { useState } from "react";
-import { chatStore } from "../../stores/ChatStore";
+import { ChatPageState } from "../../pages/chatPageState";
 
 function StatRow({
   name,
@@ -51,14 +51,15 @@ function StatRow({
   );
 }
 
-export const StatsPanel = observer(function StatsPanel() {
+interface StatsPanelProps {
+  state: ChatPageState;
+}
+
+export const StatsPanel = observer(function StatsPanel({ state }: StatsPanelProps) {
   const [charOpen, setCharOpen] = useState(true);
   const [worldOpen, setWorldOpen] = useState(false);
-  const snap = chatStore.displaySnapshot;
-  const world = chatStore.publicWorlds.find(
-    (w) => w.id === chatStore.currentChat?.session.world_id,
-  );
-  const statDefs = world?.stat_definitions ?? [];
+  const snap = state.displaySnapshot;
+  const statDefs = state.world?.stat_definitions ?? [];
 
   if (!snap) return null;
 

@@ -2,35 +2,42 @@ import { ActionIcon, Card, Group, Loader, Stack, Text, Tooltip } from "@mantine/
 import { IconArrowBackUp, IconChevronDown, IconChevronUp, IconRefresh } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
 import ReactMarkdown from "react-markdown";
-import { chatStore } from "../../stores/ChatStore";
+import {
+  ChatPageState,
+  collapseSummary,
+  expandSummary,
+  regenerateSummary,
+  unsummarizeLast,
+} from "../../pages/chatPageState";
 import { MessageBubble } from "./MessageBubble";
 
 interface SummaryBlockProps {
+  state: ChatPageState;
   summary: ChatSummary;
   isLast?: boolean;
 }
 
-export const SummaryBlock = observer(function SummaryBlock({ summary, isLast }: SummaryBlockProps) {
-  const isExpanded = chatStore.expandedSummaryMessages.has(summary.id);
-  const expandedMessages = chatStore.expandedSummaryMessages.get(summary.id);
-  const isRegenerating = chatStore.isRegeneratingSummary === summary.id;
-  const isBusy = chatStore.isCompacting || chatStore.isSending;
+export const SummaryBlock = observer(function SummaryBlock({ state, summary, isLast }: SummaryBlockProps) {
+  const isExpanded = state.expandedSummaryMessages.has(summary.id);
+  const expandedMessages = state.expandedSummaryMessages.get(summary.id);
+  const isRegenerating = state.isRegeneratingSummary === summary.id;
+  const isBusy = state.isCompacting || state.isSending;
 
   async function handleExpand() {
     if (isExpanded) {
-      chatStore.collapseSummary(summary.id);
+      collapseSummary(state, summary.id);
     } else {
-      await chatStore.expandSummary(summary.id);
+      await expandSummary(state, summary.id);
     }
   }
 
   async function handleRegenerate() {
-    await chatStore.regenerateSummary(summary.id);
+    await regenerateSummary(state, summary.id);
   }
 
   async function handleUnsummarize() {
     if (!confirm("Undo this summary and restore the original messages?")) return;
-    await chatStore.unsummarizeLast(summary.id);
+    await unsummarizeLast(state, summary.id);
   }
 
   return (
@@ -96,7 +103,7 @@ export const SummaryBlock = observer(function SummaryBlock({ summary, isLast }: 
       {isExpanded && expandedMessages && (
         <Stack gap={4} pl="md" style={{ opacity: 0.6 }}>
           {expandedMessages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
+            <MessageBubble key={msg.id} state={state} message={msg} />
           ))}
         </Stack>
       )}
