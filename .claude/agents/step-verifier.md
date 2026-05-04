@@ -14,6 +14,8 @@ asserts what the implementation happens to do is a failure. A name
 slightly inconsistent with surrounding code is a concern, not a
 failure.
 
+Always use "git" skill when working with git.
+
 # Step files
 
 Live at `docs/plans/<NNN>.<feature_name>/<SSS>.<name>.md` (3-digit, with
