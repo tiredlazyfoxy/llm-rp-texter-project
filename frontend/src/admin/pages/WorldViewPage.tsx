@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
-import { formatDate } from "../../utils/formatDate";
 import {
   Alert,
   Badge,
@@ -27,53 +28,29 @@ import {
   IconTrash,
   IconUpload,
 } from "@tabler/icons-react";
+import { formatDate } from "../../utils/formatDate";
 import type { DocumentItem, WorldDetail } from "../../types/world";
 import {
-  createDocument,
+  WorldViewPageState,
+  WorldViewTab,
+  VALID_TABS,
+  loadWorld,
+  refreshWorld,
+  loadDocs,
+  refreshDocs,
   deleteDocument,
-  downloadAllDocuments,
   downloadDocument,
-  getWorld,
-  listDocuments,
-  reindexWorld,
+  downloadAllDocuments,
   uploadDocuments,
-} from "../../api/worlds";
+  reindexWorld,
+  createNewDocument,
+} from "./worldViewPageState";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Constants & helpers
 // ---------------------------------------------------------------------------
 
-const TAB_SLUG_TO_VALUE: Record<string, string> = {
-  "all-docs": "all",
-  locations: "location",
-  npcs: "npc",
-  lore: "lore_fact",
-  chats: "chats",
-};
-
-const TAB_VALUE_TO_SLUG: Record<string, string> = {
-  all: "all-docs",
-  location: "locations",
-  npc: "npcs",
-  lore_fact: "lore",
-  chats: "chats",
-};
-
-function extractWorldId(): string | null {
-  const m = window.location.pathname.match(/\/admin\/worlds\/(\d+)(?:\/|$)/);
-  return m ? m[1] : null;
-}
-
-function extractTab(): string {
-  const m = window.location.pathname.match(/\/admin\/worlds\/\d+\/([a-z-]+)$/);
-  if (!m) return "info";
-  return TAB_SLUG_TO_VALUE[m[1]] || "info";
-}
-
-function tabUrl(worldId: string, tab: string): string {
-  const slug = TAB_VALUE_TO_SLUG[tab];
-  return slug ? `/admin/worlds/${worldId}/${slug}` : `/admin/worlds/${worldId}`;
-}
+const POLL_INTERVAL = 30_000;
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   location: "Location",
@@ -94,8 +71,6 @@ function statusColor(s: string): string {
   return "blue";
 }
 
-// formatDate imported from utils
-
 function docDisplayName(doc: DocumentItem): string {
   if (doc.name) return doc.name;
   if (doc.doc_type === "lore_fact") {
@@ -105,6 +80,11 @@ function docDisplayName(doc: DocumentItem): string {
     return firstLine.length > 80 ? firstLine.slice(0, 80) + "..." : firstLine;
   }
   return "(untitled)";
+}
+
+function parseTab(raw: string | null): WorldViewTab {
+  if (raw && (VALID_TABS as string[]).includes(raw)) return raw as WorldViewTab;
+  return "info";
 }
 
 // ---------------------------------------------------------------------------
@@ -140,14 +120,24 @@ function CollapsibleText({ text, mono = false }: { text: string; mono?: boolean 
 }
 
 // ---------------------------------------------------------------------------
-// Info tab content
+// Info tab
 // ---------------------------------------------------------------------------
 
-function InfoTab({ world, worldId }: { world: WorldDetail; worldId: string }) {
+const InfoTab = observer(function InfoTab({
+  world,
+  worldId,
+}: {
+  world: WorldDetail;
+  worldId: string;
+}) {
+  const navigate = useNavigate();
   return (
     <Stack>
       <Group justify="flex-end">
-        <Button leftSection={<IconEdit size={16} />} onClick={() => { window.location.href = `/admin/worlds/${worldId}/edit`; }}>
+        <Button
+          leftSection={<IconEdit size={16} />}
+          onClick={() => navigate(`/worlds/${worldId}/edit`)}
+        >
           Edit World
         </Button>
       </Group>
@@ -233,70 +223,34 @@ function InfoTab({ world, worldId }: { world: WorldDetail; worldId: string }) {
       )}
     </Stack>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
-// Documents tab content
+// Documents tab
 // ---------------------------------------------------------------------------
 
-interface DocsTabProps {
-  worldId: string;
-  docTypeFilter?: string;
-  refreshKey?: number;
-}
-
-function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
-  const [docs, setDocs] = useState<DocumentItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+const DocsTab = observer(function DocsTab({ state }: { state: WorldViewPageState }) {
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadType, setUploadType] = useState("location");
-  const [reindexing, setReindexing] = useState(false);
 
-  const refresh = useCallback(async (showLoader = true) => {
-    if (showLoader) setLoading(true);
-    setError(null);
-    try {
-      setDocs(await listDocuments(worldId, docTypeFilter));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load documents");
-    } finally {
-      if (showLoader) setLoading(false);
-    }
-  }, [worldId, docTypeFilter]);
-
-  // Initial load with loader, background refreshes without
-  const initialLoad = useRef(true);
-  useEffect(() => {
-    refresh(initialLoad.current);
-    initialLoad.current = false;
-  }, [refresh, refreshKey]);
+  const docTypeFilter = state.docTypeFilter;
+  const loading = state.docsStatus === "loading" || state.docsStatus === "idle";
 
   const handleDelete = async (doc: DocumentItem) => {
     if (!window.confirm(`Delete "${docDisplayName(doc)}"?`)) return;
-    try {
-      await deleteDocument(worldId, doc.id);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete document");
-    }
+    const ctrl = new AbortController();
+    await deleteDocument(state, doc, ctrl.signal);
   };
 
   const handleDownload = async (doc: DocumentItem) => {
-    try {
-      await downloadDocument(worldId, doc.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to download document");
-    }
+    const ctrl = new AbortController();
+    await downloadDocument(state, doc, ctrl.signal);
   };
 
   const handleDownloadAll = async () => {
-    try {
-      await downloadAllDocuments(worldId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to download documents");
-    }
+    const ctrl = new AbortController();
+    await downloadAllDocuments(state, ctrl.signal);
   };
 
   const handleUploadClick = (type: string) => {
@@ -307,48 +261,27 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    try {
-      await uploadDocuments(worldId, Array.from(files), uploadType);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-    }
+    const ctrl = new AbortController();
+    await uploadDocuments(state, Array.from(files), uploadType, ctrl.signal);
     e.target.value = "";
   };
 
   const handleReindex = async () => {
-    setReindexing(true);
-    setError(null);
-    try {
-      const result = await reindexWorld(worldId);
-      if (result.warning) {
-        setError(result.warning);
-      } else {
-        setError(null);
-        window.alert(`Reindexed ${result.indexed_count} documents.`);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Reindex failed");
-    } finally {
-      setReindexing(false);
+    const ctrl = new AbortController();
+    const result = await reindexWorld(state, ctrl.signal);
+    if (result && !result.warning) {
+      window.alert(`Reindexed ${result.indexed_count} documents.`);
     }
   };
 
   const handleCreate = async () => {
     if (!docTypeFilter) return;
-    setCreating(true);
-    setError(null);
-    try {
-      const doc = await createDocument(worldId, {
-        doc_type: docTypeFilter,
-        name: docTypeFilter !== "lore_fact" ? "New " + (DOC_TYPE_LABELS[docTypeFilter] || docTypeFilter) : undefined,
-        content: "",
-      });
-      window.location.href = `/admin/worlds/${worldId}/documents/${doc.id}/edit`;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create document");
-      setCreating(false);
-    }
+    const defaultName = docTypeFilter !== "lore_fact"
+      ? "New " + (DOC_TYPE_LABELS[docTypeFilter] || docTypeFilter)
+      : undefined;
+    const ctrl = new AbortController();
+    const docId = await createNewDocument(state, docTypeFilter, defaultName, ctrl.signal);
+    if (docId) navigate(`/worlds/${state.worldId}/documents/${docId}/edit`);
   };
 
   const createLabel = docTypeFilter ? `New ${DOC_TYPE_LABELS[docTypeFilter] || docTypeFilter}` : null;
@@ -356,7 +289,12 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
   return (
     <Stack>
       <Group justify="flex-end">
-        <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={handleReindex} loading={reindexing}>
+        <Button
+          variant="light"
+          leftSection={<IconRefresh size={16} />}
+          onClick={handleReindex}
+          loading={state.reindexStatus === "loading"}
+        >
           Reindex
         </Button>
         <Menu position="bottom-end" withArrow>
@@ -372,7 +310,11 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
           Download All
         </Button>
         {createLabel && (
-          <Button leftSection={<IconPlus size={16} />} onClick={handleCreate} loading={creating}>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={handleCreate}
+            loading={state.createDocStatus === "loading"}
+          >
             {createLabel}
           </Button>
         )}
@@ -380,24 +322,33 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
 
       <input ref={fileInputRef} type="file" accept=".md,.txt" multiple style={{ display: "none" }} onChange={handleFileUpload} />
 
-      {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>{error}</Alert>}
+      {state.docsError && (
+        <Alert color="red" mb="md" withCloseButton onClose={() => { state.docsError = null; }}>
+          {state.docsError}
+        </Alert>
+      )}
+      {state.reindexError && (
+        <Alert color="red" mb="md" withCloseButton onClose={() => { state.reindexError = null; }}>
+          {state.reindexError}
+        </Alert>
+      )}
 
       {loading ? (
         <Group justify="center" py="xl"><Loader /></Group>
-      ) : docs.length === 0 ? (
+      ) : state.docs.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No documents yet.</Text>
       ) : (() => {
         const isLoreTab = docTypeFilter === "lore_fact";
-        const injected = isLoreTab ? [...docs].filter(d => d.is_injected).sort((a, b) => a.weight - b.weight) : [];
-        const regular = isLoreTab ? docs.filter(d => !d.is_injected) : docs;
+        const injected = isLoreTab ? [...state.docs].filter(d => d.is_injected).sort((a, b) => a.weight - b.weight) : [];
+        const regular = isLoreTab ? state.docs.filter(d => !d.is_injected) : state.docs;
 
         const renderRow = (doc: DocumentItem) => {
-          const editHref = `/admin/worlds/${worldId}/documents/${doc.id}/edit`;
+          const editPath = `/worlds/${state.worldId}/documents/${doc.id}/edit`;
           return (
             <Table.Tr
               key={doc.id}
               style={{ cursor: "pointer" }}
-              onClick={() => { window.location.href = editHref; }}
+              onClick={() => navigate(editPath)}
             >
               <Table.Td>
                 <Group gap={6} wrap="nowrap">
@@ -419,7 +370,7 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
                     <Button variant="subtle" size="compact-sm" px={4} onClick={e => e.stopPropagation()}><IconDots size={16} /></Button>
                   </Menu.Target>
                   <Menu.Dropdown>
-                    <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => { window.location.href = editHref; }}>Edit</Menu.Item>
+                    <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => navigate(editPath)}>Edit</Menu.Item>
                     <Menu.Item leftSection={<IconDownload size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDownload(doc); }}>Download</Menu.Item>
                     <Menu.Item color="red" leftSection={<IconTrash size={14} />} onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDelete(doc); }}>Delete</Menu.Item>
                   </Menu.Dropdown>
@@ -453,10 +404,9 @@ function DocsTab({ worldId, docTypeFilter, refreshKey }: DocsTabProps) {
           </Table>
         );
       })()}
-
     </Stack>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Chats tab content (placeholder)
@@ -474,61 +424,66 @@ function ChatsTab() {
 // Main page
 // ---------------------------------------------------------------------------
 
-const POLL_INTERVAL = 30_000; // refresh data every 30s
+interface WorldViewPageProps {
+  worldId: string;
+}
 
-export function WorldViewPage() {
-  const worldId = extractWorldId();
-  const [world, setWorld] = useState<WorldDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string | null>(extractTab);
-  const [refreshKey, setRefreshKey] = useState(0);
+export const WorldViewPage = observer(function WorldViewPage({ worldId }: WorldViewPageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [state] = useState(() => new WorldViewPageState(worldId, parseTab(searchParams.get("tab"))));
+  const navigate = useNavigate();
 
-  const refreshWorld = useCallback(async (showLoader: boolean) => {
-    if (!worldId) return;
-    if (showLoader) setLoading(true);
-    setError(null);
-    try {
-      setWorld(await getWorld(worldId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load world");
-    } finally {
-      if (showLoader) setLoading(false);
-    }
-  }, [worldId]);
-
-  // Initial load
-  useEffect(() => { refreshWorld(true); }, [refreshWorld]);
-
-  // Periodic background refresh
   useEffect(() => {
-    const id = setInterval(() => {
-      refreshWorld(false);
-      setRefreshKey(k => k + 1);
+    const ctrl = new AbortController();
+    loadWorld(state, ctrl.signal).then(() => {
+      if (ctrl.signal.aborted) return;
+      void loadDocs(state, ctrl.signal);
+    });
+
+    const pollId = setInterval(() => {
+      void refreshWorld(state, ctrl.signal);
+      void refreshDocs(state, ctrl.signal);
     }, POLL_INTERVAL);
-    return () => clearInterval(id);
-  }, [refreshWorld]);
 
-  // Re-fetch on tab change + update URL
-  const handleTabChange = useCallback((tab: string | null) => {
-    setActiveTab(tab);
-    if (worldId && tab) {
-      window.history.replaceState(null, "", tabUrl(worldId, tab));
-    }
-    refreshWorld(false);
-    setRefreshKey(k => k + 1);
-  }, [refreshWorld, worldId]);
+    return () => {
+      clearInterval(pollId);
+      ctrl.abort();
+    };
+  }, []);
 
-  if (!worldId) return <Container py="md"><Alert color="red">Invalid world ID</Alert></Container>;
-  if (loading) return <Container py="md"><Group justify="center" py="xl"><Loader /></Group></Container>;
-  if (error) return <Container py="md"><Alert color="red">{error}</Alert></Container>;
+  const handleTabChange = (raw: string | null) => {
+    const tab = parseTab(raw);
+    state.tab = tab;
+    setSearchParams(
+      (prev) => {
+        if (tab === "info") prev.delete("tab");
+        else prev.set("tab", tab);
+        return prev;
+      },
+      { replace: true },
+    );
+    const ctrl = new AbortController();
+    void loadDocs(state, ctrl.signal);
+  };
+
+  if (state.worldStatus === "loading" || state.worldStatus === "idle") {
+    return <Container py="md"><Group justify="center" py="xl"><Loader /></Group></Container>;
+  }
+  if (state.worldStatus === "error") {
+    return <Container py="md"><Alert color="red">{state.worldError}</Alert></Container>;
+  }
+  const world = state.world;
   if (!world) return null;
 
   return (
     <Container size="lg" py="md">
       <Group justify="space-between" mb="md">
         <Group>
-          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => { window.location.href = "/admin/worlds"; }}>
+          <Button
+            variant="subtle"
+            leftSection={<IconArrowLeft size={16} />}
+            onClick={() => navigate("/worlds")}
+          >
             Back
           </Button>
           <Title order={3}>{world.name}</Title>
@@ -536,7 +491,7 @@ export function WorldViewPage() {
         </Group>
       </Group>
 
-      <Tabs value={activeTab} onChange={handleTabChange}>
+      <Tabs value={state.tab} onChange={handleTabChange}>
         <Tabs.List mb="md">
           <Tabs.Tab value="info">Info</Tabs.Tab>
           <Tabs.Tab value="all">All Docs</Tabs.Tab>
@@ -551,19 +506,19 @@ export function WorldViewPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="all">
-          <DocsTab worldId={worldId} refreshKey={refreshKey} />
+          <DocsTab state={state} />
         </Tabs.Panel>
 
         <Tabs.Panel value="location">
-          <DocsTab worldId={worldId} docTypeFilter="location" refreshKey={refreshKey} />
+          <DocsTab state={state} />
         </Tabs.Panel>
 
         <Tabs.Panel value="npc">
-          <DocsTab worldId={worldId} docTypeFilter="npc" refreshKey={refreshKey} />
+          <DocsTab state={state} />
         </Tabs.Panel>
 
         <Tabs.Panel value="lore_fact">
-          <DocsTab worldId={worldId} docTypeFilter="lore_fact" refreshKey={refreshKey} />
+          <DocsTab state={state} />
         </Tabs.Panel>
 
         <Tabs.Panel value="chats">
@@ -572,4 +527,4 @@ export function WorldViewPage() {
       </Tabs>
     </Container>
   );
-}
+});

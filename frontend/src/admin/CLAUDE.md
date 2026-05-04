@@ -5,8 +5,15 @@ Admin SPA — world and user management (served at `/admin`).
 ```
 admin/
   App.tsx, main.tsx
-  routes.tsx         — React Router route table (AdminRoutes); per-path-param wrappers pass key={id}
-  pages/             — WorldsList, WorldView, WorldEdit, WorldFieldEdit, DocumentEdit, PipelinesList, PipelineEdit, PipelineStageEdit, LlmServersPage, DbManagementPage
+  routes.tsx         — React Router route table (AdminRoutes); per-path-param wrappers pass key={id} + path-param props
+  pages/             — Pages migrated to MobX use the (`<Page>.tsx` + `<page>PageState.ts`) pair pattern:
+                       WorldsListPage     / worldsListPageState,
+                       WorldViewPage      / worldViewPageState,
+                       WorldEditPage      / worldEditPageState,
+                       WorldFieldEditPage / worldFieldEditPageState,
+                       DocumentEditPage   / documentEditPageState
+                       Other admin pages (PipelinesList, PipelineEdit, PipelineStageEdit, LlmServersPage,
+                       DbManagementPage, UsersPage) still use raw useState/useEffect — migrated in later steps.
   components/
     users/           — CreateUserModal, SetPasswordModal, SetRoleModal
     pipelines/       — PlaceholderPanel, PlaceholderSuggestions, PlaceholderTextarea (+ placeholderAutocompleteState.ts)

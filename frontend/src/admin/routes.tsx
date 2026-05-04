@@ -13,22 +13,31 @@ import { DbManagementPage } from "./pages/DbManagementPage";
 
 const WorldViewPageRoute = () => {
   const { worldId } = useParams<{ worldId: string }>();
-  return <WorldViewPage key={worldId} />;
+  return <WorldViewPage key={worldId} worldId={worldId!} />;
 };
 
 const WorldEditPageRoute = () => {
   const { worldId } = useParams<{ worldId: string }>();
-  return <WorldEditPage key={worldId} />;
+  return <WorldEditPage key={worldId} worldId={worldId!} />;
 };
 
 const WorldFieldEditPageRoute = () => {
   const { worldId, fieldName } = useParams<{ worldId: string; fieldName: string }>();
-  return <WorldFieldEditPage key={`${worldId}:${fieldName}`} />;
+  const safeField = (fieldName === "description" || fieldName === "initial_message")
+    ? fieldName
+    : "description";
+  return (
+    <WorldFieldEditPage
+      key={`${worldId}:${fieldName}`}
+      worldId={worldId!}
+      fieldName={safeField}
+    />
+  );
 };
 
 const DocumentEditPageRoute = () => {
   const { worldId, docId } = useParams<{ worldId: string; docId: string }>();
-  return <DocumentEditPage key={`${worldId}:${docId}`} />;
+  return <DocumentEditPage key={`${worldId}:${docId}`} worldId={worldId!} docId={docId!} />;
 };
 
 const PipelineEditPageRoute = () => {

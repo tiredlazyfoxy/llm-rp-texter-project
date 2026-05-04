@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { makeAutoObservable } from "mobx";
+import { observer } from "mobx-react-lite";
+import { useNavigate } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
@@ -31,31 +34,24 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { getCurrentUser } from "../../auth";
-import type { RuleItem, StatDefinitionItem, WorldDetail } from "../../types/world";
-import type { PipelineItem } from "../../types/pipeline";
+import type { RuleItem, StatDefinitionItem } from "../../types/world";
 import {
-  cloneWorld,
   createRule,
   createStat,
   deleteRule,
   deleteStat,
-  deleteWorld,
-  getWorld,
-  reorderRules,
   updateRule,
   updateStat,
-  updateWorld,
 } from "../../api/worlds";
-import { listPipelines } from "../../api/pipelines";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function extractWorldId(): string | null {
-  const m = window.location.pathname.match(/\/admin\/worlds\/(\d+)\/edit/);
-  return m ? m[1] : null;
-}
+import {
+  WorldEditPageState,
+  loadWorldEdit,
+  saveWorld,
+  cloneWorld,
+  deleteWorld,
+  refreshStatsAndRules,
+  reorderRules,
+} from "./worldEditPageState";
 
 // ---------------------------------------------------------------------------
 // Stat form modal
@@ -69,86 +65,127 @@ interface StatFormModalProps {
   onSaved: () => void;
 }
 
-function StatFormModal({ opened, stat, worldId, onClose, onSaved }: StatFormModalProps) {
+type AsyncStatus = "idle" | "loading" | "ready" | "error";
+
+class StatDraft {
+  name = "";
+  description = "";
+  scope = "character";
+  statType = "int";
+  defaultValue = "0";
+  minValue: number | string = "";
+  maxValue: number | string = "";
+  enumValues: string[] = [];
+  hidden = false;
+
+  saveStatus: AsyncStatus = "idle";
+  saveError: string | null = null;
+
+  constructor() {
+    makeAutoObservable(this);
+  }
+
+  loadFrom(stat: StatDefinitionItem | null): void {
+    if (stat) {
+      this.name = stat.name;
+      this.description = stat.description;
+      this.scope = stat.scope;
+      this.statType = stat.stat_type;
+      this.defaultValue = stat.default_value;
+      this.minValue = stat.min_value ?? "";
+      this.maxValue = stat.max_value ?? "";
+      this.enumValues = stat.enum_values ?? [];
+      this.hidden = stat.hidden ?? false;
+    } else {
+      this.name = "";
+      this.description = "";
+      this.scope = "character";
+      this.statType = "int";
+      this.defaultValue = "0";
+      this.minValue = "";
+      this.maxValue = "";
+      this.enumValues = [];
+      this.hidden = false;
+    }
+    this.saveStatus = "idle";
+    this.saveError = null;
+  }
+
+  get nameError(): string | null {
+    return !this.name.trim() ? "Name is required" : null;
+  }
+
+  get canSubmit(): boolean {
+    return this.nameError === null && this.saveStatus !== "loading";
+  }
+}
+
+const StatFormModal = observer(function StatFormModal({
+  opened,
+  stat,
+  worldId,
+  onClose,
+  onSaved,
+}: StatFormModalProps) {
   const isEdit = stat !== null;
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [scope, setScope] = useState("character");
-  const [statType, setStatType] = useState("int");
-  const [defaultValue, setDefaultValue] = useState("0");
-  const [minValue, setMinValue] = useState<number | string>("");
-  const [maxValue, setMaxValue] = useState<number | string>("");
-  const [enumValues, setEnumValues] = useState<string[]>([]);
-  const [hidden, setHidden] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [draft] = useState(() => new StatDraft());
 
   useEffect(() => {
-    if (opened && stat) {
-      setName(stat.name);
-      setDescription(stat.description);
-      setScope(stat.scope);
-      setStatType(stat.stat_type);
-      setDefaultValue(stat.default_value);
-      setMinValue(stat.min_value ?? "");
-      setMaxValue(stat.max_value ?? "");
-      setEnumValues(stat.enum_values ?? []);
-      setHidden(stat.hidden ?? false);
-    } else if (opened) {
-      setName("");
-      setDescription("");
-      setScope("character");
-      setStatType("int");
-      setDefaultValue("0");
-      setMinValue("");
-      setMaxValue("");
-      setEnumValues([]);
-      setHidden(false);
-    }
-    setError(null);
-  }, [opened, stat]);
+    if (opened) draft.loadFrom(stat);
+  }, [opened, stat, draft]);
 
   const handleSubmit = async () => {
-    if (!name.trim()) { setError("Name is required"); return; }
-    setLoading(true);
-    setError(null);
+    if (!draft.canSubmit) return;
+    draft.saveStatus = "loading";
+    draft.saveError = null;
     try {
       const data = {
-        name: name.trim(),
-        description,
-        scope,
-        stat_type: statType,
-        default_value: defaultValue,
-        min_value: statType === "int" && minValue !== "" ? Number(minValue) : undefined,
-        max_value: statType === "int" && maxValue !== "" ? Number(maxValue) : undefined,
-        enum_values: (statType === "enum" || statType === "set") && enumValues.length > 0 ? enumValues : undefined,
-        hidden,
+        name: draft.name.trim(),
+        description: draft.description,
+        scope: draft.scope,
+        stat_type: draft.statType,
+        default_value: draft.defaultValue,
+        min_value: draft.statType === "int" && draft.minValue !== "" ? Number(draft.minValue) : undefined,
+        max_value: draft.statType === "int" && draft.maxValue !== "" ? Number(draft.maxValue) : undefined,
+        enum_values: (draft.statType === "enum" || draft.statType === "set") && draft.enumValues.length > 0 ? draft.enumValues : undefined,
+        hidden: draft.hidden,
       };
       if (isEdit) {
         await updateStat(worldId, stat.id, data);
       } else {
         await createStat(worldId, data);
       }
+      draft.saveStatus = "ready";
       onSaved();
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save stat");
-    } finally {
-      setLoading(false);
+      draft.saveStatus = "error";
+      draft.saveError = e instanceof Error ? e.message : "Failed to save stat";
     }
   };
 
   return (
     <Modal opened={opened} onClose={onClose} title={isEdit ? "Edit Stat" : "Create Stat"}>
       <Stack>
-        {error && <Alert color="red">{error}</Alert>}
-        <TextInput label="Name" value={name} onChange={e => setName(e.currentTarget.value)} required />
-        <Textarea label="Description" value={description} onChange={e => setDescription(e.currentTarget.value)} minRows={2} />
+        {draft.saveError && <Alert color="red">{draft.saveError}</Alert>}
+        <TextInput
+          label="Name"
+          value={draft.name}
+          onChange={e => { draft.name = e.currentTarget.value; }}
+          error={draft.nameError}
+          required
+        />
+        <Textarea
+          label="Description"
+          value={draft.description}
+          onChange={e => { draft.description = e.currentTarget.value; }}
+          minRows={2}
+        />
         <Select
           label="Scope"
           data={[{ value: "character", label: "Character" }, { value: "world", label: "World" }]}
-          value={scope}
-          onChange={v => setScope(v || "character")}
+          value={draft.scope}
+          onChange={v => { draft.scope = v || "character"; }}
         />
         <Select
           label="Type"
@@ -157,28 +194,47 @@ function StatFormModal({ opened, stat, worldId, onClose, onSaved }: StatFormModa
             { value: "enum", label: "Enum (single)" },
             { value: "set", label: "Set (multiple)" },
           ]}
-          value={statType}
-          onChange={v => setStatType(v || "int")}
+          value={draft.statType}
+          onChange={v => { draft.statType = v || "int"; }}
         />
-        <TextInput label="Default Value" value={defaultValue} onChange={e => setDefaultValue(e.currentTarget.value)} />
-        {statType === "int" && (
+        <TextInput
+          label="Default Value"
+          value={draft.defaultValue}
+          onChange={e => { draft.defaultValue = e.currentTarget.value; }}
+        />
+        {draft.statType === "int" && (
           <Group grow>
-            <NumberInput label="Min" value={minValue} onChange={setMinValue} />
-            <NumberInput label="Max" value={maxValue} onChange={setMaxValue} />
+            <NumberInput label="Min" value={draft.minValue} onChange={v => { draft.minValue = v; }} />
+            <NumberInput label="Max" value={draft.maxValue} onChange={v => { draft.maxValue = v; }} />
           </Group>
         )}
-        {(statType === "enum" || statType === "set") && (
-          <TagsInput label="Values" value={enumValues} onChange={setEnumValues} placeholder="Type and press Enter" />
+        {(draft.statType === "enum" || draft.statType === "set") && (
+          <TagsInput
+            label="Values"
+            value={draft.enumValues}
+            onChange={v => { draft.enumValues = v; }}
+            placeholder="Type and press Enter"
+          />
         )}
-        <Checkbox label="Hidden from players" checked={hidden} onChange={e => setHidden(e.currentTarget.checked)} />
+        <Checkbox
+          label="Hidden from players"
+          checked={draft.hidden}
+          onChange={e => { draft.hidden = e.currentTarget.checked; }}
+        />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} loading={loading}>{isEdit ? "Save" : "Create"}</Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!draft.canSubmit}
+            loading={draft.saveStatus === "loading"}
+          >
+            {isEdit ? "Save" : "Create"}
+          </Button>
         </Group>
       </Stack>
     </Modal>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Rule form modal
@@ -192,90 +248,136 @@ interface RuleFormModalProps {
   onSaved: () => void;
 }
 
-function RuleFormModal({ opened, rule, worldId, onClose, onSaved }: RuleFormModalProps) {
+class RuleDraft {
+  ruleText = "";
+  saveStatus: AsyncStatus = "idle";
+  saveError: string | null = null;
+
+  constructor() {
+    makeAutoObservable(this);
+  }
+
+  loadFrom(rule: RuleItem | null): void {
+    this.ruleText = rule?.rule_text ?? "";
+    this.saveStatus = "idle";
+    this.saveError = null;
+  }
+
+  get textError(): string | null {
+    return !this.ruleText.trim() ? "Rule text is required" : null;
+  }
+
+  get canSubmit(): boolean {
+    return this.textError === null && this.saveStatus !== "loading";
+  }
+}
+
+const RuleFormModal = observer(function RuleFormModal({
+  opened,
+  rule,
+  worldId,
+  onClose,
+  onSaved,
+}: RuleFormModalProps) {
   const isEdit = rule !== null;
-  const [ruleText, setRuleText] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [draft] = useState(() => new RuleDraft());
 
   useEffect(() => {
-    if (opened && rule) {
-      setRuleText(rule.rule_text);
-    } else if (opened) {
-      setRuleText("");
-    }
-    setError(null);
-  }, [opened, rule]);
+    if (opened) draft.loadFrom(rule);
+  }, [opened, rule, draft]);
 
   const handleSubmit = async () => {
-    if (!ruleText.trim()) { setError("Rule text is required"); return; }
-    setLoading(true);
-    setError(null);
+    if (!draft.canSubmit) return;
+    draft.saveStatus = "loading";
+    draft.saveError = null;
     try {
       if (isEdit) {
-        await updateRule(worldId, rule.id, { rule_text: ruleText.trim() });
+        await updateRule(worldId, rule.id, { rule_text: draft.ruleText.trim() });
       } else {
-        await createRule(worldId, { rule_text: ruleText.trim() });
+        await createRule(worldId, { rule_text: draft.ruleText.trim() });
       }
+      draft.saveStatus = "ready";
       onSaved();
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save rule");
-    } finally {
-      setLoading(false);
+      draft.saveStatus = "error";
+      draft.saveError = e instanceof Error ? e.message : "Failed to save rule";
     }
   };
 
   return (
     <Modal opened={opened} onClose={onClose} title={isEdit ? "Edit Rule" : "Add Rule"}>
       <Stack>
-        {error && <Alert color="red">{error}</Alert>}
-        <Textarea label="Rule Text" value={ruleText} onChange={e => setRuleText(e.currentTarget.value)} minRows={3} required />
+        {draft.saveError && <Alert color="red">{draft.saveError}</Alert>}
+        <Textarea
+          label="Rule Text"
+          value={draft.ruleText}
+          onChange={e => { draft.ruleText = e.currentTarget.value; }}
+          error={draft.textError}
+          minRows={3}
+          required
+        />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} loading={loading}>{isEdit ? "Save" : "Add"}</Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!draft.canSubmit}
+            loading={draft.saveStatus === "loading"}
+          >
+            {isEdit ? "Save" : "Add"}
+          </Button>
         </Group>
       </Stack>
     </Modal>
   );
+});
+
+// ---------------------------------------------------------------------------
+// Resizable textarea height storage (localStorage)
+// ---------------------------------------------------------------------------
+
+const LS_HEIGHT = "llmrp_world_editor_height_";
+const DEFAULT_HEIGHTS: Record<string, number> = {
+  description: 100,
+  character_template: 240,
+  initial_message: 160,
+};
+
+function loadHeights(): Record<string, number> {
+  const h: Record<string, number> = {};
+  for (const [k, def] of Object.entries(DEFAULT_HEIGHTS)) {
+    const stored = localStorage.getItem(LS_HEIGHT + k);
+    h[k] = stored ? parseInt(stored) : def;
+  }
+  return h;
 }
 
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
-export function WorldEditPage() {
-  const worldId = extractWorldId();
-  const [world, setWorld] = useState<WorldDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+interface WorldEditPageProps {
+  worldId: string;
+}
 
-  // Form state
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [lore, setLore] = useState("");
-  const [characterTemplate, setCharacterTemplate] = useState("");
-  const [initialMessage, setInitialMessage] = useState("");
-  const [pipelineId, setPipelineId] = useState<string | null>(null);
-  const [pipelines, setPipelines] = useState<PipelineItem[]>([]);
-  const [worldStatus, setWorldStatus] = useState("draft");
+export const WorldEditPage = observer(function WorldEditPage({ worldId }: WorldEditPageProps) {
+  const [state] = useState(() => new WorldEditPageState(worldId));
+  const [heights, setHeights] = useState<Record<string, number>>(() => loadHeights());
+  const navigate = useNavigate();
 
-  // Resizable textarea heights (persisted to localStorage)
-  const LS_HEIGHT = "llmrp_world_editor_height_";
-  const DEFAULT_HEIGHTS: Record<string, number> = {
-    description: 100, system_prompt: 240, character_template: 240,
-    initial_message: 160,
-  };
-  const [heights, setHeights] = useState<Record<string, number>>(() => {
-    const h: Record<string, number> = {};
-    for (const [k, def] of Object.entries(DEFAULT_HEIGHTS)) {
-      const stored = localStorage.getItem(LS_HEIGHT + k);
-      h[k] = stored ? parseInt(stored) : def;
-    }
-    return h;
-  });
+  const [statModalOpen, setStatModalOpen] = useState(false);
+  const [editStat, setEditStat] = useState<StatDefinitionItem | null>(null);
+  const [ruleModalOpen, setRuleModalOpen] = useState(false);
+  const [editRule, setEditRule] = useState<RuleItem | null>(null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    loadWorldEdit(state, ctrl.signal);
+    return () => ctrl.abort();
+  }, []);
+
   const onResized = (field: string) => (e: React.MouseEvent<HTMLTextAreaElement>) => {
     const px = e.currentTarget.offsetHeight;
     setHeights(prev => ({ ...prev, [field]: px }));
@@ -286,171 +388,146 @@ export function WorldEditPage() {
     onMouseUp: onResized(field),
   });
 
-  // Stats & rules
-  const [stats, setStats] = useState<StatDefinitionItem[]>([]);
-  const [rules, setRules] = useState<RuleItem[]>([]);
-  const [statModalOpen, setStatModalOpen] = useState(false);
-  const [editStat, setEditStat] = useState<StatDefinitionItem | null>(null);
-  const [ruleModalOpen, setRuleModalOpen] = useState(false);
-  const [editRule, setEditRule] = useState<RuleItem | null>(null);
-
-  const loadWorld = useCallback(async () => {
-    if (!worldId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const detail = await getWorld(worldId);
-      setWorld(detail);
-      setName(detail.name);
-      setDescription(detail.description);
-      setLore(detail.lore);
-      setCharacterTemplate(detail.character_template);
-      setInitialMessage(detail.initial_message);
-      setPipelineId(detail.pipeline_id);
-      setWorldStatus(detail.status);
-      setStats(detail.stats);
-      setRules(detail.rules);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load world");
-    } finally {
-      setLoading(false);
-    }
-  }, [worldId]);
-
-  useEffect(() => {
-    loadWorld();
-  }, [loadWorld]);
-
-  useEffect(() => {
-    listPipelines().then(setPipelines).catch(() => {});
-  }, []);
-
   const handleSave = async () => {
-    if (!worldId) return;
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      await updateWorld(worldId, {
-        name, description, lore,
-        character_template: characterTemplate,
-        initial_message: initialMessage,
-        pipeline_id: pipelineId,
-        status: worldStatus,
-      });
-      setSuccess("World saved");
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save world");
-    } finally {
-      setSaving(false);
+    if (!state.canSubmit) return;
+    const ctrl = new AbortController();
+    await saveWorld(state, ctrl.signal);
+    if (state.saveSuccess) {
+      setTimeout(() => {
+        if (state.saveSuccess) state.saveSuccess = null;
+      }, 3000);
     }
   };
 
-  const refreshStatsRules = useCallback(async () => {
-    if (!worldId) return;
-    const detail = await getWorld(worldId);
-    setStats(detail.stats);
-    setRules(detail.rules);
-  }, [worldId]);
+  const handleClone = async () => {
+    const ctrl = new AbortController();
+    const newId = await cloneWorld(state, ctrl.signal);
+    if (newId) navigate(`/worlds/${newId}`);
+  };
+
+  const handleDeleteWorld = async () => {
+    const ctrl = new AbortController();
+    const ok = await deleteWorld(state, ctrl.signal);
+    if (ok) {
+      navigate("/worlds");
+    } else {
+      setDeleteModalOpen(false);
+    }
+  };
 
   const handleDeleteStat = async (stat: StatDefinitionItem) => {
-    if (!worldId) return;
     if (!window.confirm(`Delete stat "${stat.name}"?`)) return;
     try {
       await deleteStat(worldId, stat.id);
-      await refreshStatsRules();
+      const ctrl = new AbortController();
+      await refreshStatsAndRules(state, ctrl.signal);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete stat");
+      state.saveError = e instanceof Error ? e.message : "Failed to delete stat";
     }
   };
 
   const handleDeleteRule = async (rule: RuleItem) => {
-    if (!worldId) return;
     if (!window.confirm("Delete this rule?")) return;
     try {
       await deleteRule(worldId, rule.id);
-      await refreshStatsRules();
+      const ctrl = new AbortController();
+      await refreshStatsAndRules(state, ctrl.signal);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete rule");
+      state.saveError = e instanceof Error ? e.message : "Failed to delete rule";
     }
   };
 
   const handleMoveRule = async (index: number, direction: "up" | "down") => {
-    if (!worldId) return;
-    const newRules = [...rules];
+    const newRules = [...state.rules];
     const swapIdx = direction === "up" ? index - 1 : index + 1;
     if (swapIdx < 0 || swapIdx >= newRules.length) return;
     [newRules[index], newRules[swapIdx]] = [newRules[swapIdx], newRules[index]];
-    try {
-      const updated = await reorderRules(worldId, newRules.map(r => r.id));
-      setRules(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to reorder rules");
-    }
+    const ctrl = new AbortController();
+    await reorderRules(state, newRules.map(r => r.id), ctrl.signal);
+  };
+
+  const refreshOnSubmodalSaved = () => {
+    const ctrl = new AbortController();
+    void refreshStatsAndRules(state, ctrl.signal);
   };
 
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.role === "admin";
 
-  const handleClone = async () => {
-    if (!worldId) return;
-    try {
-      const cloned = await cloneWorld(worldId);
-      window.location.href = `/admin/worlds/${cloned.id}`;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to clone world");
-    }
-  };
-
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const handleDeleteWorld = async () => {
-    if (!worldId) return;
-    setDeleting(true);
-    try {
-      await deleteWorld(worldId);
-      window.location.href = "/admin/worlds";
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete world");
-      setDeleteModalOpen(false);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  if (!worldId) return <Container py="md"><Alert color="red">Invalid world ID</Alert></Container>;
-
-  if (loading) return <Container py="md"><Group justify="center" py="xl"><Loader /></Group></Container>;
+  if (state.worldStatus === "loading" || state.worldStatus === "idle") {
+    return <Container py="md"><Group justify="center" py="xl"><Loader /></Group></Container>;
+  }
+  if (state.worldStatus === "error") {
+    return <Container py="md"><Alert color="red">{state.worldError}</Alert></Container>;
+  }
+  if (!state.world) return null;
 
   return (
     <Container size="lg" py="md">
       <Group justify="space-between" mb="md">
         <Group>
-          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => { window.location.href = `/admin/worlds/${worldId}`; }}>
+          <Button
+            variant="subtle"
+            leftSection={<IconArrowLeft size={16} />}
+            onClick={() => navigate(`/worlds/${worldId}`)}
+          >
             Back
           </Button>
-          <Title order={3}>{world?.name || "Edit World"}</Title>
+          <Title order={3}>{state.world.name || "Edit World"}</Title>
         </Group>
         <Group>
-          <Button variant="default" leftSection={<IconCopy size={16} />} onClick={handleClone}>Clone</Button>
+          <Button
+            variant="default"
+            leftSection={<IconCopy size={16} />}
+            onClick={handleClone}
+            loading={state.cloneStatus === "loading"}
+          >
+            Clone
+          </Button>
           {isAdmin && (
-            <Button variant="light" color="red" leftSection={<IconTrash size={16} />} onClick={() => { setDeleteConfirmed(false); setDeleteModalOpen(true); }}>Delete</Button>
+            <Button
+              variant="light"
+              color="red"
+              leftSection={<IconTrash size={16} />}
+              onClick={() => { setDeleteConfirmed(false); setDeleteModalOpen(true); }}
+            >
+              Delete
+            </Button>
           )}
-          <Button onClick={handleSave} loading={saving}>Save</Button>
+          <Button
+            onClick={handleSave}
+            disabled={!state.canSubmit}
+            loading={state.saveStatus === "loading"}
+          >
+            Save
+          </Button>
         </Group>
       </Group>
 
-      {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>{error}</Alert>}
-      {success && <Alert color="green" mb="md" withCloseButton onClose={() => setSuccess(null)}>{success}</Alert>}
+      {state.saveError && (
+        <Alert color="red" mb="md" withCloseButton onClose={() => { state.saveError = null; }}>
+          {state.saveError}
+        </Alert>
+      )}
+      {state.saveSuccess && (
+        <Alert color="green" mb="md" withCloseButton onClose={() => { state.saveSuccess = null; }}>
+          {state.saveSuccess}
+        </Alert>
+      )}
 
       {/* Main fields */}
       <Paper p="md" mb="md" withBorder>
         <Stack>
           <Group grow>
-            <TextInput label="Name" value={name} onChange={e => setName(e.currentTarget.value)} />
+            <TextInput
+              label="Name"
+              value={state.draft.name}
+              onChange={e => {
+                state.draft.name = e.currentTarget.value;
+                if (state.serverErrors.name) delete state.serverErrors.name;
+              }}
+              error={state.errors.name}
+            />
             <Select
               label="Status"
               data={[
@@ -459,19 +536,52 @@ export function WorldEditPage() {
                 { value: "private", label: "Private" },
                 { value: "archived", label: "Archived" },
               ]}
-              value={worldStatus}
-              onChange={v => setWorldStatus(v || "draft")}
+              value={state.draft.status}
+              onChange={v => { state.draft.status = v || "draft"; }}
             />
           </Group>
           <Textarea
-            label={<Group gap={4} wrap="nowrap">Description<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/description`}><IconSparkles size={12} /></ActionIcon></Group>}
-            value={description} onChange={e => setDescription(e.currentTarget.value)}
+            label={
+              <Group gap={4} wrap="nowrap">
+                Description
+                <ActionIcon
+                  variant="subtle"
+                  size="xs"
+                  title="Edit with AI"
+                  onClick={() => navigate(`/worlds/${worldId}/field/description`)}
+                >
+                  <IconSparkles size={12} />
+                </ActionIcon>
+              </Group>
+            }
+            value={state.draft.description}
+            onChange={e => { state.draft.description = e.currentTarget.value; }}
             {...resizable("description")}
           />
-          <Textarea label="Character Template" value={characterTemplate} onChange={e => setCharacterTemplate(e.currentTarget.value)} placeholder="Use {PLACEHOLDER} tokens" {...resizable("character_template")} />
           <Textarea
-            label={<Group gap={4} wrap="nowrap">Initial Message<ActionIcon variant="subtle" size="xs" title="Edit with AI" onClick={() => window.location.href = `/admin/worlds/${worldId}/field/initial_message`}><IconSparkles size={12} /></ActionIcon></Group>}
-            value={initialMessage} onChange={e => setInitialMessage(e.currentTarget.value)} placeholder="Supports {character_name}, {location_name}, {location_summary}"
+            label="Character Template"
+            value={state.draft.character_template}
+            onChange={e => { state.draft.character_template = e.currentTarget.value; }}
+            placeholder="Use {PLACEHOLDER} tokens"
+            {...resizable("character_template")}
+          />
+          <Textarea
+            label={
+              <Group gap={4} wrap="nowrap">
+                Initial Message
+                <ActionIcon
+                  variant="subtle"
+                  size="xs"
+                  title="Edit with AI"
+                  onClick={() => navigate(`/worlds/${worldId}/field/initial_message`)}
+                >
+                  <IconSparkles size={12} />
+                </ActionIcon>
+              </Group>
+            }
+            value={state.draft.initial_message}
+            onChange={e => { state.draft.initial_message = e.currentTarget.value; }}
+            placeholder="Supports {character_name}, {location_name}, {location_summary}"
             {...resizable("initial_message")}
           />
         </Stack>
@@ -483,30 +593,36 @@ export function WorldEditPage() {
           <Select
             label="Pipeline"
             description="Pipelines define the generation flow (simple / chain / agentic)."
-            data={pipelines.map(p => ({ value: p.id, label: `${p.name} (${p.kind})` }))}
-            value={pipelineId}
-            onChange={setPipelineId}
+            data={state.pipelines.map(p => ({ value: p.id, label: `${p.name} (${p.kind})` }))}
+            value={state.draft.pipeline_id}
+            onChange={v => { state.draft.pipeline_id = v; }}
             searchable
             clearable
           />
-          {pipelineId && (
-            <Button variant="subtle" component="a" href={`/admin/pipelines/${pipelineId}`}>
+          {state.draft.pipeline_id && (
+            <Button
+              variant="subtle"
+              onClick={() => navigate(`/pipelines/${state.draft.pipeline_id}`)}
+            >
               Edit pipeline
             </Button>
           )}
         </Stack>
       </Paper>
 
-
       {/* Stats section */}
       <Paper p="md" mb="md" withBorder>
         <Group justify="space-between" mb="sm">
           <Title order={5}>Stat Definitions</Title>
-          <Button size="compact-sm" leftSection={<IconPlus size={14} />} onClick={() => { setEditStat(null); setStatModalOpen(true); }}>
+          <Button
+            size="compact-sm"
+            leftSection={<IconPlus size={14} />}
+            onClick={() => { setEditStat(null); setStatModalOpen(true); }}
+          >
             Add Stat
           </Button>
         </Group>
-        {stats.length === 0 ? (
+        {state.stats.length === 0 ? (
           <Text c="dimmed" size="sm">No stats defined.</Text>
         ) : (
           <Table striped>
@@ -520,7 +636,7 @@ export function WorldEditPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {stats.map(stat => (
+              {state.stats.map(stat => (
                 <Table.Tr key={stat.id}>
                   <Table.Td>
                     <Text size="sm" fw={500}>{stat.name}</Text>
@@ -550,15 +666,19 @@ export function WorldEditPage() {
       <Paper p="md" mb="md" withBorder>
         <Group justify="space-between" mb="sm">
           <Title order={5}>Rules</Title>
-          <Button size="compact-sm" leftSection={<IconPlus size={14} />} onClick={() => { setEditRule(null); setRuleModalOpen(true); }}>
+          <Button
+            size="compact-sm"
+            leftSection={<IconPlus size={14} />}
+            onClick={() => { setEditRule(null); setRuleModalOpen(true); }}
+          >
             Add Rule
           </Button>
         </Group>
-        {rules.length === 0 ? (
+        {state.rules.length === 0 ? (
           <Text c="dimmed" size="sm">No rules defined.</Text>
         ) : (
           <Stack gap="xs">
-            {rules.map((rule, idx) => (
+            {state.rules.map((rule, idx) => (
               <Paper key={rule.id} p="xs" withBorder>
                 <Group justify="space-between" wrap="nowrap">
                   <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
@@ -569,7 +689,7 @@ export function WorldEditPage() {
                     <ActionIcon variant="subtle" size="sm" disabled={idx === 0} onClick={() => handleMoveRule(idx, "up")}>
                       <IconArrowUp size={14} />
                     </ActionIcon>
-                    <ActionIcon variant="subtle" size="sm" disabled={idx === rules.length - 1} onClick={() => handleMoveRule(idx, "down")}>
+                    <ActionIcon variant="subtle" size="sm" disabled={idx === state.rules.length - 1} onClick={() => handleMoveRule(idx, "down")}>
                       <IconArrowDown size={14} />
                     </ActionIcon>
                     <ActionIcon variant="subtle" size="sm" onClick={() => { setEditRule(rule); setRuleModalOpen(true); }}>
@@ -587,38 +707,41 @@ export function WorldEditPage() {
       </Paper>
 
       {/* Modals */}
-      {worldId && (
-        <>
-          <StatFormModal
-            opened={statModalOpen}
-            stat={editStat}
-            worldId={worldId}
-            onClose={() => setStatModalOpen(false)}
-            onSaved={refreshStatsRules}
+      <StatFormModal
+        opened={statModalOpen}
+        stat={editStat}
+        worldId={worldId}
+        onClose={() => setStatModalOpen(false)}
+        onSaved={refreshOnSubmodalSaved}
+      />
+      <RuleFormModal
+        opened={ruleModalOpen}
+        rule={editRule}
+        worldId={worldId}
+        onClose={() => setRuleModalOpen(false)}
+        onSaved={refreshOnSubmodalSaved}
+      />
+      <Modal opened={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Delete World">
+        <Stack>
+          <Text>This will permanently remove <Text span fw={700}>{state.world.name}</Text> and all its documents, stats, rules, and vector data.</Text>
+          <Checkbox
+            label="I understand this action cannot be undone"
+            checked={deleteConfirmed}
+            onChange={e => setDeleteConfirmed(e.currentTarget.checked)}
           />
-          <RuleFormModal
-            opened={ruleModalOpen}
-            rule={editRule}
-            worldId={worldId}
-            onClose={() => setRuleModalOpen(false)}
-            onSaved={refreshStatsRules}
-          />
-          <Modal opened={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Delete World">
-            <Stack>
-              <Text>This will permanently remove <Text span fw={700}>{world?.name}</Text> and all its documents, stats, rules, and vector data.</Text>
-              <Checkbox
-                label="I understand this action cannot be undone"
-                checked={deleteConfirmed}
-                onChange={e => setDeleteConfirmed(e.currentTarget.checked)}
-              />
-              <Group justify="flex-end">
-                <Button variant="default" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
-                <Button color="red" disabled={!deleteConfirmed} loading={deleting} onClick={handleDeleteWorld}>Delete World</Button>
-              </Group>
-            </Stack>
-          </Modal>
-        </>
-      )}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
+            <Button
+              color="red"
+              disabled={!deleteConfirmed}
+              loading={state.deleteStatus === "loading"}
+              onClick={handleDeleteWorld}
+            >
+              Delete World
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Container>
   );
-}
+});

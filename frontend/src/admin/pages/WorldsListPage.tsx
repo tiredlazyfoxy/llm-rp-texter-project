@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { formatDate } from "../../utils/formatDate";
+import { Fragment, useEffect, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useNavigate } from "react-router-dom";
 import {
   Alert,
   Badge,
@@ -17,8 +18,14 @@ import {
   Title,
 } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
+import { formatDate } from "../../utils/formatDate";
 import type { WorldItem } from "../../types/world";
-import { createWorld, listWorlds } from "../../api/worlds";
+import {
+  WorldsListPageState,
+  loadWorlds,
+  CreateWorldDraft,
+  createNewWorld,
+} from "./worldsListPageState";
 
 // ---------------------------------------------------------------------------
 // Create world modal
@@ -27,49 +34,53 @@ import { createWorld, listWorlds } from "../../api/worlds";
 interface CreateWorldModalProps {
   opened: boolean;
   onClose: () => void;
-  onSaved: () => void;
+  onCreated: (world: WorldItem) => void;
 }
 
-function CreateWorldModal({ opened, onClose, onSaved }: CreateWorldModalProps) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [worldStatus, setWorldStatus] = useState("draft");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const CreateWorldModal = observer(function CreateWorldModal({
+  opened,
+  onClose,
+  onCreated,
+}: CreateWorldModalProps) {
+  const [draft] = useState(() => new CreateWorldDraft());
 
+  // Reset whenever the modal opens.
   useEffect(() => {
-    if (opened) {
-      setName("");
-      setDescription("");
-      setWorldStatus("draft");
-      setError(null);
-    }
-  }, [opened]);
+    if (opened) draft.reset();
+  }, [opened, draft]);
 
   const handleSubmit = async () => {
-    if (!name.trim()) {
-      setError("Name is required");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      await createWorld({ name: name.trim(), description, status: worldStatus });
-      onSaved();
+    if (!draft.canSubmit) return;
+    const ctrl = new AbortController();
+    const created = await createNewWorld(draft, ctrl.signal);
+    if (created) {
+      onCreated(created);
       onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create world");
-    } finally {
-      setLoading(false);
     }
   };
 
   return (
     <Modal opened={opened} onClose={onClose} title="Create World">
       <Stack>
-        {error && <Alert color="red">{error}</Alert>}
-        <TextInput label="Name" value={name} onChange={e => setName(e.currentTarget.value)} required />
-        <Textarea label="Description" value={description} onChange={e => setDescription(e.currentTarget.value)} minRows={3} />
+        {draft.saveError && <Alert color="red">{draft.saveError}</Alert>}
+        <TextInput
+          label="Name"
+          value={draft.name}
+          onChange={(e) => {
+            draft.name = e.currentTarget.value;
+            if (draft.serverErrors.name) {
+              delete draft.serverErrors.name;
+            }
+          }}
+          error={draft.errors.name}
+          required
+        />
+        <Textarea
+          label="Description"
+          value={draft.description}
+          onChange={(e) => { draft.description = e.currentTarget.value; }}
+          minRows={3}
+        />
         <Select
           label="Status"
           data={[
@@ -78,17 +89,23 @@ function CreateWorldModal({ opened, onClose, onSaved }: CreateWorldModalProps) {
             { value: "private", label: "Private" },
             { value: "archived", label: "Archived" },
           ]}
-          value={worldStatus}
-          onChange={v => setWorldStatus(v || "draft")}
+          value={draft.status}
+          onChange={(v) => { draft.status = v || "draft"; }}
         />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} loading={loading}>Create</Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!draft.canSubmit}
+            loading={draft.saveStatus === "loading"}
+          >
+            Create
+          </Button>
         </Group>
       </Stack>
     </Modal>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // Status badge helper
@@ -101,34 +118,28 @@ function statusColor(s: string): string {
   return "blue";
 }
 
-// formatDate imported from utils
-
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
-export function WorldsListPage() {
-  const [worlds, setWorlds] = useState<WorldItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export const WorldsListPage = observer(function WorldsListPage() {
+  const [state] = useState(() => new WorldsListPageState());
   const [createOpen, setCreateOpen] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setWorlds(await listWorlds());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load worlds");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    const ctrl = new AbortController();
+    loadWorlds(state, ctrl.signal);
+    return () => ctrl.abort();
+  }, []);
+
+  const handleCreated = () => {
+    const ctrl = new AbortController();
+    loadWorlds(state, ctrl.signal);
+  };
+
+  const loading = state.worldsStatus === "loading" || state.worldsStatus === "idle";
 
   return (
     <Container size="lg" py="md">
@@ -139,11 +150,20 @@ export function WorldsListPage() {
         </Button>
       </Group>
 
-      {error && <Alert color="red" mb="md" withCloseButton onClose={() => setError(null)}>{error}</Alert>}
+      {state.worldsError && (
+        <Alert
+          color="red"
+          mb="md"
+          withCloseButton
+          onClose={() => { state.worldsError = null; }}
+        >
+          {state.worldsError}
+        </Alert>
+      )}
 
       {loading ? (
         <Group justify="center" py="xl"><Loader /></Group>
-      ) : worlds.length === 0 ? (
+      ) : state.worlds.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No worlds yet. Create one to get started.</Text>
       ) : (
         <Table>
@@ -155,17 +175,17 @@ export function WorldsListPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {worlds.map(world => {
+            {state.worlds.map(world => {
               const hovered = hoveredId === world.id;
               const rowProps = {
                 style: { cursor: "pointer", backgroundColor: hovered ? "var(--mantine-color-default-hover)" : undefined },
                 onMouseEnter: () => setHoveredId(world.id),
                 onMouseLeave: () => setHoveredId(null),
-                onClick: () => { window.location.href = `/admin/worlds/${world.id}`; },
+                onClick: () => navigate(`/worlds/${world.id}`),
               };
               return (
-                <>
-                  <Table.Tr key={world.id} {...rowProps}>
+                <Fragment key={world.id}>
+                  <Table.Tr {...rowProps}>
                     <Table.Td pb={world.description ? 2 : undefined}>
                       <Text fw={500}>{world.name}</Text>
                     </Table.Td>
@@ -177,20 +197,24 @@ export function WorldsListPage() {
                     </Table.Td>
                   </Table.Tr>
                   {world.description && (
-                    <Table.Tr key={world.id + "_desc"} {...rowProps}>
+                    <Table.Tr {...rowProps}>
                       <Table.Td colSpan={3} pt={0} pb="xs">
                         <Text size="xs" c="dimmed" lineClamp={1}>{world.description}</Text>
                       </Table.Td>
                     </Table.Tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </Table.Tbody>
         </Table>
       )}
 
-      <CreateWorldModal opened={createOpen} onClose={() => setCreateOpen(false)} onSaved={refresh} />
+      <CreateWorldModal
+        opened={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={handleCreated}
+      />
     </Container>
   );
-}
+});

@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useNavigate } from "react-router-dom";
 import {
   Alert,
   Badge,
@@ -12,131 +14,55 @@ import {
   Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
-import type { UpdateWorldRequest, WorldDetail } from "../../types/world";
-import type { PipelineConfigOptions } from "../../types/pipeline";
 import { LlmChatPanel } from "../components/llm/LlmChatPanel";
-import { PlaceholderPanel } from "../components/pipelines/PlaceholderPanel";
-import { PlaceholderTextarea } from "../components/pipelines/PlaceholderTextarea";
-import { getWorld, updateWorld } from "../../api/worlds";
-import { getPipelineConfigOptions } from "../../api/pipelines";
+import {
+  WorldFieldEditPageState,
+  WorldFieldName,
+  loadField,
+  saveField,
+} from "./worldFieldEditPageState";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-type FieldName = "description" | "initial_message";
-
-function extractIds(): { worldId: string; fieldName: FieldName } | null {
-  const m = window.location.pathname.match(/\/admin\/worlds\/(\d+)\/field\/(description|initial_message)/);
-  if (!m) return null;
-  return { worldId: m[1], fieldName: m[2] as FieldName };
+interface WorldFieldEditPageProps {
+  worldId: string;
+  fieldName: WorldFieldName;
 }
 
-const FIELD_LABELS: Record<FieldName, string> = {
-  description: "Description",
-  initial_message: "Initial Message",
-};
-
-function getFieldValue(world: WorldDetail, field: FieldName): string {
-  if (field === "description") return world.description ?? "";
-  if (field === "initial_message") return world.initial_message ?? "";
-  return "";
-}
-
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
-
-export function WorldFieldEditPage() {
-  const ids = extractIds();
-  const worldId = ids?.worldId ?? "";
-  const fieldName = ids?.fieldName ?? "description";
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  const [content, setContent] = useState("");
-  const [originalContent, setOriginalContent] = useState("");
-  const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Pipeline-prompt editing moved out of world fields in feature 007.
-  const isPipelinePrompt = false;
-
-  const load = useCallback(async () => {
-    if (!worldId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const promises: [Promise<WorldDetail>, Promise<PipelineConfigOptions> | null] = [
-        getWorld(worldId),
-        isPipelinePrompt ? getPipelineConfigOptions() : null,
-      ];
-      const world = await promises[0];
-      if (promises[1]) {
-        setConfigOptions(await promises[1]);
-      }
-      const value = getFieldValue(world, fieldName);
-      setContent(value);
-      setOriginalContent(value);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [worldId, fieldName, isPipelinePrompt]);
+export const WorldFieldEditPage = observer(function WorldFieldEditPage({
+  worldId,
+  fieldName,
+}: WorldFieldEditPageProps) {
+  const [state] = useState(() => new WorldFieldEditPageState(worldId, fieldName));
+  const navigate = useNavigate();
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const ctrl = new AbortController();
+    void loadField(state, ctrl.signal);
+    return () => ctrl.abort();
+  }, []);
 
   const handleApply = async () => {
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const patch: UpdateWorldRequest = { [fieldName]: content };
-      await updateWorld(worldId, patch);
-      setOriginalContent(content);
-      setSuccess("Applied.");
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setSaving(false);
+    if (!state.canSubmit) return;
+    const ctrl = new AbortController();
+    await saveField(state, ctrl.signal);
+    if (state.saveSuccess) {
+      setTimeout(() => {
+        if (state.saveSuccess) state.saveSuccess = null;
+      }, 3000);
     }
   };
 
-  const insertPlaceholder = (name: string) => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const text = `{${name}}`;
-    const newContent = content.slice(0, start) + text + content.slice(end);
-    setContent(newContent);
-    requestAnimationFrame(() => {
-      ta.selectionStart = ta.selectionEnd = start + text.length;
-      ta.focus();
-    });
-  };
-
-  const loadDefaultTemplate = () => {
-    if (!configOptions) return;
-    if (content && !window.confirm("Replace current content with default template?")) return;
-    setContent(configOptions.default_templates.simple);
-  };
-
-  const isDirty = content !== originalContent;
-  const label = FIELD_LABELS[fieldName];
-  const fieldType = isPipelinePrompt ? "pipeline_prompt" : fieldName;
-
-  if (loading) {
+  if (state.worldStatus === "loading" || state.worldStatus === "idle") {
     return (
       <Container pt="xl">
         <Loader />
+      </Container>
+    );
+  }
+
+  if (state.worldStatus === "error") {
+    return (
+      <Container pt="xl">
+        <Alert color="red">{state.worldError}</Alert>
       </Container>
     );
   }
@@ -149,72 +75,52 @@ export function WorldFieldEditPage() {
           <Button
             variant="subtle"
             leftSection={<IconArrowLeft size={16} />}
-            onClick={() => window.history.back()}
+            onClick={() => navigate(`/worlds/${worldId}/edit`)}
           >
             Back
           </Button>
           <Title order={4}>
             <Text span c="dimmed" size="sm" mr={6}>World field</Text>
-            <Badge variant="light">{label}</Badge>
+            <Badge variant="light">{state.fieldLabel}</Badge>
           </Title>
         </Group>
         <Group>
-          {isPipelinePrompt && configOptions && (
-            <Button variant="default" size="compact-sm" onClick={loadDefaultTemplate}>
-              Load Default Template
+          {state.isDirty && (
+            <Button
+              onClick={handleApply}
+              disabled={!state.canSubmit}
+              loading={state.saveStatus === "loading"}
+            >
+              Apply
             </Button>
           )}
-          {isDirty && <Button onClick={handleApply} loading={saving}>Apply</Button>}
         </Group>
       </Group>
 
-      {error && <Alert color="red" mb="md">{error}</Alert>}
-      {success && <Alert color="green" mb="md">{success}</Alert>}
+      {state.saveError && <Alert color="red" mb="md">{state.saveError}</Alert>}
+      {state.saveSuccess && <Alert color="green" mb="md">{state.saveSuccess}</Alert>}
 
       <Stack gap="md">
         {/* Field textarea */}
         <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
-          {isPipelinePrompt ? (
-            <PlaceholderTextarea
-              value={content}
-              onChange={setContent}
-              placeholders={configOptions?.placeholders ?? []}
-              textareaProps={{
-                autosize: true,
-                minRows: 4,
-                styles: { input: { fontFamily: "monospace" } },
-              }}
-            />
-          ) : (
-            <Textarea
-              ref={textareaRef}
-              value={content}
-              onChange={(e) => setContent(e.currentTarget.value)}
-              autosize
-              minRows={4}
-              styles={{ input: { fontFamily: "monospace" } }}
-            />
-          )}
-        </div>
-
-        {/* Placeholder reference panel (system_prompt only) */}
-        {isPipelinePrompt && configOptions && (
-          <PlaceholderPanel
-            placeholders={configOptions.placeholders}
-            content={content}
-            onInsert={insertPlaceholder}
+          <Textarea
+            value={state.draft}
+            onChange={(e) => { state.draft = e.currentTarget.value; }}
+            autosize
+            minRows={4}
+            styles={{ input: { fontFamily: "monospace" } }}
           />
-        )}
+        </div>
 
         {/* LLM chat panel */}
         <LlmChatPanel
-          currentContent={content}
+          currentContent={state.draft}
           worldId={worldId}
-          fieldType={fieldType}
-          onApply={(text) => setContent(text)}
-          onAppend={(text) => setContent((prev) => prev + "\n\n" + text)}
+          fieldType={fieldName}
+          onApply={(text) => { state.draft = text; }}
+          onAppend={(text) => { state.draft = state.draft + "\n\n" + text; }}
         />
       </Stack>
     </Container>
   );
-}
+});
