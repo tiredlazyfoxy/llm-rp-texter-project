@@ -52,6 +52,18 @@ export interface TranslateRequest {
   enable_thinking: boolean;
 }
 
+export interface TranslateStreamHandlers {
+  onThinking: (content: string) => void;
+  onToken: (content: string) => void;
+  onDone: (content: string) => void;
+  onError: (message: string) => void;
+}
+
+export type TranslateStreamFn = (
+  req: TranslateRequest,
+  handlers: TranslateStreamHandlers,
+) => AbortController;
+
 export interface EditorLlmParams {
   temperature: number;
   top_p: number;

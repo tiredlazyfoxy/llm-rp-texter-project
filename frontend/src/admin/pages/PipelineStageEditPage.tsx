@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Badge,
@@ -11,17 +11,15 @@ import {
   Select,
   Stack,
   Text,
-  Textarea,
   Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { fetchEnabledModels } from "../../api/llmChat";
 import type { EnabledModelInfo } from "../../types/llmServer";
 import type { PipelineConfig, PipelineConfigOptions } from "../../types/pipeline";
-import { LlmChatPanel } from "../components/LlmChatPanel";
-import { PlaceholderPanel } from "../components/PlaceholderPanel";
-import { PlaceholderSuggestions } from "../components/PlaceholderSuggestions";
-import { usePlaceholderAutocomplete } from "../hooks/usePlaceholderAutocomplete";
+import { LlmChatPanel } from "../components/llm/LlmChatPanel";
+import { PlaceholderPanel } from "../components/pipelines/PlaceholderPanel";
+import { PlaceholderTextarea } from "../components/pipelines/PlaceholderTextarea";
 import {
   getPipeline,
   getPipelineConfigOptions,
@@ -62,11 +60,6 @@ export function PipelineStageEditPage() {
   const [stageModelId, setStageModelId] = useState<string | null>(null);
   const [configOptions, setConfigOptions] = useState<PipelineConfigOptions | null>(null);
   const [enabledModels, setEnabledModels] = useState<EnabledModelInfo[]>([]);
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const autocomplete = usePlaceholderAutocomplete(
-    configOptions?.placeholders ?? [], textareaRef, content, setContent,
-  );
 
   const load = useCallback(async () => {
     if (!pipelineId) return;
@@ -130,17 +123,7 @@ export function PipelineStageEditPage() {
   };
 
   const insertPlaceholder = (name: string) => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const text = `{${name}}`;
-    const newContent = content.slice(0, start) + text + content.slice(end);
-    setContent(newContent);
-    requestAnimationFrame(() => {
-      ta.selectionStart = ta.selectionEnd = start + text.length;
-      ta.focus();
-    });
+    setContent((c) => c + `{${name}}`);
   };
 
   const loadDefaultTemplate = () => {
@@ -223,26 +206,17 @@ export function PipelineStageEditPage() {
       <Stack gap="md">
         {/* Prompt textarea */}
         <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
-          <Textarea
-            ref={textareaRef}
+          <PlaceholderTextarea
             value={content}
-            onChange={(e) => {
-              setContent(e.currentTarget.value);
-              autocomplete.onTextChange(e.currentTarget.value, e.currentTarget);
+            onChange={setContent}
+            placeholders={configOptions?.placeholders ?? []}
+            textareaProps={{
+              autosize: true,
+              minRows: 12,
+              styles: { input: { fontFamily: "monospace" } },
             }}
-            onKeyDown={autocomplete.onKeyDown}
-            autosize
-            minRows={12}
-            styles={{ input: { fontFamily: "monospace" } }}
           />
         </div>
-        <PlaceholderSuggestions
-          visible={autocomplete.visible}
-          suggestions={autocomplete.suggestions}
-          selectedIndex={autocomplete.selectedIndex}
-          position={autocomplete.position}
-          onSelect={autocomplete.onSelect}
-        />
 
         {/* Placeholder reference panel */}
         {configOptions && (

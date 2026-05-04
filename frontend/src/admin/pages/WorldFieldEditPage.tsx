@@ -14,10 +14,9 @@ import {
 import { IconArrowLeft } from "@tabler/icons-react";
 import type { UpdateWorldRequest, WorldDetail } from "../../types/world";
 import type { PipelineConfigOptions } from "../../types/pipeline";
-import { LlmChatPanel } from "../components/LlmChatPanel";
-import { PlaceholderPanel } from "../components/PlaceholderPanel";
-import { PlaceholderSuggestions } from "../components/PlaceholderSuggestions";
-import { usePlaceholderAutocomplete } from "../hooks/usePlaceholderAutocomplete";
+import { LlmChatPanel } from "../components/llm/LlmChatPanel";
+import { PlaceholderPanel } from "../components/pipelines/PlaceholderPanel";
+import { PlaceholderTextarea } from "../components/pipelines/PlaceholderTextarea";
 import { getWorld, updateWorld } from "../../api/worlds";
 import { getPipelineConfigOptions } from "../../api/pipelines";
 
@@ -65,9 +64,6 @@ export function WorldFieldEditPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Pipeline-prompt editing moved out of world fields in feature 007.
   const isPipelinePrompt = false;
-  const autocomplete = usePlaceholderAutocomplete(
-    configOptions?.placeholders ?? [], textareaRef, content, setContent,
-  );
 
   const load = useCallback(async () => {
     if (!worldId) return;
@@ -178,28 +174,28 @@ export function WorldFieldEditPage() {
       <Stack gap="md">
         {/* Field textarea */}
         <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
-          <Textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => {
-              setContent(e.currentTarget.value);
-              if (isPipelinePrompt) autocomplete.onTextChange(e.currentTarget.value, e.currentTarget);
-            }}
-            onKeyDown={isPipelinePrompt ? autocomplete.onKeyDown : undefined}
-            autosize
-            minRows={4}
-            styles={{ input: { fontFamily: "monospace" } }}
-          />
+          {isPipelinePrompt ? (
+            <PlaceholderTextarea
+              value={content}
+              onChange={setContent}
+              placeholders={configOptions?.placeholders ?? []}
+              textareaProps={{
+                autosize: true,
+                minRows: 4,
+                styles: { input: { fontFamily: "monospace" } },
+              }}
+            />
+          ) : (
+            <Textarea
+              ref={textareaRef}
+              value={content}
+              onChange={(e) => setContent(e.currentTarget.value)}
+              autosize
+              minRows={4}
+              styles={{ input: { fontFamily: "monospace" } }}
+            />
+          )}
         </div>
-        {isPipelinePrompt && (
-          <PlaceholderSuggestions
-            visible={autocomplete.visible}
-            suggestions={autocomplete.suggestions}
-            selectedIndex={autocomplete.selectedIndex}
-            position={autocomplete.position}
-            onSelect={autocomplete.onSelect}
-          />
-        )}
 
         {/* Placeholder reference panel (system_prompt only) */}
         {isPipelinePrompt && configOptions && (

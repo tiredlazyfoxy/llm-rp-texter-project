@@ -1,6 +1,6 @@
 import { Paper, Text, Group, Badge, Stack } from "@mantine/core";
-import type { PlaceholderInfo } from "../../types/pipeline";
-import type { AutocompletePosition } from "../hooks/usePlaceholderAutocomplete";
+import type { PlaceholderInfo } from "../../../types/pipeline";
+import type { AutocompletePosition } from "./placeholderAutocompleteState";
 
 interface PlaceholderSuggestionsProps {
   visible: boolean;

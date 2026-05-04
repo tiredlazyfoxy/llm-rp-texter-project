@@ -1,6 +1,5 @@
-import type { LlmChatRequest, SSEHandlers, TranslateRequest } from "../types/llmChat";
+import type { LlmChatRequest, SSEHandlers, TranslateRequest, TranslateStreamHandlers } from "../types/llmChat";
 import type { EnabledModelInfo, EnabledModelsListResponse } from "../types/llmServer";
-import type { TranslateStreamHandlers } from "../hooks/useTranslation";
 import { request } from "./client";
 import { streamPost } from "./sse";
 import { streamTranslate } from "./translateStream";

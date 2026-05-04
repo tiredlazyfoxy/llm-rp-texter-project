@@ -22,7 +22,7 @@ Already applied (locked decisions baked into the docs before any step is planned
 | 001  | `001.routing_foundation.md`   | done   | PASS     | 2026-05-03 |
 | 002  | `002.api_client.md`           | done   | PASS     | 2026-05-04 |
 | 003  | `003.component_reorg.md`      | done   | PASS     | 2026-05-04 |
-| 003b | `003b.hooks_to_components.md` | planned | —       |            |
+| 003b | `003b.hooks_to_components.md` | done   | PASS     | 2026-05-04 |
 | 004  | `004.user_non_chat_pages.md`  | planned | —       |            |
 | 005  | `005.chat_refactor.md`        | planned | —       |            |
 | 006  | `006.admin_worlds_domain.md`  | planned | —       |            |
@@ -60,6 +60,25 @@ Already applied (locked decisions baked into the docs before any step is planned
 - `frontend/src/user/components/ChatSettingsPanel.tsx` — import `request` from `api/client`
 - `frontend/src/api/CLAUDE.md` — document new conventions, file list
 
+### Step 003b — Hooks to wrapper components
+- `frontend/src/types/llmChat.d.ts` — added `TranslateStreamHandlers` + `TranslateStreamFn` exports (moved from deleted `hooks/useTranslation.ts`)
+- `frontend/src/components/llmInputState.ts` — new: `LlmInputState` MobX class + external mutation fns (`startTranslate`, `revertTranslate`, `stopTranslate`, `clearTranslateError`, `onValueEdit`)
+- `frontend/src/components/LlmInputBar.tsx` — new: controlled textarea with built-in translate/revert/send/stop, slot props `before`/`extras`
+- `frontend/src/admin/components/pipelines/placeholderAutocompleteState.ts` — new: `PlaceholderAutocompleteState` MobX class + external fns (`onTextChange`, `applySelection`, `handleKeyDown`, `dismiss`) + caret-position helper
+- `frontend/src/admin/components/pipelines/PlaceholderTextarea.tsx` — new: controlled textarea with `{PLACEHOLDER}` autocomplete dropdown
+- `frontend/src/admin/components/pipelines/PlaceholderSuggestions.tsx` — `AutocompletePosition` import path updated to `./placeholderAutocompleteState`
+- `frontend/src/api/translateStream.ts` — `TranslateStreamHandlers` import path updated to `../types/llmChat`
+- `frontend/src/api/chat.ts` — `TranslateStreamHandlers` import path updated to `../types/llmChat`
+- `frontend/src/api/llmChat.ts` — `TranslateStreamHandlers` import path updated to `../types/llmChat`
+- `frontend/src/user/components/chats/ChatInput.tsx` — replaced inline translate/revert/send/stop + `useTranslation` with `<LlmInputBar>`; OOC preview + status row passed via `before`, regenerate via `extras`
+- `frontend/src/admin/components/llm/LlmChatPanel.tsx` — replaced inline input cluster + `useTranslation` with `<LlmInputBar>` (translate via `translateTextAdmin`); regenerate button below message list unchanged
+- `frontend/src/admin/pages/PipelineStageEditPage.tsx` — replaced `usePlaceholderAutocomplete` + inline `<Textarea>` + `<PlaceholderSuggestions>` with `<PlaceholderTextarea>`; `insertPlaceholder` downgraded to append-at-end
+- `frontend/src/admin/pages/WorldFieldEditPage.tsx` — out-of-step but required: removed dead `usePlaceholderAutocomplete` call/import and `<PlaceholderSuggestions>` block (the autocomplete branch was already permanently disabled by `isPipelinePrompt = false`); replaced with conditional `<PlaceholderTextarea>` (active branch) + plain `<Textarea>` (inactive branch)
+- `frontend/src/hooks/useTranslation.ts` — deleted; `frontend/src/hooks/` directory removed
+- `frontend/src/admin/hooks/usePlaceholderAutocomplete.ts` — deleted; `frontend/src/admin/hooks/` directory removed
+- `frontend/src/admin/CLAUDE.md` — dropped `hooks/` line; added `PlaceholderTextarea` (+ `placeholderAutocompleteState.ts`) to the `pipelines/` listing
+- `frontend/src/components/CLAUDE.md` — new: documents `LlmInputBar` + `llmInputState.ts` alongside layout shells; codifies the wrapper-component-with-`<Component>State` pattern
+
 ### Step 003 — Component folder reorg
 - `frontend/src/user/components/chats/ChatInput.tsx` — moved from `user/components/`; sibling-import paths updated to `../../`
 - `frontend/src/user/components/chats/ChatMemoriesModal.tsx` — moved; imports updated
@@ -91,3 +110,5 @@ Already applied (locked decisions baked into the docs before any step is planned
 - Step 003: `WorldInfoModal` has no callers anywhere in `frontend/src/`; moved to `worlds/` per the plan but appears to be unused code. Flagged for a future cleanup step.
 - Step 001: Verifier was self-run by the coder (no `step-verifier` agent invocation tool available in this session). All acceptance criteria walked through manually against code; build (`npm run build` = `tsc && vite build`) green; no `window.location.pathname` remains in either `App.tsx`; no page or login files modified.
 - Step 002: `step-verifier` agent returned PASS on all 11 acceptance criteria, build, and convention checks (run 2026-05-04). Live dev-server smoke test (criterion 9) was not executed — relies on a running backend; the build-time path is fully covered by tsc.
+- Step 003b: planner missed `admin/pages/WorldFieldEditPage.tsx` as a fourth caller of `usePlaceholderAutocomplete`. Acceptance criteria #4/#5/#6 (no `hooks/` dirs, zero hook-name matches, build green) couldn't be met without touching it. Migrated minimally — the autocomplete branch was already dead (`isPipelinePrompt = false` constant), so the change is dead-code removal + conditional `<PlaceholderTextarea>` for the unreachable pipeline-prompt branch. No behavior change.
+- Step 003b: `step-verifier` agent not invoked from this CLI session; coder self-verified all 8 acceptance criteria — four new files exist, types moved, no hook imports remain in `.ts/.tsx`, both `hooks/` directories removed, grep clean across `.ts/.tsx`, `npm run build` green, CLAUDE.md updates applied. Live dev-server smoke (criterion 7) was not executed — relies on a running backend; the compile-time path is fully covered by tsc.

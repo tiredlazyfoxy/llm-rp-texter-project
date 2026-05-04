@@ -11,19 +11,14 @@ import {
   Stack,
   Switch,
   Text,
-  Textarea,
   Title,
 } from "@mantine/core";
 import {
-  IconArrowBackUp,
   IconCheck,
   IconChevronDown,
   IconChevronRight,
-  IconLanguage,
-  IconPlayerStop,
   IconPlus,
   IconRefresh,
-  IconSend,
   IconSettings,
   IconTrash,
 } from "@tabler/icons-react";
@@ -33,10 +28,10 @@ import type {
   LlmChatRequest,
   SSEHandlers,
   ToolCallEntry,
-} from "../../types/llmChat";
-import type { EnabledModelInfo } from "../../types/llmServer";
-import { fetchEnabledModels, streamChat, translateTextAdmin } from "../../api/llmChat";
-import { useTranslation } from "../../hooks/useTranslation";
+} from "../../../types/llmChat";
+import type { EnabledModelInfo } from "../../../types/llmServer";
+import { fetchEnabledModels, streamChat, translateTextAdmin } from "../../../api/llmChat";
+import { LlmInputBar } from "../../../components/LlmInputBar";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -110,14 +105,6 @@ export function LlmChatPanel({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const streamMsgRef = useRef<ChatMessage | null>(null);
   const isAtBottom = useRef(true);
-
-  // Translation
-  const getInputValue = useCallback(() => input, [input]);
-  const { isTranslating, canRevert, translateError, handleTranslate, handleRevert, onInputChange, clearTranslateError } = useTranslation({
-    getValue: getInputValue,
-    setValue: setInput,
-    translateFn: translateTextAdmin,
-  });
 
   // ---- Load models on mount ------------------------------------------------
 
@@ -366,16 +353,6 @@ export function LlmChatPanel({
     setMessages([]);
   }, [isStreaming, handleStop]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
-
   // ---- Model select data ---------------------------------------------------
 
   const modelOptions = models.map((m) => ({
@@ -494,67 +471,22 @@ export function LlmChatPanel({
         </ScrollArea>
 
         {/* Input area */}
-        {translateError && (
-          <Text size="xs" c="red" onClick={clearTranslateError} style={{ cursor: "pointer" }}>
-            {translateError}
-          </Text>
-        )}
-        <Group gap="xs" align="flex-end">
-          <Textarea
-            placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
-            value={input}
-            onChange={(e) => { setInput(e.currentTarget.value); onInputChange(e.currentTarget.value); }}
-            onKeyDown={handleKeyDown}
-            autosize
-            minRows={1}
-            maxRows={5}
-            style={{ flex: 1 }}
-            disabled={isStreaming}
-          />
-          <ActionIcon
-            variant="subtle"
-            size="lg"
-            onClick={handleTranslate}
-            disabled={!input.trim() || isStreaming || !selectedModel || isTranslating}
-            loading={isTranslating}
-            title="Translate to English"
-          >
-            <IconLanguage size={18} />
-          </ActionIcon>
-          {canRevert && (
-            <ActionIcon
-              variant="subtle"
-              size="lg"
-              color="orange"
-              onClick={handleRevert}
-              title="Revert to original"
-            >
-              <IconArrowBackUp size={18} />
-            </ActionIcon>
-          )}
-          {isStreaming ? (
-            <ActionIcon
-              color="red"
-              variant="filled"
-              size="lg"
-              onClick={handleStop}
-              title="Stop"
-            >
-              <IconPlayerStop size={18} />
-            </ActionIcon>
-          ) : (
-            <ActionIcon
-              color="blue"
-              variant="filled"
-              size="lg"
-              onClick={handleSend}
-              disabled={!input.trim() || !selectedModel}
-              title="Send"
-            >
-              <IconSend size={18} />
-            </ActionIcon>
-          )}
-        </Group>
+        <LlmInputBar
+          value={input}
+          onChange={setInput}
+          translateFn={translateTextAdmin}
+          busy={isStreaming}
+          onSend={handleSend}
+          onStop={handleStop}
+          disabled={!selectedModel}
+          placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
+          textareaProps={{
+            autosize: true,
+            minRows: 1,
+            maxRows: 5,
+            style: { flex: 1 },
+          }}
+        />
 
         {/* Regenerate — only when last message is a completed assistant message */}
         {messages.length > 0 &&

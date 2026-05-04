@@ -9,7 +9,7 @@ admin/
   pages/             — WorldsList, WorldView, WorldEdit, WorldFieldEdit, DocumentEdit, PipelinesList, PipelineEdit, PipelineStageEdit, LlmServersPage, DbManagementPage
   components/
     users/           — CreateUserModal, SetPasswordModal, SetRoleModal
-    pipelines/       — PlaceholderPanel, PlaceholderSuggestions
+    pipelines/       — PlaceholderPanel, PlaceholderSuggestions, PlaceholderTextarea (+ placeholderAutocompleteState.ts)
     llm/             — LlmChatPanel
 ```
 

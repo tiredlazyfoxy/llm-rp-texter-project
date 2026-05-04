@@ -1,5 +1,4 @@
-import type { TranslateRequest } from "../types/llmChat";
-import type { TranslateStreamHandlers } from "../hooks/useTranslation";
+import type { TranslateRequest, TranslateStreamHandlers } from "../types/llmChat";
 import { authHeaders } from "./client";
 
 export function streamTranslate(
