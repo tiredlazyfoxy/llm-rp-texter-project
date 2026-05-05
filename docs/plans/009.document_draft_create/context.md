@@ -1,0 +1,126 @@
+# Feature 009 — Document Draft Create
+
+## Goal
+
+Make the admin "New Document" flow follow industry-standard draft semantics:
+clicking "Create" opens a blank editor locally; the document is only persisted
+on Save. Eliminate the orphaned-row hazard caused by today's
+"create-then-navigate" implementation, while keeping the editor's link UI
+(NPC ↔ Location) usable inside the draft.
+
+## Scope
+
+In scope:
+
+- The single offending surface: `WorldViewPage` "New {DocType}" button +
+  the document edit page that it navigates to.
+- A new backend endpoint that returns a freshly-generated snowflake id, so the
+  client can pre-allocate the id before opening the editor.
+- Backend support for client-supplied id on document create (additive, optional,
+  backward compatible).
+- Frontend draft mode for `DocumentEditPage` (state flag, queued link ops,
+  flush-on-save).
+
+Out of scope:
+
+- All other create flows in the admin SPA — they already POST only on Save
+  (`WorldsListPage`, `WorldEditPage` Stat/Rule modals, `PipelinesListPage`
+  shadow `/new`, `LlmServersPage`, `UsersPage`, `WorldPage`,
+  `CharacterSetupPage`).
+- Any DB schema changes. We only allow the service to honor an externally
+  supplied id; the model/table shape is unchanged, so JSONL import/export is
+  untouched.
+- Editing-mode behavior changes when not creating — the existing update flow is
+  unchanged.
+
+## Locked design decisions
+
+- **Client pre-allocates the snowflake id** by calling a new backend endpoint
+  before navigating to the editor. The URL therefore contains a real id from
+  the start.
+- **Draft signal**: a `?new=1` query flag on the edit URL, accompanied by
+  `?doc_type=<type>`. When `?new=1` is present, the page skips load and starts
+  with an empty draft of the given type.
+- **Reload on `?new=1`**: just re-initializes a fresh empty draft for the same
+  id and doc_type. Draft content is discarded — acceptable, mirrors the
+  existing pipeline shadow-mode reload behavior.
+- **Link operations during draft**: queued in the page state (not POSTed). On
+  Save, after the document is persisted, queued link ops are replayed against
+  the existing link APIs.
+- **Conflict policy**: if a client-supplied id already exists in any of the
+  three document tables, the backend returns HTTP 409.
+
+## Files involved (cross-step)
+
+Backend:
+
+- `backend/app/routes/admin/worlds.py` — current `create_document` route
+  (line 252-260).
+- `backend/app/routes/admin/` — folder receiving the new id endpoint
+  (location to be decided in step 001 — extend an existing module or add a
+  thin new one).
+- `backend/app/models/schemas/worlds.py` — `CreateDocumentRequest`
+  (line 93-97).
+- `backend/app/services/world_editor.py` — `create_document` service
+  (~line 600+; id-assignment call sites at 612, 677, 762).
+- `backend/app/services/snowflake.py` — `generate_id()` at line 47-48.
+- `backend/app/models/world.py` — `WorldLocation` (54), `WorldNPC` (66),
+  `WorldLoreFact` (77). Read-only — no changes.
+- `backend/CLAUDE.md` — update if folder shape changes.
+
+Frontend:
+
+- `frontend/src/admin/pages/WorldViewPage.tsx` — `handleCreate` (~line 277-285),
+  "New {DocType}" button (~line 315).
+- `frontend/src/admin/pages/worldViewPageState.ts` — `createNewDocument`
+  (line 223-248). To be removed.
+- `frontend/src/admin/pages/DocumentEditPage.tsx` — receives new draft props.
+- `frontend/src/admin/pages/documentEditPageState.ts` — constructor (line 78-80),
+  `loadDocument` (line 111-167), `createLink` (line 196-198). Adds draft mode.
+- `frontend/src/admin/routes.tsx` — route wrapper for `DocumentEditPage`
+  parses `?new=1` and `?doc_type=...`.
+- `frontend/src/api/admin.ts` — adds `getNewSnowflakeId()` (or new `ids.ts`
+  if cleaner per existing precedent).
+- `frontend/src/types/world.d.ts` — `CreateDocumentRequest` (line 62-90 area)
+  gains optional `id`.
+- `frontend/src/admin/pages/CLAUDE.md` — update if needed.
+
+## Architecture references
+
+- `docs/architecture/frontend-forms.md` — draft vs server snapshot, async
+  `saveStatus` trio, external `(state, signal)` save functions.
+- `docs/architecture/frontend-pages.md` — URL-driven loads, `key={id}` route
+  wrapper remount, query-param-driven flags.
+- `docs/architecture/backend.md` — Pydantic schemas, service-layer ID
+  assignment, no DB queries in routes/services.
+- Project root `CLAUDE.md` — DB/Service/Routes layer separation; namespace
+  import style (`from app.db import worlds`, `from app.services import
+  X as X_service`).
+
+## Existing precedents
+
+- `frontend/src/admin/pages/PipelineEditPage.tsx` and
+  `pipelineEditPageState.ts` (line 23, 112-156) — `'shadow' | 'edit'` mode for
+  draft pipelines. Inspiration only; we do **not** use a synthetic `/new`
+  URL — we use a real pre-allocated id plus `?new=1`.
+- `WorldsListPage` `CreateWorldModal`, `WorldEditPage` Stat/Rule modals — modal
+  draft pattern (not used here, but precedent for "POST only on Save").
+
+## Vocabulary used by the steps
+
+- **Snowflake id** — int64 generated by `app.services.snowflake.generate_id()`.
+  Always serialized as a string on the wire (per `world.d.ts`).
+- **Draft mode** / **isNew** — page state flag indicating the document does not
+  yet exist on the server.
+- **Pending link op** — a link create or delete queued in page state during
+  draft mode, to be replayed against the backend after the document is
+  persisted.
+
+## Out of scope (explicit non-goals)
+
+- No DB schema migration.
+- No JSONL import/export change.
+- No changes to existing update/save behavior outside draft mode.
+- No new tests for the frontend step beyond a smoke-test note (per
+  feature 008 convention).
+- No changes to other create flows in the admin SPA.
