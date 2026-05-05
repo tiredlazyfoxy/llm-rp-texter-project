@@ -54,3 +54,7 @@ docs:
   the uppercase form.
 - Reason: keep services-doc consistent with `chat_service.py`.
 
+## Observations
+
+- Step 003: end-to-end behaviour (insert `{CHARACTER_NAME}` in the editor, save, start chat, see substitution) only works when both Step 001 (backend uppercase substitution) and Step 003 (frontend UI) are landed; neither is a build-time dependency of the other but they form one user-visible feature. Possible impact: mention this composition in any release/changelog note for feature 010.
+

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
 import { useNavigate } from "react-router-dom";
 import {
@@ -15,6 +15,12 @@ import {
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { LlmChatPanel } from "../components/llm/LlmChatPanel";
+import { PlaceholderPanel } from "../components/placeholders/PlaceholderPanel";
+import {
+  PlaceholderTextarea,
+  type PlaceholderTextareaController,
+} from "../components/placeholders/PlaceholderTextarea";
+import { INITIAL_MESSAGE_PLACEHOLDERS } from "../components/placeholders/initialMessagePlaceholders";
 import {
   WorldFieldEditPageState,
   WorldFieldName,
@@ -33,6 +39,7 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
 }: WorldFieldEditPageProps) {
   const [state] = useState(() => new WorldFieldEditPageState(worldId, fieldName));
   const navigate = useNavigate();
+  const controllerRef = useRef<PlaceholderTextareaController | null>(null);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -48,6 +55,15 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
       setTimeout(() => {
         if (state.saveSuccess) state.saveSuccess = null;
       }, 3000);
+    }
+  };
+
+  const handleInsertPlaceholder = (name: string) => {
+    const text = "{" + name + "}";
+    if (controllerRef.current) {
+      controllerRef.current.insertAtCursor(text);
+    } else {
+      state.draft = state.draft + text;
     }
   };
 
@@ -103,14 +119,37 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
       <Stack gap="md">
         {/* Field textarea */}
         <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
-          <Textarea
-            value={state.draft}
-            onChange={(e) => { state.draft = e.currentTarget.value; }}
-            autosize
-            minRows={4}
-            styles={{ input: { fontFamily: "monospace" } }}
-          />
+          {state.fieldName === "initial_message" ? (
+            <PlaceholderTextarea
+              value={state.draft}
+              onChange={(v) => { state.draft = v; }}
+              placeholders={INITIAL_MESSAGE_PLACEHOLDERS}
+              controllerRef={controllerRef}
+              textareaProps={{
+                autosize: true,
+                minRows: 4,
+                styles: { input: { fontFamily: "monospace" } },
+              }}
+            />
+          ) : (
+            <Textarea
+              value={state.draft}
+              onChange={(e) => { state.draft = e.currentTarget.value; }}
+              autosize
+              minRows={4}
+              styles={{ input: { fontFamily: "monospace" } }}
+            />
+          )}
         </div>
+
+        {/* Placeholder reference panel — initial_message only */}
+        {state.fieldName === "initial_message" && (
+          <PlaceholderPanel
+            placeholders={INITIAL_MESSAGE_PLACEHOLDERS}
+            content={state.draft}
+            onInsert={handleInsertPlaceholder}
+          />
+        )}
 
         {/* LLM chat panel */}
         <LlmChatPanel

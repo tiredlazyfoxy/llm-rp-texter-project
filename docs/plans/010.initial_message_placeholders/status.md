@@ -4,7 +4,7 @@
 |------|-----------------------------------------------|---------|----------|------|
 | 001  | `001.backend_uppercase_and_migration.md`      | done    | PASS     | 2026-05-05 |
 | 002  | `002.move_placeholder_components.md`          | done    | PASS     | 2026-05-05 |
-| 003  | `003.wire_into_world_field_edit.md`           | pending | —        | —    |
+| 003  | `003.wire_into_world_field_edit.md`           | done    | PASS     | 2026-05-05 |
 
 ## Files Changed
 
@@ -25,6 +25,10 @@
 - `frontend/src/admin/components/placeholders/placeholderAutocompleteState.ts` — moved (git mv) from `components/pipelines/`; contents identical.
 - `frontend/src/admin/pages/PipelineStageEditPage.tsx` — `PlaceholderPanel` and `PlaceholderTextarea` imports rewritten to `../components/placeholders/`.
 - `frontend/src/admin/CLAUDE.md` — `components/pipelines/` entry replaced with `components/placeholders/`, noting it is shared between pipeline-stage and world-field editors.
+
+### Step 003 — Frontend: wire placeholder UI into WorldFieldEditPage
+- `frontend/src/admin/components/placeholders/initialMessagePlaceholders.ts` — new constants module exporting `INITIAL_MESSAGE_PLACEHOLDERS` (CHARACTER_NAME / LOCATION_NAME / LOCATION_SUMMARY, unbraced).
+- `frontend/src/admin/pages/WorldFieldEditPage.tsx` — adds `controllerRef`, branches on `state.fieldName === "initial_message"` to render `<PlaceholderTextarea>` + `<PlaceholderPanel>`; `description` keeps the plain `<Textarea>`. Page remains wrapped in `observer`.
 
 ## Notes & Issues
 - Step 002: `frontend/src/admin/components/pipelines/` is now an empty directory — git tracks no files there but the folder remains on disk. Step does not require its removal; left untouched to stay in scope.
