@@ -20,7 +20,7 @@ import {
   PlaceholderTextarea,
   type PlaceholderTextareaController,
 } from "../components/placeholders/PlaceholderTextarea";
-import { INITIAL_MESSAGE_PLACEHOLDERS } from "../components/placeholders/initialMessagePlaceholders";
+import { RUNTIME_PLACEHOLDERS } from "../components/placeholders/runtimePlaceholders";
 import {
   WorldFieldEditPageState,
   WorldFieldName,
@@ -131,7 +131,7 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
             <PlaceholderTextarea
               value={state.draft}
               onChange={(v) => { state.draft = v; }}
-              placeholders={INITIAL_MESSAGE_PLACEHOLDERS}
+              placeholders={RUNTIME_PLACEHOLDERS}
               controllerRef={controllerRef}
               textareaProps={{
                 autosize: false,
@@ -156,7 +156,7 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
         {/* Placeholder reference panel — initial_message only */}
         {state.fieldName === "initial_message" && (
           <PlaceholderPanel
-            placeholders={INITIAL_MESSAGE_PLACEHOLDERS}
+            placeholders={RUNTIME_PLACEHOLDERS}
             content={state.draft}
             onInsert={handleInsertPlaceholder}
           />

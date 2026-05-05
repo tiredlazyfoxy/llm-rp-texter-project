@@ -8,7 +8,7 @@
 | 004  | `004.backend_runtime_substitution_helper.md`        | done    | PASS     | 2026-05-05 |
 | 005  | `005.backend_chat_tools_substitution.md`            | done    | PASS     | 2026-05-05 |
 | 006  | `006.backend_editor_prompt_placeholders.md`         | done    | PASS     | 2026-05-05 |
-| 007  | `007.frontend_wire_document_editor.md`              | pending | —        | —    |
+| 007  | `007.frontend_wire_document_editor.md`              | done    | PASS     | 2026-05-05 |
 
 ## Files Changed
 
@@ -47,6 +47,11 @@
 - `backend/tests/services/prompts/__init__.py` — package marker for the new test folder.
 - `backend/tests/services/prompts/test_document_editor_system_prompt.py` — new file: parametrized snippet checks across `doc_type` in {`location`, `npc`, `lore_fact`} that the section is present, all three literal tokens appear, the chat-time-substitution explanation appears, and the section survives both empty-world-context and `enable_tools=True` builds.
 - `backend/tests/services/prompts/test_world_field_editor_system_prompt.py` — new file: snippet check on the `initial_message` branch (block + three literal-brace tokens + chat-time phrase), an escaping regression that confirms tokens render as single-braced literals (no `{{...}}` leak, no bare-name leak), and regression asserts that `description` and `system_prompt` branches do **not** contain the placeholders block.
+
+### Step 007 — Frontend: wire placeholder UI into DocumentEditPage
+- `frontend/src/admin/components/placeholders/runtimePlaceholders.ts` — renamed (git mv) from `initialMessagePlaceholders.ts`; exported constant renamed `INITIAL_MESSAGE_PLACEHOLDERS` → `RUNTIME_PLACEHOLDERS`; descriptions reworded to reflect current-location semantics shared with documents; doc comment updated to list all three runtime substitution sites.
+- `frontend/src/admin/pages/WorldFieldEditPage.tsx` — import path updated to `../components/placeholders/runtimePlaceholders` and identifier updated to `RUNTIME_PLACEHOLDERS` at both usage sites; behavior unchanged.
+- `frontend/src/admin/pages/DocumentEditPage.tsx` — Content `<Textarea>` block replaced with `<PlaceholderTextarea>` + `<PlaceholderPanel>` driven by `RUNTIME_PLACEHOLDERS`; adds `useRef<PlaceholderTextareaController | null>(null)` and `handleInsertPlaceholder`; `Textarea` import dropped (no other usage); `Name`, metadata fields, and `<LlmChatPanel>` untouched; page stays wrapped in `observer`.
 
 ### Step 005 — Backend: chat_tools runtime substitution
 - `backend/app/services/chat_tools.py` — imports `RuntimePlaceholderContext` + `apply_runtime_placeholders`; adds `runtime_placeholders: RuntimePlaceholderContext | None = None` to `ToolContext`; the six chat-side bindings (`_b_get_location_info`, `_b_get_npc_info`, `_b_search`, `_b_get_lore`, `_b_get_memory`, `_b_move_to_location`) capture `ctx.runtime_placeholders` and wrap their return value with `apply_runtime_placeholders` before returning. The four `*_impl` functions and `admin_tools` are untouched (signatures preserved; editor mode = ctx None = raw return).

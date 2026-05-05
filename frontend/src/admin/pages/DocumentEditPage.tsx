@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
 import { useNavigate } from "react-router-dom";
 import {
@@ -15,11 +15,16 @@ import {
   Switch,
   Text,
   TextInput,
-  Textarea,
   Title,
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { LlmChatPanel } from "../components/llm/LlmChatPanel";
+import { PlaceholderPanel } from "../components/placeholders/PlaceholderPanel";
+import {
+  PlaceholderTextarea,
+  type PlaceholderTextareaController,
+} from "../components/placeholders/PlaceholderTextarea";
+import { RUNTIME_PLACEHOLDERS } from "../components/placeholders/runtimePlaceholders";
 import {
   DocumentEditPageState,
   loadDocument,
@@ -49,6 +54,16 @@ export const DocumentEditPage = observer(function DocumentEditPage({
     () => new DocumentEditPageState(worldId, docId, { isNew, initialDocType }),
   );
   const navigate = useNavigate();
+  const controllerRef = useRef<PlaceholderTextareaController | null>(null);
+
+  const handleInsertPlaceholder = (name: string) => {
+    const text = "{" + name + "}";
+    if (controllerRef.current) {
+      controllerRef.current.insertAtCursor(text);
+    } else {
+      state.draft.content = state.draft.content + text;
+    }
+  };
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -211,16 +226,26 @@ export const DocumentEditPage = observer(function DocumentEditPage({
       )}
 
       {/* Content editor */}
-      <Textarea
-        label="Content"
-        value={state.draft.content}
-        onChange={e => { state.draft.content = e.currentTarget.value; }}
-        minRows={12}
-        autosize
-        maxRows={30}
-        mb="md"
-        styles={{ input: { fontFamily: "monospace" } }}
-      />
+      <Stack gap="xs" mb="md">
+        <Text fw={500} size="sm">Content</Text>
+        <PlaceholderTextarea
+          value={state.draft.content}
+          onChange={(v) => { state.draft.content = v; }}
+          placeholders={RUNTIME_PLACEHOLDERS}
+          controllerRef={controllerRef}
+          textareaProps={{
+            autosize: true,
+            minRows: 12,
+            maxRows: 30,
+            styles: { input: { fontFamily: "monospace" } },
+          }}
+        />
+        <PlaceholderPanel
+          placeholders={RUNTIME_PLACEHOLDERS}
+          content={state.draft.content}
+          onInsert={handleInsertPlaceholder}
+        />
+      </Stack>
 
       {/* LLM Chat */}
       <LlmChatPanel
