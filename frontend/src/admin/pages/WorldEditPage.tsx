@@ -599,6 +599,9 @@ export const WorldEditPage = observer(function WorldEditPage({ worldId }: WorldE
             searchable
             clearable
           />
+          {state.pipelinesError && (
+            <Text c="red" size="sm">Failed to load pipelines: {state.pipelinesError}</Text>
+          )}
           {state.draft.pipeline_id && (
             <Button
               variant="subtle"

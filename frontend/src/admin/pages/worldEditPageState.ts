@@ -128,7 +128,12 @@ export async function loadWorldEdit(state: WorldEditPageState, signal: AbortSign
     const [world, pipelines] = await Promise.all([
       getWorld(state.worldId, signal),
       listPipelines(signal).catch((err: unknown) => {
-        // Pipelines failure shouldn't block the main load.
+        // Pipelines failure shouldn't block the main load. If the failure is
+        // caused by this load being aborted (e.g. StrictMode double-mount or
+        // unmount mid-flight), do NOT mutate state — a fresh load is already
+        // in flight on a new signal and would be clobbered into the "error"
+        // status by this stale catch, leaving the dropdown empty.
+        if (signal.aborted) return [] as PipelineItem[];
         runInAction(() => {
           state.pipelinesStatus = "error";
           state.pipelinesError = err instanceof Error ? err.message : String(err);
