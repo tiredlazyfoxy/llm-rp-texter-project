@@ -17,11 +17,11 @@ import {
 } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { LlmChatPanel } from "../components/llm/LlmChatPanel";
-import { PlaceholderPanel } from "../components/pipelines/PlaceholderPanel";
+import { PlaceholderPanel } from "../components/placeholders/PlaceholderPanel";
 import {
   PlaceholderTextarea,
   type PlaceholderTextareaController,
-} from "../components/pipelines/PlaceholderTextarea";
+} from "../components/placeholders/PlaceholderTextarea";
 import {
   PipelineStageEditPageState,
   loadDefaultTemplate,

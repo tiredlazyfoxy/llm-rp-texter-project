@@ -23,7 +23,8 @@ admin/
                        and owns a component-local draft class (held via `useState(() => new XDraft())`)
                        with external `submit*(draft, args, signal)` mutation fns colocated in the
                        same file.
-    pipelines/       — PlaceholderPanel, PlaceholderSuggestions, PlaceholderTextarea (+ placeholderAutocompleteState.ts).
+    placeholders/    — PlaceholderPanel, PlaceholderSuggestions, PlaceholderTextarea (+ placeholderAutocompleteState.ts).
+                       Shared between pipeline-stage and world-field editors.
                        PlaceholderTextarea exposes an optional `controllerRef` of type
                        `PlaceholderTextareaController` ({ insertAtCursor(text) }) for callers that
                        need cursor-position insertion (e.g. PipelineStageEditPage's PlaceholderPanel).

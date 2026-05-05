@@ -3,7 +3,7 @@
 | Step | File                                          | Status  | Verifier | Date |
 |------|-----------------------------------------------|---------|----------|------|
 | 001  | `001.backend_uppercase_and_migration.md`      | done    | PASS     | 2026-05-05 |
-| 002  | `002.move_placeholder_components.md`          | pending | —        | —    |
+| 002  | `002.move_placeholder_components.md`          | done    | PASS     | 2026-05-05 |
 | 003  | `003.wire_into_world_field_edit.md`           | pending | —        | —    |
 
 ## Files Changed
@@ -18,6 +18,15 @@
 - `backend/tests/db/test_initial_message_migration.py` — covers lowercase/uppercase/mixed rewrite, idempotency, and the pure helper.
 - `backend/tests/services/test_chat_service.py` — asserts uppercase substitution at chat start and that lowercase tokens are not recognized at runtime.
 
+### Step 002 — Frontend: move placeholder components to shared folder
+- `frontend/src/admin/components/placeholders/PlaceholderTextarea.tsx` — moved (git mv) from `components/pipelines/`; contents identical.
+- `frontend/src/admin/components/placeholders/PlaceholderPanel.tsx` — moved (git mv) from `components/pipelines/`; contents identical.
+- `frontend/src/admin/components/placeholders/PlaceholderSuggestions.tsx` — moved (git mv) from `components/pipelines/`; contents identical.
+- `frontend/src/admin/components/placeholders/placeholderAutocompleteState.ts` — moved (git mv) from `components/pipelines/`; contents identical.
+- `frontend/src/admin/pages/PipelineStageEditPage.tsx` — `PlaceholderPanel` and `PlaceholderTextarea` imports rewritten to `../components/placeholders/`.
+- `frontend/src/admin/CLAUDE.md` — `components/pipelines/` entry replaced with `components/placeholders/`, noting it is shared between pipeline-stage and world-field editors.
+
 ## Notes & Issues
+- Step 002: `frontend/src/admin/components/pipelines/` is now an empty directory — git tracks no files there but the folder remains on disk. Step does not require its removal; left untouched to stay in scope.
 
 _populated by the coder when worth saying_
