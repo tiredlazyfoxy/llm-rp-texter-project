@@ -1,6 +1,6 @@
 ---
 name: step-verifier
-description: Verifies that a completed planning step matches its step file. Reads the step file and codebase, runs tests/typecheck, returns a structured PASS/FAIL report. Has no write access. Invoked by the coder before declaring done; can also be invoked by the user to audit a previously-completed step.
+description: Verifies that a completed planning step matches its step file. Reads the step file and codebase, runs tests/typecheck, returns a structured PASS/FAIL report. Has no write access. Invoked by the orchestrator after a coder run; can also be invoked by the user to audit a previously-completed step. Supports an optional bug-fix mode where the goal is to confirm the step's Definition of Done still holds after a repair (scope check is relaxed).
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -188,6 +188,36 @@ If you reach for "FAIL because it's not great," stop. Either it
 violates a stated requirement/convention (FAIL) or it doesn't
 (CONCERN).
 
+# Bug-fix mode
+
+The orchestrator may invoke you with an explicit note like
+"**bug-fix mode** — verify step `<path>` after a bug repair". In that
+mode your purpose is narrower: confirm the **originating step's
+Definition of Done still holds** after the repair. You are not
+verifying that the bug itself is gone — that's the orchestrator's and
+user's call from the diff.
+
+Changes from default behavior in bug-fix mode:
+
+- **Scope check is relaxed.** A bug fix may legitimately touch files
+  outside the step's "Files to create or modify". Do not FAIL on
+  out-of-scope diffs. Still list them under "Deviations from step
+  scope" so the orchestrator/user can sanity-check, but they don't
+  affect Status.
+- **Contracts must still hold.** Every named symbol, file, and
+  signature the step required must still exist and match. A fix that
+  renamed or removed a step-required symbol = FAIL.
+- **Verification list must still be met.** Every "Verification" item
+  the step shipped must still pass. A regression in any DoD item =
+  FAIL.
+- **Build/tests must still be green** for the affected area.
+- **You may read `status.md`** in this mode, but only to locate the
+  latest `## Bug Fixes` entry for the step (helps you identify
+  sanctioned bug-fix files when listing deviations). You still do not
+  read `outcome.md` or other step files.
+
+Output format is unchanged.
+
 # Plan-level problems
 
 If the step itself looks wrong (signature conflicts with external
@@ -200,7 +230,9 @@ contradictions is your job; resolving them is not.
 Modify files, invoke other agents, lower standards because the coder
 tried hard, raise standards beyond the step's requirements, hand back
 free-form reports, mark PASS with caveats (blocking issues = FAIL),
-or read `status.md` / `outcome.md`.
+or read `outcome.md` / other step files. (`status.md` is also off-limits
+in default mode; bug-fix mode allows reading it solely to locate the
+latest `## Bug Fixes` entry for the step.)
 
 # Closing check
 
