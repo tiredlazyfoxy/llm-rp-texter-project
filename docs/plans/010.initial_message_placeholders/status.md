@@ -5,7 +5,7 @@
 | 001  | `001.backend_uppercase_and_migration.md`            | done    | PASS     | 2026-05-05 |
 | 002  | `002.move_placeholder_components.md`                | done    | PASS     | 2026-05-05 |
 | 003  | `003.wire_into_world_field_edit.md`                 | done    | PASS     | 2026-05-05 |
-| 004  | `004.backend_runtime_substitution_helper.md`        | pending | —        | —    |
+| 004  | `004.backend_runtime_substitution_helper.md`        | done    | PASS     | 2026-05-05 |
 | 005  | `005.backend_chat_tools_substitution.md`            | pending | —        | —    |
 | 006  | `006.backend_editor_prompt_placeholders.md`         | pending | —        | —    |
 | 007  | `007.frontend_wire_document_editor.md`              | pending | —        | —    |
@@ -33,6 +33,13 @@
 ### Step 003 — Frontend: wire placeholder UI into WorldFieldEditPage
 - `frontend/src/admin/components/placeholders/initialMessagePlaceholders.ts` — new constants module exporting `INITIAL_MESSAGE_PLACEHOLDERS` (CHARACTER_NAME / LOCATION_NAME / LOCATION_SUMMARY, unbraced).
 - `frontend/src/admin/pages/WorldFieldEditPage.tsx` — adds `controllerRef`, branches on `state.fieldName === "initial_message"` to render `<PlaceholderTextarea>` + `<PlaceholderPanel>`; `description` keeps the plain `<Textarea>`. Page remains wrapped in `observer`.
+
+### Step 004 — Backend: runtime placeholder helper + chat_context substitution
+- `backend/app/services/runtime_placeholders.py` — new pure helper: `RuntimePlaceholderContext` TypedDict + `apply_runtime_placeholders(text, ctx)`; nullable ctx returns text unchanged (editor-mode contract); uppercase-only token contract.
+- `backend/app/services/chat_service.py` — `create_chat` now imports the helper, builds a local `RuntimePlaceholderContext` from the freshly-resolved character + starting location, and replaces the inline `.replace()` chain with a single `apply_runtime_placeholders(...)` call (behavior preserved).
+- `backend/app/services/chat_context.py` — `build_chat_context` builds one `RuntimePlaceholderContext` from `session.character_name` + the **current** location, applies it to `location.content`, joined `injected_lore`, and each NPC brief; `_format_npcs_at_location` gains a trailing `runtime_placeholders: RuntimePlaceholderContext | None` parameter and substitutes the brief before formatting.
+- `backend/tests/services/test_runtime_placeholders.py` — new pure-helper tests: all-three-tokens, ctx=None pass-through, idempotency, lowercase non-substitution, no-token pass-through, empty string.
+- `backend/tests/services/test_chat_context.py` — new integration tests: current-location semantics for `location.content`, injected lore, and NPC brief substitution.
 
 ## Notes & Issues
 - Step 002: `frontend/src/admin/components/pipelines/` is now an empty directory — git tracks no files there but the folder remains on disk. Step does not require its removal; left untouched to stay in scope.

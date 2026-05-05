@@ -32,6 +32,10 @@ from app.models.schemas.chat import (
     WorldInfoResponse,
 )
 from app.services import snowflake as snowflake_svc
+from app.services.runtime_placeholders import (
+    RuntimePlaceholderContext,
+    apply_runtime_placeholders,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -423,12 +427,13 @@ async def create_chat(
     await chats_db.create_snapshot(snap)
 
     # Initial system message using world.initial_message
-    initial_content = (world.initial_message or "").replace(
-        "{CHARACTER_NAME}", character_name
-    ).replace(
-        "{LOCATION_NAME}", loc.name
-    ).replace(
-        "{LOCATION_SUMMARY}", loc.content or "",
+    runtime_ctx: RuntimePlaceholderContext = {
+        "character_name": character_name,
+        "location_name": loc.name,
+        "location_summary": loc.content or "",
+    }
+    initial_content = apply_runtime_placeholders(
+        world.initial_message or "", runtime_ctx,
     )
     if initial_content:
         msg_id = snowflake_svc.generate_id()

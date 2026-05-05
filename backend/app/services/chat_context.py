@@ -30,6 +30,10 @@ from app.db import stat_defs as stat_defs_db
 from app.db import worlds as worlds_db
 from app.models.chat_session import ChatSession
 from app.models.world import World, WorldStatDefinition
+from app.services.runtime_placeholders import (
+    RuntimePlaceholderContext,
+    apply_runtime_placeholders,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +73,24 @@ async def build_chat_context(session: ChatSession) -> ChatContext:
             location_description = location.content
             location_exits = await _format_exits(location.exits)
 
+    # Runtime placeholder context built once from the session's
+    # **current** location and reused for the three substitution
+    # sites below (location.content, injected lore, NPC briefs).
+    runtime_ctx: RuntimePlaceholderContext = {
+        "character_name": session.character_name,
+        "location_name": location_name,
+        "location_summary": location_description,
+    }
+    location_description = apply_runtime_placeholders(
+        location_description, runtime_ctx,
+    )
+
     # NPCs at location
     present_npcs = ""
     if session.current_location_id:
-        present_npcs = await _format_npcs_at_location(session.current_location_id)
+        present_npcs = await _format_npcs_at_location(
+            session.current_location_id, runtime_ctx,
+        )
 
     # Rules
     rules_list = await rules_db.list_by_world(session.world_id)
@@ -90,6 +108,7 @@ async def build_chat_context(session: ChatSession) -> ChatContext:
     # Injected lore
     injected_facts = await lore_facts_db.list_injected_by_world(session.world_id)
     injected_lore = "\n---\n".join(f.content for f in injected_facts) if injected_facts else ""
+    injected_lore = apply_runtime_placeholders(injected_lore, runtime_ctx)
 
     # Memories
     memories_list = await chats_db.list_memories(session.id)
@@ -143,8 +162,16 @@ async def _format_exits(exits_json: str | None) -> str:
     return ", ".join(names)
 
 
-async def _format_npcs_at_location(location_id: int) -> str:
-    """Load NPCs present at a location via npc_location_links."""
+async def _format_npcs_at_location(
+    location_id: int,
+    runtime_placeholders: RuntimePlaceholderContext | None,
+) -> str:
+    """Load NPCs present at a location via npc_location_links.
+
+    `runtime_placeholders` is applied to each NPC's brief description
+    so placeholder tokens authored in NPC content resolve before
+    reaching the player. Pass None in editor-mode call sites.
+    """
     links = await npc_links_db.list_by_location(location_id)
     present_links = [lnk for lnk in links if lnk.link_type.value == "present"]
     if not present_links:
@@ -156,6 +183,7 @@ async def _format_npcs_at_location(location_id: int) -> str:
         if npc:
             # Use first paragraph as brief description
             brief = npc.content.split("\n\n")[0] if npc.content else ""
+            brief = apply_runtime_placeholders(brief, runtime_placeholders)
             parts.append(f"- **{npc.name}**: {brief}")
     return "\n".join(parts)
 
