@@ -38,6 +38,7 @@ from app.services.chat_agent_service import (
 )
 from app.services.chat_context import build_chat_context
 from app.services.chat_tools import TOOL_REGISTRY, ToolContext, build_tools
+from app.services.runtime_placeholders import RuntimePlaceholderContext
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts.chat_system_prompt import build_rich_chat_system_prompt
 from app.services.prompts.prompt_injection import (
@@ -133,7 +134,16 @@ async def _run_generation(
         # Get tools — admin selection drives names; simple mode has no
         # planning/director state, so fall back to tools whose requirements
         # are satisfied by (world_id, session_id) only.
-        tool_ctx = ToolContext(world_id=chat.world_id, session_id=chat.id)
+        runtime_placeholders: RuntimePlaceholderContext = {
+            "character_name": chat.character_name,
+            "location_name": context["location_name"],
+            "location_summary": context["location_description"],
+        }
+        tool_ctx = ToolContext(
+            world_id=chat.world_id,
+            session_id=chat.id,
+            runtime_placeholders=runtime_placeholders,
+        )
         if configured_tools:
             names = configured_tools
         else:

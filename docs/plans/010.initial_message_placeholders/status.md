@@ -6,7 +6,7 @@
 | 002  | `002.move_placeholder_components.md`                | done    | PASS     | 2026-05-05 |
 | 003  | `003.wire_into_world_field_edit.md`                 | done    | PASS     | 2026-05-05 |
 | 004  | `004.backend_runtime_substitution_helper.md`        | done    | PASS     | 2026-05-05 |
-| 005  | `005.backend_chat_tools_substitution.md`            | pending | —        | —    |
+| 005  | `005.backend_chat_tools_substitution.md`            | done    | PASS     | 2026-05-05 |
 | 006  | `006.backend_editor_prompt_placeholders.md`         | pending | —        | —    |
 | 007  | `007.frontend_wire_document_editor.md`              | pending | —        | —    |
 
@@ -40,6 +40,14 @@
 - `backend/app/services/chat_context.py` — `build_chat_context` builds one `RuntimePlaceholderContext` from `session.character_name` + the **current** location, applies it to `location.content`, joined `injected_lore`, and each NPC brief; `_format_npcs_at_location` gains a trailing `runtime_placeholders: RuntimePlaceholderContext | None` parameter and substitutes the brief before formatting.
 - `backend/tests/services/test_runtime_placeholders.py` — new pure-helper tests: all-three-tokens, ctx=None pass-through, idempotency, lowercase non-substitution, no-token pass-through, empty string.
 - `backend/tests/services/test_chat_context.py` — new integration tests: current-location semantics for `location.content`, injected lore, and NPC brief substitution.
+
+### Step 005 — Backend: chat_tools runtime substitution
+- `backend/app/services/chat_tools.py` — imports `RuntimePlaceholderContext` + `apply_runtime_placeholders`; adds `runtime_placeholders: RuntimePlaceholderContext | None = None` to `ToolContext`; the six chat-side bindings (`_b_get_location_info`, `_b_get_npc_info`, `_b_search`, `_b_get_lore`, `_b_get_memory`, `_b_move_to_location`) capture `ctx.runtime_placeholders` and wrap their return value with `apply_runtime_placeholders` before returning. The four `*_impl` functions and `admin_tools` are untouched (signatures preserved; editor mode = ctx None = raw return).
+- `backend/app/services/chain_generation_service.py` — imports `RuntimePlaceholderContext`; both chat-bound `ToolContext(...)` sites (tool-stage at line ~318 and writer-stage at line ~458) build the placeholder dict from `chat.character_name` + `context["location_name"]` + `context["location_description"]` and pass it through.
+- `backend/app/services/simple_generation_service.py` — same pattern: imports `RuntimePlaceholderContext` and populates `runtime_placeholders` on the simple-mode `ToolContext` from session character + chat-context current location.
+- `backend/app/services/summarization_service.py` — comment-only change: documents that the `add_memory`-only `ToolContext` intentionally leaves `runtime_placeholders=None` because the tool returns no document content.
+- `backend/tests/services/test_chat_tools.py` — new file: 12 tests covering each chat-side tool (`get_location_info`, `get_npc_info`, `move_to_location`, `get_memory`, `search`, `get_lore`) with both `runtime_placeholders` set (substitution applied) and `None` (raw tokens preserved); uses `monkeypatch` to stub `vector_storage.search` against real DB rows.
+- `backend/tests/services/test_chat_service.py` — appends end-to-end `move_to_location` test: creates a chat session via `chat_service.create_chat`, mirrors the chat-runtime `ToolContext` construction, dispatches the bound `move_to_location`, and asserts the destination's `{CHARACTER_NAME}` / `{LOCATION_NAME}` are substituted in the user-visible JSON payload + the session's `current_location_id` advanced.
 
 ## Notes & Issues
 - Step 002: `frontend/src/admin/components/pipelines/` is now an empty directory — git tracks no files there but the folder remains on disk. Step does not require its removal; left untouched to stay in scope.

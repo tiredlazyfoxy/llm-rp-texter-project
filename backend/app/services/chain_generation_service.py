@@ -40,6 +40,7 @@ from app.services.chat_agent_service import (
 )
 from app.services.chat_context import ChatContext, build_chat_context
 from app.services.chat_tools import DecisionState, ToolContext, build_tools
+from app.services.runtime_placeholders import RuntimePlaceholderContext
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts.planning_system_prompt import build_planning_system_prompt
 from app.services.prompts.prompt_injection import (
@@ -315,6 +316,11 @@ async def _run_tool_stage(
 
     # Get tools — admin selection drives names; all required state is
     # available in this stage, so any catalog tool is fair game.
+    runtime_placeholders: RuntimePlaceholderContext = {
+        "character_name": chat.character_name,
+        "location_name": context["location_name"],
+        "location_summary": context["location_description"],
+    }
     tool_ctx = ToolContext(
         world_id=chat.world_id,
         session_id=chat.id,
@@ -323,6 +329,7 @@ async def _run_tool_stage(
         char_stats=char_stats,
         world_stats=world_stats,
         decision_state=decision_state,
+        runtime_placeholders=runtime_placeholders,
     )
     tool_defs, tool_callables = build_tools(stage.tools or [], tool_ctx)
 
@@ -455,7 +462,16 @@ async def _run_writer_stage(
 
     # Get writer tools — admin selection drives names; writer has no
     # planning/director state, so only world/session-bound tools are valid.
-    tool_ctx = ToolContext(world_id=chat.world_id, session_id=chat.id)
+    runtime_placeholders: RuntimePlaceholderContext = {
+        "character_name": chat.character_name,
+        "location_name": context["location_name"],
+        "location_summary": context["location_description"],
+    }
+    tool_ctx = ToolContext(
+        world_id=chat.world_id,
+        session_id=chat.id,
+        runtime_placeholders=runtime_placeholders,
+    )
     tool_defs, tool_callables = build_tools(stage.tools or [], tool_ctx)
 
     stage_records: list[dict[str, Any]] = []

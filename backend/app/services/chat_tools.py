@@ -42,6 +42,10 @@ from pydantic import BaseModel
 from llm import pydantic_to_openai_tool
 
 from app.services import admin_tools
+from app.services.runtime_placeholders import (
+    RuntimePlaceholderContext,
+    apply_runtime_placeholders,
+)
 
 if TYPE_CHECKING:
     from app.models.schemas.pipeline import PlanningContext
@@ -320,6 +324,10 @@ class ToolContext:
     char_stats: dict[str, Any] | None = None
     world_stats: dict[str, Any] | None = None
     decision_state: DecisionState | None = None
+    # Chat-runtime placeholder context. Populated by chat-bound call
+    # sites; left None by editor-bound sites (document/world-field
+    # editor LLM chats) so the AI editor sees literal tokens.
+    runtime_placeholders: RuntimePlaceholderContext | None = None
 
     def has(self, key: str) -> bool:
         return getattr(self, key) is not None
@@ -332,34 +340,42 @@ class ToolContext:
 def _b_get_location_info(ctx: ToolContext) -> Callable:
     assert ctx.world_id is not None
     world_id = ctx.world_id
+    runtime_placeholders = ctx.runtime_placeholders
     async def get_location_info(query: str) -> str:
-        return await get_location_info_impl(world_id, query)
+        result = await get_location_info_impl(world_id, query)
+        return apply_runtime_placeholders(result, runtime_placeholders)
     return functools.wraps(get_location_info_impl)(get_location_info)
 
 
 def _b_get_npc_info(ctx: ToolContext) -> Callable:
     assert ctx.world_id is not None
     world_id = ctx.world_id
+    runtime_placeholders = ctx.runtime_placeholders
     async def get_npc_info(query: str) -> str:
-        return await get_npc_info_impl(world_id, query)
+        result = await get_npc_info_impl(world_id, query)
+        return apply_runtime_placeholders(result, runtime_placeholders)
     return functools.wraps(get_npc_info_impl)(get_npc_info)
 
 
 def _b_search(ctx: ToolContext) -> Callable:
     assert ctx.world_id is not None
     world_id = ctx.world_id
+    runtime_placeholders = ctx.runtime_placeholders
     async def search(query: str, source_type: str | None = None) -> str:
         injected_ids = await _get_injected_ids(world_id)
-        return await admin_tools.search_impl(world_id, query, source_type, injected_ids)
+        result = await admin_tools.search_impl(world_id, query, source_type, injected_ids)
+        return apply_runtime_placeholders(result, runtime_placeholders)
     return functools.wraps(admin_tools.search_impl)(search)
 
 
 def _b_get_lore(ctx: ToolContext) -> Callable:
     assert ctx.world_id is not None
     world_id = ctx.world_id
+    runtime_placeholders = ctx.runtime_placeholders
     async def get_lore(query: str) -> str:
         injected_ids = await _get_injected_ids(world_id)
-        return await admin_tools.get_lore_impl(world_id, query, injected_ids)
+        result = await admin_tools.get_lore_impl(world_id, query, injected_ids)
+        return apply_runtime_placeholders(result, runtime_placeholders)
     return functools.wraps(admin_tools.get_lore_impl)(get_lore)
 
 
@@ -372,8 +388,10 @@ def _b_web_search(_ctx: ToolContext) -> Callable:
 def _b_get_memory(ctx: ToolContext) -> Callable:
     assert ctx.session_id is not None
     session_id = ctx.session_id
+    runtime_placeholders = ctx.runtime_placeholders
     async def get_memory() -> str:
-        return await get_memory_impl(session_id)
+        result = await get_memory_impl(session_id)
+        return apply_runtime_placeholders(result, runtime_placeholders)
     return functools.wraps(get_memory_impl)(get_memory)
 
 
@@ -389,8 +407,10 @@ def _b_move_to_location(ctx: ToolContext) -> Callable:
     assert ctx.world_id is not None and ctx.session_id is not None
     world_id = ctx.world_id
     session_id = ctx.session_id
+    runtime_placeholders = ctx.runtime_placeholders
     async def move_to_location(location_name: str) -> str:
-        return await move_to_location_impl(world_id, session_id, location_name)
+        result = await move_to_location_impl(world_id, session_id, location_name)
+        return apply_runtime_placeholders(result, runtime_placeholders)
     return functools.wraps(move_to_location_impl)(move_to_location)
 
 

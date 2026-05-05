@@ -183,6 +183,8 @@ async def compact_messages_stream(
 
         queue: asyncio.Queue[str | None] = asyncio.Queue()
 
+        # add_memory does not return document content, so leaving
+        # runtime_placeholders=None has no observable effect here.
         ctx = ToolContext(session_id=session_id)
         tool_defs, tool_callables = build_tools(["add_memory"], ctx)
 
