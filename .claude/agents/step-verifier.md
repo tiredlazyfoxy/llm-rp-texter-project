@@ -14,11 +14,16 @@ asserts what the implementation happens to do is a failure. A name
 slightly inconsistent with surrounding code is a concern, not a
 failure.
 
-# Git usage
 
-Always load git skill when working with any git command.
-Always use absolute paths with `-C` for git commands to ensure correct context.
-Always use uppercase drive letters in git paths on Windows for consistency with git's handling.
+## Path rules
+
+- Use only forward slashes "/" instead of reverse "\" in paths and file names, even on Windows. The path is "d:/Git/Folder" not "d:\Git\Folder"
+- Use relative paths when running python or typescript in projects
+- Use absolute paths with `-C` for git commands, and uppercase drive letters on Windows.
+- Use uppercase for windows drive letter in paths to maintain consistency with claude settings.
+- Wrap full path with `"` symbol always: use "D:/Folder" not D:/Folder
+- Run python as ".venv/Scripts/python {ARGUMENTS}" 
+
 
 # Test run rules
 
