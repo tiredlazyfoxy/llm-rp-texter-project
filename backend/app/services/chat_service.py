@@ -424,11 +424,11 @@ async def create_chat(
 
     # Initial system message using world.initial_message
     initial_content = (world.initial_message or "").replace(
-        "{character_name}", character_name
+        "{CHARACTER_NAME}", character_name
     ).replace(
-        "{location_name}", loc.name
+        "{LOCATION_NAME}", loc.name
     ).replace(
-        "{location_summary}", loc.content or "",
+        "{LOCATION_SUMMARY}", loc.content or "",
     )
     if initial_content:
         msg_id = snowflake_svc.generate_id()

@@ -7,6 +7,35 @@ from app.db.engine import get_standalone_session
 from app.models.world import World, WorldLocation, WorldLoreFact, WorldNPC, WorldStatus
 
 
+# ---------------------------------------------------------------------------
+# Initial-message placeholder normalization
+# ---------------------------------------------------------------------------
+#
+# Single source of truth for the lowercase → uppercase token rewrite applied
+# during the one-time data migration (`normalize_initial_message_placeholders`)
+# and at JSONL import time (via `rewrite_initial_message_tokens`).
+#
+# The chat service performs runtime *value* substitution on the uppercase
+# tokens directly and deliberately does not import this helper — the two
+# concerns (token-shape rewrite vs runtime value substitution) have different
+# lifetimes and must not be coupled.
+
+INITIAL_MESSAGE_TOKEN_REWRITES: tuple[tuple[str, str], ...] = (
+    ("{character_name}", "{CHARACTER_NAME}"),
+    ("{location_name}", "{LOCATION_NAME}"),
+    ("{location_summary}", "{LOCATION_SUMMARY}"),
+)
+
+
+def rewrite_initial_message_tokens(text: str) -> str:
+    """Apply INITIAL_MESSAGE_TOKEN_REWRITES; idempotent."""
+    if not text:
+        return text
+    for old, new in INITIAL_MESSAGE_TOKEN_REWRITES:
+        text = text.replace(old, new)
+    return text
+
+
 async def get_by_id(world_id: int) -> World | None:
     session = await get_standalone_session()
     async with session:
@@ -58,6 +87,28 @@ async def delete(world_id: int) -> bool:
         await session.delete(world)
         await session.commit()
         return True
+
+
+async def normalize_initial_message_placeholders() -> int:
+    """
+    Rewrite lowercase placeholder tokens in every World.initial_message
+    to their uppercase form. Idempotent. Returns the number of rows
+    actually changed.
+    """
+    session = await get_standalone_session()
+    async with session:
+        worlds = list((await session.exec(select(World))).all())
+        changed = 0
+        for w in worlds:
+            original = w.initial_message or ""
+            rewritten = rewrite_initial_message_tokens(original)
+            if rewritten != original:
+                w.initial_message = rewritten
+                session.add(w)
+                changed += 1
+        if changed:
+            await session.commit()
+        return changed
 
 
 async def document_id_exists(doc_id: int) -> bool:

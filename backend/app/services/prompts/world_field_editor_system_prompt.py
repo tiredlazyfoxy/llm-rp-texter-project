@@ -43,7 +43,7 @@ _FIELD_ROLES = {
     "initial_message": (
         "You are helping write the **initial message** for the tabletop RPG world \"{world_name}\". "
         "This is the first message players see when they start a new chat session. "
-        "Available placeholders: `{{character_name}}`, `{{location_name}}`, `{{location_summary}}`."
+        "Available placeholders: `{{CHARACTER_NAME}}`, `{{LOCATION_NAME}}`, `{{LOCATION_SUMMARY}}`."
     ),
 }
 

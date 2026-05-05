@@ -12,6 +12,7 @@ import zipfile
 from datetime import datetime
 
 from app.db.import_export_queries import export_table, upsert_batch
+from app.db.worlds import rewrite_initial_message_tokens
 from app.models.chat_memory import ChatMemory
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
@@ -143,7 +144,10 @@ def _dict_to_world(d: dict) -> World:
         system_prompt=d.get("system_prompt", ""),
         simple_tools=d.get("simple_tools", "[]"),
         character_template=d.get("character_template", ""),
-        initial_message=d.get("initial_message", ""),
+        # Normalize legacy lowercase placeholder tokens at import time so a
+        # pre-migration backup yields a normalized DB even before the next
+        # process boot. Idempotent — uppercase tokens pass through unchanged.
+        initial_message=rewrite_initial_message_tokens(d.get("initial_message", "")),
         pipeline=d.get("pipeline", "{}"),
         generation_mode=d.get("generation_mode", "simple"),
         agent_config=d.get("agent_config", "{}"),

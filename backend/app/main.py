@@ -51,6 +51,18 @@ async def lifespan(app: FastAPI):
     config = _build_config()
     await db_engine.init_engine(config)
 
+    # One-time data migration: normalize lowercase initial_message
+    # placeholder tokens to uppercase. Idempotent — safe on every boot.
+    if db_engine.is_db_ready():
+        from app.db import worlds as worlds_db
+
+        changed = await worlds_db.normalize_initial_message_placeholders()
+        if changed:
+            logger.info(
+                "Migration: normalized initial_message placeholders in %d world row(s)",
+                changed,
+            )
+
     # Vector store — co-locate with DB if custom path
     vector_dir = None
     if config is not None:
