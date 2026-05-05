@@ -34,3 +34,6 @@
 - Step 002: `frontend/src/admin/components/pipelines/` is now an empty directory — git tracks no files there but the folder remains on disk. Step does not require its removal; left untouched to stay in scope.
 
 _populated by the coder when worth saying_
+
+## Bug Fixes
+- Step 003 follow-up (2026-05-05): `WorldFieldEditPage.tsx` `initial_message` branch still showed a visible vertical gap between `<PlaceholderTextarea>` and `<PlaceholderPanel>` after the prior `minRows: 4 -> 12` bump — that mirror was insufficient because Mantine's `autosize: true` sets the input's inline `height` from row count and ignores the parent's `60vh` wrapper, so short content collapsed the textarea well below the wrapper. Superseded the earlier fix: switched `textareaProps` to `autosize: false` and used the Mantine 7 Textarea Styles API (`root` / `wrapper` / `input` keys, all valid per `__InputStylesNames`) to make the input fill its parent via `flex: 1` + `height: 100%` + `resize: 'none'`. Also turned the `60vh` resizable wrapper into a `display: flex; flexDirection: column` container so the inner textarea grows/shrinks with the user-resized wrapper. Page-local change only — `PlaceholderTextarea.tsx` and `PipelineStageEditPage.tsx` untouched.

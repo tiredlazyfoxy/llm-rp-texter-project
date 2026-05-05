@@ -118,7 +118,15 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
 
       <Stack gap="md">
         {/* Field textarea */}
-        <div style={{ height: "60vh", overflow: "auto", resize: "vertical" }}>
+        <div
+          style={{
+            height: "60vh",
+            overflow: "auto",
+            resize: "vertical",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           {state.fieldName === "initial_message" ? (
             <PlaceholderTextarea
               value={state.draft}
@@ -126,9 +134,12 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
               placeholders={INITIAL_MESSAGE_PLACEHOLDERS}
               controllerRef={controllerRef}
               textareaProps={{
-                autosize: true,
-                minRows: 4,
-                styles: { input: { fontFamily: "monospace" } },
+                autosize: false,
+                styles: {
+                  root: { height: "100%", display: "flex", flexDirection: "column" },
+                  wrapper: { flex: 1, display: "flex" },
+                  input: { flex: 1, height: "100%", fontFamily: "monospace", resize: "none" },
+                },
               }}
             />
           ) : (
