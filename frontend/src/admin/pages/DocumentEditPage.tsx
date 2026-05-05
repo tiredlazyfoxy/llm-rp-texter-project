@@ -35,13 +35,19 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 interface DocumentEditPageProps {
   worldId: string;
   docId: string;
+  isNew: boolean;
+  initialDocType: string | null;
 }
 
 export const DocumentEditPage = observer(function DocumentEditPage({
   worldId,
   docId,
+  isNew,
+  initialDocType,
 }: DocumentEditPageProps) {
-  const [state] = useState(() => new DocumentEditPageState(worldId, docId));
+  const [state] = useState(
+    () => new DocumentEditPageState(worldId, docId, { isNew, initialDocType }),
+  );
   const navigate = useNavigate();
 
   useEffect(() => {

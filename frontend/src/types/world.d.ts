@@ -83,6 +83,7 @@ export interface DocumentsListResponse {
 }
 
 export interface CreateDocumentRequest {
+  id?: string;
   doc_type: string;
   name?: string;
   content: string;

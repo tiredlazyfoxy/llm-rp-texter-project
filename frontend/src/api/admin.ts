@@ -8,6 +8,20 @@ import type {
 
 const BASE = "/api/admin/users";
 
+interface NewSnowflakeIdResponse {
+  id: string;
+}
+
+/**
+ * Pre-allocate a fresh snowflake id for a draft document. Used by
+ * "create draft, persist on save" flows so the editor URL contains a
+ * real id from the start. Mirrors `GET /api/admin/snowflake/new`.
+ */
+export async function getNewSnowflakeId(signal?: AbortSignal): Promise<string> {
+  const res = await request<NewSnowflakeIdResponse>("/api/admin/snowflake/new", { signal });
+  return res.id;
+}
+
 export async function listUsers(signal?: AbortSignal): Promise<AdminUserResponse[]> {
   return request<AdminUserResponse[]>(BASE, { signal });
 }

@@ -67,3 +67,26 @@
   exists). Possible impact: if `backend.md` documents the routing pattern,
   re-affirm "one router per file, registered in `main.py`" (vs. the planner's
   hypothetical `__init__.py` aggregator).
+- Step 002: `getNewSnowflakeId` was added to `frontend/src/api/admin.ts`
+  rather than a sibling `ids.ts` (the step file allowed either). Possible
+  impact: in `frontend/src/api/CLAUDE.md`, `admin.ts` is described as
+  "admin resources" (currently users-only); update that line to reflect that
+  it now also hosts cross-cutting admin endpoints like the snowflake
+  pre-allocator.
+- Step 002: `DocumentEditPageState`'s `pendingLinkOps` queue ended up
+  populated only at save time (from `draft.{allowed,prohibited}Ids`), not
+  incrementally as the user toggled the MultiSelects, because the existing
+  link UI already deferred all backend calls to save via
+  `draft.{allowed,prohibited}Ids` + `syncLinks`. Possible impact: when
+  `frontend-forms.md` documents the "queued operations" pattern (per
+  outcome.md above), call out that `pendingLinkOps` is a *snapshot* taken
+  at save time, not a live event log — the live event log is the draft
+  fields themselves. Future drafts with truly live child-resource APIs
+  (i.e. ones that call the backend on each toggle) would need a different
+  shape.
+- Step 002: `isDirty` returns `true` while `isNew` so the Save button is
+  visible during draft mode. Possible impact: when `frontend-forms.md`
+  describes the "shadow vs edit" / "isNew vs server-snapshot" duality,
+  note that `isDirty` should always be true in draft mode — the
+  alternative ("only mark dirty on field edits") leaves the user with no
+  way to commit an empty-but-valid draft.

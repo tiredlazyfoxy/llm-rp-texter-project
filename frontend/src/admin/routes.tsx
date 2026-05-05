@@ -37,7 +37,18 @@ const WorldFieldEditPageRoute = () => {
 
 const DocumentEditPageRoute = () => {
   const { worldId, docId } = useParams<{ worldId: string; docId: string }>();
-  return <DocumentEditPage key={`${worldId}:${docId}`} worldId={worldId!} docId={docId!} />;
+  const [searchParams] = useSearchParams();
+  const isNew = searchParams.get("new") === "1";
+  const initialDocType = searchParams.get("doc_type");
+  return (
+    <DocumentEditPage
+      key={`${worldId}:${docId}`}
+      worldId={worldId!}
+      docId={docId!}
+      isNew={isNew}
+      initialDocType={initialDocType}
+    />
+  );
 };
 
 const PipelineNewRoute = () => {

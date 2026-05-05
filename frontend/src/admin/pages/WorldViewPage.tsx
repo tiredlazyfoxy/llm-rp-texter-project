@@ -30,6 +30,7 @@ import {
 } from "@tabler/icons-react";
 import { formatDate } from "../../utils/formatDate";
 import type { DocumentItem, WorldDetail } from "../../types/world";
+import { getNewSnowflakeId } from "../../api/admin";
 import {
   WorldViewPageState,
   WorldViewTab,
@@ -43,7 +44,6 @@ import {
   downloadAllDocuments,
   uploadDocuments,
   reindexWorld,
-  createNewDocument,
 } from "./worldViewPageState";
 
 // ---------------------------------------------------------------------------
@@ -276,12 +276,17 @@ const DocsTab = observer(function DocsTab({ state }: { state: WorldViewPageState
 
   const handleCreate = async () => {
     if (!docTypeFilter) return;
-    const defaultName = docTypeFilter !== "lore_fact"
-      ? "New " + (DOC_TYPE_LABELS[docTypeFilter] || docTypeFilter)
-      : undefined;
+    state.createDocStatus = "loading";
     const ctrl = new AbortController();
-    const docId = await createNewDocument(state, docTypeFilter, defaultName, ctrl.signal);
-    if (docId) navigate(`/worlds/${state.worldId}/documents/${docId}/edit`);
+    try {
+      const newId = await getNewSnowflakeId(ctrl.signal);
+      state.createDocStatus = "ready";
+      navigate(`/worlds/${state.worldId}/documents/${newId}/edit?new=1&doc_type=${docTypeFilter}`);
+    } catch (err) {
+      if (ctrl.signal.aborted) return;
+      state.createDocStatus = "error";
+      state.docsError = err instanceof Error ? err.message : String(err);
+    }
   };
 
   const createLabel = docTypeFilter ? `New ${DOC_TYPE_LABELS[docTypeFilter] || docTypeFilter}` : null;

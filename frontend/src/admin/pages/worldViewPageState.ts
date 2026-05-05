@@ -1,7 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 import type { DocumentItem, WorldDetail } from "../../types/world";
 import {
-  createDocument,
   deleteDocument as apiDeleteDocument,
   downloadAllDocuments as apiDownloadAllDocuments,
   downloadDocument as apiDownloadDocument,
@@ -220,29 +219,3 @@ export async function reindexWorld(
   }
 }
 
-export async function createNewDocument(
-  state: WorldViewPageState,
-  docType: string,
-  defaultName: string | undefined,
-  signal: AbortSignal,
-): Promise<string | null> {
-  state.createDocStatus = "loading";
-  try {
-    const doc = await createDocument(
-      state.worldId,
-      { doc_type: docType, name: defaultName, content: "" },
-      signal,
-    );
-    runInAction(() => {
-      state.createDocStatus = "ready";
-    });
-    return doc.id;
-  } catch (err) {
-    if (signal.aborted) return null;
-    runInAction(() => {
-      state.createDocStatus = "error";
-      state.docsError = err instanceof Error ? err.message : String(err);
-    });
-    return null;
-  }
-}
