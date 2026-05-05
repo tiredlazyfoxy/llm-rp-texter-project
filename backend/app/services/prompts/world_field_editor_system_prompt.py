@@ -42,8 +42,17 @@ _FIELD_ROLES = {
     ),
     "initial_message": (
         "You are helping write the **initial message** for the tabletop RPG world \"{world_name}\". "
-        "This is the first message players see when they start a new chat session. "
-        "Available placeholders: `{{CHARACTER_NAME}}`, `{{LOCATION_NAME}}`, `{{LOCATION_SUMMARY}}`."
+        "This is the first message players see when they start a new chat session.\n\n"
+        "## Runtime Placeholders\n\n"
+        "You may write the following uppercase tokens literally into the "
+        "initial message. They substitute at chat time before the player "
+        "ever sees the text — use them anywhere you would otherwise write "
+        "the player's name or the current location.\n\n"
+        "- `{{CHARACTER_NAME}}` — the player character's name in the chat session.\n"
+        "- `{{LOCATION_NAME}}` — the player's current location name at chat time.\n"
+        "- `{{LOCATION_SUMMARY}}` — the player's current location content / summary.\n\n"
+        "Write them with literal braces and uppercase letters, exactly as "
+        "shown. Lowercase variants are not recognized."
     ),
 }
 

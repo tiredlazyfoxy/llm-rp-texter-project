@@ -63,6 +63,19 @@ def build_document_editor_system(
         "Use markdown formatting where appropriate.",
     ]
 
+    sections.append(
+        "## Runtime Placeholders\n\n"
+        "You may write the following uppercase tokens literally into the "
+        "document content. They substitute at chat time before the player "
+        "ever sees the text — use them anywhere you would otherwise write "
+        "the player's name or the current location.\n\n"
+        "- `{CHARACTER_NAME}` — the player character's name in the chat session.\n"
+        "- `{LOCATION_NAME}` — the player's current location name at chat time.\n"
+        "- `{LOCATION_SUMMARY}` — the player's current location content / summary.\n\n"
+        "Write them with literal braces and uppercase letters, exactly as "
+        "shown. Lowercase variants are not recognized."
+    )
+
     if world_description:
         sections.append(f"## World Description\n\n{world_description}")
 

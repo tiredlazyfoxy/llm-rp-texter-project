@@ -7,7 +7,7 @@
 | 003  | `003.wire_into_world_field_edit.md`                 | done    | PASS     | 2026-05-05 |
 | 004  | `004.backend_runtime_substitution_helper.md`        | done    | PASS     | 2026-05-05 |
 | 005  | `005.backend_chat_tools_substitution.md`            | done    | PASS     | 2026-05-05 |
-| 006  | `006.backend_editor_prompt_placeholders.md`         | pending | —        | —    |
+| 006  | `006.backend_editor_prompt_placeholders.md`         | done    | PASS     | 2026-05-05 |
 | 007  | `007.frontend_wire_document_editor.md`              | pending | —        | —    |
 
 ## Files Changed
@@ -40,6 +40,13 @@
 - `backend/app/services/chat_context.py` — `build_chat_context` builds one `RuntimePlaceholderContext` from `session.character_name` + the **current** location, applies it to `location.content`, joined `injected_lore`, and each NPC brief; `_format_npcs_at_location` gains a trailing `runtime_placeholders: RuntimePlaceholderContext | None` parameter and substitutes the brief before formatting.
 - `backend/tests/services/test_runtime_placeholders.py` — new pure-helper tests: all-three-tokens, ctx=None pass-through, idempotency, lowercase non-substitution, no-token pass-through, empty string.
 - `backend/tests/services/test_chat_context.py` — new integration tests: current-location semantics for `location.content`, injected lore, and NPC brief substitution.
+
+### Step 006 — Backend: editor system prompts learn the placeholders
+- `backend/app/services/prompts/document_editor_system_prompt.py` — `build_document_editor_system(...)` always emits a "## Runtime Placeholders" section listing `{CHARACTER_NAME}` / `{LOCATION_NAME}` / `{LOCATION_SUMMARY}` with one-line semantics each plus a chat-time substitution explanation; included unconditionally for every `doc_type`.
+- `backend/app/services/prompts/world_field_editor_system_prompt.py` — `_FIELD_ROLES["initial_message"]` one-liner replaced with a multi-line block mirroring the document-editor one (heading, three tokens, chat-time-substitution explanation), using doubled `{{...}}` brace escaping so the surrounding `.format(world_name=...)` at line 146 leaves literal `{CHARACTER_NAME}` / `{LOCATION_NAME}` / `{LOCATION_SUMMARY}` in the rendered prompt; `_FIELD_ROLES["description"]` and `_FIELD_ROLES["system_prompt"]` untouched.
+- `backend/tests/services/prompts/__init__.py` — package marker for the new test folder.
+- `backend/tests/services/prompts/test_document_editor_system_prompt.py` — new file: parametrized snippet checks across `doc_type` in {`location`, `npc`, `lore_fact`} that the section is present, all three literal tokens appear, the chat-time-substitution explanation appears, and the section survives both empty-world-context and `enable_tools=True` builds.
+- `backend/tests/services/prompts/test_world_field_editor_system_prompt.py` — new file: snippet check on the `initial_message` branch (block + three literal-brace tokens + chat-time phrase), an escaping regression that confirms tokens render as single-braced literals (no `{{...}}` leak, no bare-name leak), and regression asserts that `description` and `system_prompt` branches do **not** contain the placeholders block.
 
 ### Step 005 — Backend: chat_tools runtime substitution
 - `backend/app/services/chat_tools.py` — imports `RuntimePlaceholderContext` + `apply_runtime_placeholders`; adds `runtime_placeholders: RuntimePlaceholderContext | None = None` to `ToolContext`; the six chat-side bindings (`_b_get_location_info`, `_b_get_npc_info`, `_b_search`, `_b_get_lore`, `_b_get_memory`, `_b_move_to_location`) capture `ctx.runtime_placeholders` and wrap their return value with `apply_runtime_placeholders` before returning. The four `*_impl` functions and `admin_tools` are untouched (signatures preserved; editor mode = ctx None = raw return).
