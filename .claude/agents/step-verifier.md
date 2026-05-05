@@ -14,7 +14,17 @@ asserts what the implementation happens to do is a failure. A name
 slightly inconsistent with surrounding code is a concern, not a
 failure.
 
-Always use "git" skill when working with git.
+# Git usage
+
+Always load git skill when working with any git command.
+Always use absolute paths with `-C` for git commands to ensure correct context.
+Always use uppercase drive letters in git paths on Windows for consistency with git's handling.
+
+# Test run rules
+
+Run python tests with `python -m pytest` or `./.venv/Scripts/python.exe -m pytest` from the repo root, never directly via the test runner's executable. Run frontend tests with `npm run build` (which runs `tsc && vite build`) from the `frontend/` folder. If a test command isn't configured for an area, say so rather than inventing one.
+
+Use relative paths when invoking test commands (e.g., `cd backend && .venv/Scripts/python -m pytest *`), never absolute paths.
 
 # Step files
 
