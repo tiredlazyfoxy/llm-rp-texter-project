@@ -1,10 +1,14 @@
 # Feature 010 — initial_message_placeholders
 
-| Step | File                                          | Status  | Verifier | Date |
-|------|-----------------------------------------------|---------|----------|------|
-| 001  | `001.backend_uppercase_and_migration.md`      | done    | PASS     | 2026-05-05 |
-| 002  | `002.move_placeholder_components.md`          | done    | PASS     | 2026-05-05 |
-| 003  | `003.wire_into_world_field_edit.md`           | done    | PASS     | 2026-05-05 |
+| Step | File                                                | Status  | Verifier | Date |
+|------|-----------------------------------------------------|---------|----------|------|
+| 001  | `001.backend_uppercase_and_migration.md`            | done    | PASS     | 2026-05-05 |
+| 002  | `002.move_placeholder_components.md`                | done    | PASS     | 2026-05-05 |
+| 003  | `003.wire_into_world_field_edit.md`                 | done    | PASS     | 2026-05-05 |
+| 004  | `004.backend_runtime_substitution_helper.md`        | pending | —        | —    |
+| 005  | `005.backend_chat_tools_substitution.md`            | pending | —        | —    |
+| 006  | `006.backend_editor_prompt_placeholders.md`         | pending | —        | —    |
+| 007  | `007.frontend_wire_document_editor.md`              | pending | —        | —    |
 
 ## Files Changed
 
