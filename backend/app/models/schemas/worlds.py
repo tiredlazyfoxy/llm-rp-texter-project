@@ -95,6 +95,7 @@ class CreateDocumentRequest(BaseModel):
     name: str | None = None
     content: str = ""
     exits: list[str] | None = None
+    id: str | None = None  # optional client-supplied snowflake id (string on the wire)
 
 
 class UpdateDocumentRequest(BaseModel):

@@ -49,3 +49,21 @@
 - Add `GET /api/admin/snowflake/new -> { id: string }` under admin endpoints.
 - Note that `POST /api/admin/worlds/{world_id}/documents` accepts an
   optional `id` field.
+
+## Observations
+
+- Step 001: New `db.worlds.document_id_exists(doc_id)` helper exists for
+  cross-table snowflake-id collision checks across `WorldLocation`, `WorldNPC`,
+  and `WorldLoreFact`. Possible impact: mention in `db-models.md` (or
+  `quick-reference.md` "DB layer helpers" section) as the canonical place to
+  check shared document-id space; future code that needs the same check
+  should reuse it rather than re-implementing per-table lookups.
+- Step 001: The new admin id endpoint is editor-role gated (matches the
+  document-create flow), not admin-role. Possible impact: clarify in
+  `backend.md` "admin endpoints" section that some `/api/admin/*` paths are
+  editor-accessible (the prefix is admin-namespace, not strict admin-only).
+- Step 001: New admin route module registered in `app/main.py` directly,
+  consistent with existing pattern (no `routes/admin/__init__.py` aggregator
+  exists). Possible impact: if `backend.md` documents the routing pattern,
+  re-affirm "one router per file, registered in `main.py`" (vs. the planner's
+  hypothetical `__init__.py` aggregator).

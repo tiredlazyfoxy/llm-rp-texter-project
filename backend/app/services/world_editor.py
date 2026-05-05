@@ -433,7 +433,23 @@ async def create_document(world_id: int, req: CreateDocumentRequest) -> Document
     _validate_doc_type(req.doc_type)
     await _require_world(world_id)
     now = _now()
-    new_id = generate_id()
+
+    # Honor a client-supplied id if present; otherwise generate one.
+    if req.id is not None:
+        try:
+            new_id = int(req.id)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid id: {req.id!r} (must be a numeric snowflake string)",
+            )
+        if await worlds.document_id_exists(new_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Document id {new_id} already exists",
+            )
+    else:
+        new_id = generate_id()
 
     if req.doc_type == "location":
         exits_json = json.dumps(req.exits) if req.exits else None

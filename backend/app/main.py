@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.admin.db_management import router as db_management_router
+from app.routes.admin.ids import router as admin_ids_router
 from app.routes.admin.pipelines import router as pipelines_router
 from app.routes.admin.users import router as admin_users_router
 from app.routes.admin.worlds import router as worlds_router
@@ -79,6 +80,7 @@ app.include_router(llm_chat_router)
 app.include_router(worlds_router)
 app.include_router(pipelines_router)
 app.include_router(user_settings_router)
+app.include_router(admin_ids_router)
 
 
 @app.get("/api/health")

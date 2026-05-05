@@ -4,7 +4,7 @@ from sqlalchemy import or_
 from sqlmodel import select
 
 from app.db.engine import get_standalone_session
-from app.models.world import World, WorldStatus
+from app.models.world import World, WorldLocation, WorldLoreFact, WorldNPC, WorldStatus
 
 
 async def get_by_id(world_id: int) -> World | None:
@@ -58,3 +58,25 @@ async def delete(world_id: int) -> bool:
         await session.delete(world)
         await session.commit()
         return True
+
+
+async def document_id_exists(doc_id: int) -> bool:
+    """Check if a snowflake id is already used by any document table
+    (`WorldLocation`, `WorldNPC`, `WorldLoreFact`). The three tables share
+    a single id space conceptually."""
+    session = await get_standalone_session()
+    async with session:
+        loc = (await session.exec(
+            select(WorldLocation.id).where(WorldLocation.id == doc_id)
+        )).one_or_none()
+        if loc is not None:
+            return True
+        npc = (await session.exec(
+            select(WorldNPC.id).where(WorldNPC.id == doc_id)
+        )).one_or_none()
+        if npc is not None:
+            return True
+        fact = (await session.exec(
+            select(WorldLoreFact.id).where(WorldLoreFact.id == doc_id)
+        )).one_or_none()
+        return fact is not None
