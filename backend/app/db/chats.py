@@ -54,6 +54,34 @@ async def update_session(chat: ChatSession) -> None:
         await session.commit()
 
 
+async def update_session_stats(
+    session_id: int,
+    character_stats_json: str,
+    world_stats_json: str,
+    modified_at: datetime,
+) -> bool:
+    """Persist a batch stat correction onto a chat session.
+
+    Used by the admin stats endpoint (Feature 012) to apply multiple
+    `ChatStat`-equivalent updates atomically without forcing the
+    service layer to load and re-merge the full ChatSession row.
+    Returns False if the session does not exist.
+    """
+    session = await get_standalone_session()
+    async with session:
+        chat = (await session.exec(
+            select(ChatSession).where(ChatSession.id == session_id)
+        )).one_or_none()
+        if chat is None:
+            return False
+        chat.character_stats = character_stats_json
+        chat.world_stats = world_stats_json
+        chat.modified_at = modified_at
+        await session.merge(chat)
+        await session.commit()
+        return True
+
+
 async def delete_session(session_id: int) -> bool:
     """Delete chat session and all related rows (FK order)."""
     db = await get_standalone_session()

@@ -22,6 +22,8 @@ from app.models.schemas.chat import (
     RewindRequest,
     SendMessageRequest,
     UpdateChatSettingsRequest,
+    UpdateChatStatsRequest,
+    UpdateChatStatsResponse,
     WorldInfoResponse,
 )
 from app.models.schemas.llm_chat import TranslateRequest
@@ -29,12 +31,15 @@ from app.models.user import User, UserRole
 from app.services import chat_service
 from app.services import chat_agent_service
 from app.services import llm_chat as llm_chat_service
+from app.services import stat_validation as stat_validation_service
 from app.services import summarization_service
 from app.services.auth import require_role
 
 logger = logging.getLogger(__name__)
 
 _require_player = require_role(UserRole.player)
+_require_admin = require_role(UserRole.admin)
+_require_editor = require_role(UserRole.editor)
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
@@ -204,6 +209,26 @@ async def update_settings(
         int(chat_id), caller.id, req.tool_model, req.text_model, req.character_name,
     )
     return {"ok": True}
+
+
+@router.put("/{chat_id}/stats", response_model=UpdateChatStatsResponse)
+async def update_chat_stats(
+    chat_id: str,
+    req: UpdateChatStatsRequest,
+    _caller: User = Depends(_require_editor),
+) -> UpdateChatStatsResponse:
+    """Manual stat correction for a chat (Feature 012, step 004).
+
+    Open to admin and editor roles (players are denied). Reuses the
+    LLM tool path's per-value validator
+    (`stat_validation.validate_single_value`) and persists via the
+    db layer. The response echoes the applied list so the admin
+    drawer (step 006) can refresh from it. No SSE emit.
+    """
+    applied = await stat_validation_service.apply_admin_stat_updates(
+        int(chat_id), req.updates,
+    )
+    return UpdateChatStatsResponse(chat_id=chat_id, applied=applied)
 
 
 @router.put("/{chat_id}/archive", response_model=dict)

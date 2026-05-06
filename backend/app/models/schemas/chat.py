@@ -1,5 +1,7 @@
 """Pydantic request/response schemas for chat sessions."""
 
+from typing import Literal
+
 from pydantic import BaseModel, field_validator
 
 from app.models.schemas.pipeline import GenerationPlanOutput
@@ -209,3 +211,29 @@ class CompactRequest(BaseModel):
 class CompactResponse(BaseModel):
     summary: ChatSummaryResponse
     updated_message_count: int
+
+
+# ---------------------------------------------------------------------------
+# Admin: PUT /api/chats/{chat_id}/stats — manual stat correction (Feature 012)
+# ---------------------------------------------------------------------------
+
+
+class StatUpdateItem(BaseModel):
+    """One stat update entry for the admin endpoint.
+
+    `value` is typed `int | str | list[str]` to mirror the three stat
+    kinds: int -> int, enum -> str, set -> list[str].
+    """
+
+    owner: Literal["user", "world"]
+    name: str
+    value: int | str | list[str]
+
+
+class UpdateChatStatsRequest(BaseModel):
+    updates: list[StatUpdateItem]
+
+
+class UpdateChatStatsResponse(BaseModel):
+    chat_id: str
+    applied: list[StatUpdateItem]
