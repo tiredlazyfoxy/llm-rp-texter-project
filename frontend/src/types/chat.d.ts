@@ -37,6 +37,7 @@ interface ChatSession {
 interface UpdateChatSettingsRequest {
   tool_model?: ModelConfig;
   text_model?: ModelConfig;
+  character_name?: string;
 }
 
 interface ChatMessage {

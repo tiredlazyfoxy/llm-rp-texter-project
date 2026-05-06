@@ -25,6 +25,7 @@ export class CharacterSetupPageState {
   modelsError: string | null = null;
 
   variables: Record<string, string> = {};
+  characterName = "";
   locationId = "";
   toolModel: ModelConfig;
   textModel: ModelConfig;
@@ -49,7 +50,15 @@ export class CharacterSetupPageState {
   }
 
   get canSubmit(): boolean {
-    return this.world !== null && this.submitStatus !== "loading";
+    return (
+      this.world !== null
+      && this.submitStatus !== "loading"
+      && this.characterName.trim() !== ""
+    );
+  }
+
+  setCharacterName(value: string): void {
+    this.characterName = value;
   }
 }
 
@@ -123,15 +132,21 @@ export async function submitCharacter(
   signal: AbortSignal,
 ): Promise<string | null> {
   if (!state.world) return null;
+  const trimmedName = state.characterName.trim();
+  if (trimmedName === "") {
+    runInAction(() => {
+      state.submitStatus = "error";
+      state.submitError = "Character name is required.";
+    });
+    return null;
+  }
   state.submitStatus = "loading";
   state.submitError = null;
   try {
-    const placeholders = state.placeholders;
     const session = await createChat(
       {
         world_id: state.worldId,
-        character_name:
-          state.variables["NAME"] || state.variables[placeholders[0]] || "Hero",
+        character_name: trimmedName,
         template_variables: state.variables,
         starting_location_id: state.locationId,
         tool_model: state.toolModel,

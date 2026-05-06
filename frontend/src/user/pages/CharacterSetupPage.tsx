@@ -113,6 +113,12 @@ export const CharacterSetupPage = observer(function CharacterSetupPage({
 
       <Divider label="Character" mb="md" />
       <Stack gap="sm" mb="md">
+        <TextInput
+          label="Character Name"
+          required
+          value={state.characterName}
+          onChange={(e) => { state.setCharacterName(e.currentTarget.value); }}
+        />
         {state.placeholders.map((ph) => (
           <TextInput
             key={ph}

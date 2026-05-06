@@ -1,5 +1,6 @@
 import { makeAutoObservable, observable, runInAction } from "mobx";
 import * as chatApi from "../../api/chat";
+import { refreshSidebarChats } from "../components/userSidebarState";
 import { extractUserInstructions } from "../../utils/oocParser";
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
@@ -560,7 +561,13 @@ export async function updateSettings(
     if (!state.currentChat) return;
     if (req.tool_model) state.currentChat.session.tool_model = req.tool_model;
     if (req.text_model) state.currentChat.session.text_model = req.text_model;
+    if (req.character_name !== undefined) state.currentChat.session.character_name = req.character_name;
   });
+  // Refresh the shared sidebar chat list so any visible field
+  // (e.g. character_name) re-renders with the saved value.
+  if (req.character_name !== undefined) {
+    refreshSidebarChats().catch(() => {});
+  }
 }
 
 export async function archiveChat(state: ChatPageState, signal?: AbortSignal): Promise<void> {

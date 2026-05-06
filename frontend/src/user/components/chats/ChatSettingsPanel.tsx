@@ -8,6 +8,7 @@ import {
   Stack,
   Switch,
   Text,
+  TextInput,
 } from "@mantine/core";
 import { observer } from "mobx-react-lite";
 import {
@@ -85,6 +86,7 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
   const session = state.currentChat?.session;
   const [toolModel, setToolModel] = useState<ModelConfig>(session?.tool_model ?? { model_id: null, temperature: 0.7, repeat_penalty: 1.0, top_p: 1.0 });
   const [textModel, setTextModel] = useState<ModelConfig>(session?.text_model ?? { model_id: null, temperature: 0.7, repeat_penalty: 1.0, top_p: 1.0 });
+  const [characterName, setCharacterName] = useState<string>(session?.character_name ?? "");
   const [availableModels, setAvailableModels] = useState<EnabledModelInfo[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -92,17 +94,26 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
     if (opened && session) {
       setToolModel(session.tool_model);
       setTextModel(session.text_model);
+      setCharacterName(session.character_name);
       request<{ models: EnabledModelInfo[] }>("/api/chats/models")
         .then((res) => setAvailableModels(res.models))
         .catch(() => {});
     }
   }, [opened, session?.id]);
 
+  const trimmedCharacterName = characterName.trim();
+  const canSave = trimmedCharacterName !== "";
+
   async function handleSave() {
+    if (!canSave) return;
     setSaving(true);
     saveToolModel(toolModel);
     saveTextModel(textModel);
-    await updateSettings(state, { tool_model: toolModel, text_model: textModel });
+    await updateSettings(state, {
+      tool_model: toolModel,
+      text_model: textModel,
+      character_name: trimmedCharacterName,
+    });
     setSaving(false);
     onClose();
   }
@@ -116,6 +127,13 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
       size="sm"
     >
       <Stack gap="md">
+        <TextInput
+          label="Character Name"
+          required
+          value={characterName}
+          onChange={(e) => setCharacterName(e.currentTarget.value)}
+        />
+        <Divider />
         <ModelSection
           label="Tooling model"
           model={toolModel}
@@ -130,7 +148,7 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
           availableModels={availableModels}
         />
         <Divider />
-        <Button onClick={handleSave} loading={saving}>Save</Button>
+        <Button onClick={handleSave} loading={saving} disabled={!canSave}>Save</Button>
 
         {(getCurrentUser()?.role === "editor" || getCurrentUser()?.role === "admin") && (
           <>

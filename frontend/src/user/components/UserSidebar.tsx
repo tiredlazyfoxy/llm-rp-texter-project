@@ -14,9 +14,10 @@ import {
   IconMessage,
   IconWorld,
 } from "@tabler/icons-react";
+import { observer } from "mobx-react-lite";
 import { useLocation } from "react-router-dom";
-import { listMyChats, listPublicWorlds } from "../../api/chat";
 import { formatDate } from "../../utils/formatDate";
+import { loadSidebar, userSidebarState } from "./userSidebarState";
 
 interface WorldEntry {
   world: WorldInfo;
@@ -24,16 +25,16 @@ interface WorldEntry {
   lastModified: string;
 }
 
-export function UserSidebar() {
+export const UserSidebar = observer(function UserSidebar() {
   const [collapsed, setCollapsed] = useState(false);
-  const [worlds, setWorlds] = useState<WorldInfo[]>([]);
-  const [chats, setChats] = useState<ChatSessionItem[]>([]);
   const [expandedWorlds, setExpandedWorlds] = useState<Set<string>>(new Set());
   const [showMoreWorlds, setShowMoreWorlds] = useState<Set<string>>(new Set());
 
+  const worlds = userSidebarState.worlds;
+  const chats = userSidebarState.chats;
+
   useEffect(() => {
-    listPublicWorlds().then(setWorlds).catch(() => {});
-    listMyChats().then(setChats).catch(() => {});
+    loadSidebar(userSidebarState).catch(() => {});
   }, []);
 
   const width = collapsed ? 48 : 240;
@@ -218,4 +219,4 @@ export function UserSidebar() {
         </Stack>
       </nav>
   );
-}
+});
