@@ -42,6 +42,15 @@ export class WorldViewPageState {
 
   createDocStatus: AsyncStatus = "idle";
 
+  /**
+   * Drag-enter / drag-leave depth counter for the documents drop zone.
+   * HTML5 DnD fires `dragleave` on every descendant boundary crossing;
+   * we increment on `dragenter` and decrement on `dragleave` and only
+   * treat the drop zone as inactive when this returns to zero. The
+   * `dropActive` computed derives the visual state from this.
+   */
+  dropDepth: number = 0;
+
   constructor(worldId: string, initialTab: WorldViewTab = "info") {
     this.worldId = worldId;
     this.tab = initialTab;
@@ -57,6 +66,23 @@ export class WorldViewPageState {
   /** Whether the current tab is a documents tab (loads docs). */
   get isDocsTab(): boolean {
     return this.tab === "all" || this.tab === "location" || this.tab === "npc" || this.tab === "lore_fact";
+  }
+
+  /** Whether a file is currently being dragged over the documents drop zone. */
+  get dropActive(): boolean {
+    return this.dropDepth > 0;
+  }
+
+  incrementDropDepth(): void {
+    this.dropDepth += 1;
+  }
+
+  decrementDropDepth(): void {
+    this.dropDepth = Math.max(0, this.dropDepth - 1);
+  }
+
+  resetDropDepth(): void {
+    this.dropDepth = 0;
   }
 }
 

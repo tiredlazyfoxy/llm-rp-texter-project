@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
+import { runInAction } from "mobx";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import {
@@ -69,6 +70,15 @@ function statusColor(s: string): string {
   if (s === "private") return "yellow";
   if (s === "archived") return "gray";
   return "blue";
+}
+
+// Accept-list parity: this set must match the hidden file input's
+// `accept=".md,.txt"` attribute below. If either is changed, change both.
+const ACCEPTED_UPLOAD_EXTENSIONS = [".md", ".txt"] as const;
+
+function isAcceptedUploadFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return ACCEPTED_UPLOAD_EXTENSIONS.some(ext => name.endsWith(ext));
 }
 
 function docDisplayName(doc: DocumentItem): string {
@@ -291,6 +301,46 @@ const DocsTab = observer(function DocsTab({ state }: { state: WorldViewPageState
 
   const createLabel = docTypeFilter ? `New ${DOC_TYPE_LABELS[docTypeFilter] || docTypeFilter}` : null;
 
+  // Drag-and-drop handlers for the documents table area. Wired only when
+  // `docTypeFilter` is truthy (location / npc / lore_fact); the `all`,
+  // `info`, and `chats` tabs do not participate in drag-drop uploads.
+  // Native HTML5 DnD requires preventDefault on dragover and drop to
+  // suppress the browser's default file-navigation behavior.
+  const handleDragEnter: React.DragEventHandler<HTMLDivElement> = (e) => {
+    e.preventDefault();
+    state.incrementDropDepth();
+  };
+
+  const handleDragOver: React.DragEventHandler<HTMLDivElement> = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave: React.DragEventHandler<HTMLDivElement> = (e) => {
+    e.preventDefault();
+    state.decrementDropDepth();
+  };
+
+  const handleDrop: React.DragEventHandler<HTMLDivElement> = (e) => {
+    e.preventDefault();
+    state.resetDropDepth();
+    if (!docTypeFilter) return;
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    // Whole-drop rejection: if any file's extension is outside the
+    // accepted list (parity with ACCEPTED_UPLOAD_EXTENSIONS / the hidden
+    // input's `accept` attribute), reject the drop entirely — no partial
+    // upload, no API call.
+    if (files.some(f => !isAcceptedUploadFile(f))) {
+      runInAction(() => {
+        state.docsError = "Drop rejected: only .md and .txt files are accepted";
+      });
+      return;
+    }
+    const ctrl = new AbortController();
+    void uploadDocuments(state, files, docTypeFilter, ctrl.signal);
+  };
+
   return (
     <Stack>
       <Group justify="flex-end">
@@ -325,6 +375,7 @@ const DocsTab = observer(function DocsTab({ state }: { state: WorldViewPageState
         )}
       </Group>
 
+      {/* accept=".md,.txt" mirrors ACCEPTED_UPLOAD_EXTENSIONS used by the drop-zone filter. Move both together. */}
       <input ref={fileInputRef} type="file" accept=".md,.txt" multiple style={{ display: "none" }} onChange={handleFileUpload} />
 
       {state.docsError && (
@@ -338,7 +389,8 @@ const DocsTab = observer(function DocsTab({ state }: { state: WorldViewPageState
         </Alert>
       )}
 
-      {loading ? (
+      {(() => {
+        const tableContent = loading ? (
         <Group justify="center" py="xl"><Loader /></Group>
       ) : state.docs.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No documents yet.</Text>
@@ -407,6 +459,45 @@ const DocsTab = observer(function DocsTab({ state }: { state: WorldViewPageState
               {regular.map(renderRow)}
             </Table.Tbody>
           </Table>
+        );
+      })();
+
+        if (!docTypeFilter) return tableContent;
+        return (
+          <div
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            style={{
+              position: "relative",
+              border: state.dropActive
+                ? "2px dashed var(--mantine-color-blue-5)"
+                : "2px dashed transparent",
+              borderRadius: 4,
+              padding: 4,
+              transition: "border-color 120ms ease",
+              minHeight: 80,
+            }}
+          >
+            {tableContent}
+            {state.dropActive && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: "rgba(34, 139, 230, 0.08)",
+                  borderRadius: 4,
+                  pointerEvents: "none",
+                }}
+              >
+                <Text fw={600} c="blue.7">Drop files to upload</Text>
+              </div>
+            )}
+          </div>
         );
       })()}
     </Stack>
