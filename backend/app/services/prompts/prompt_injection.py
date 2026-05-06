@@ -34,6 +34,12 @@ def resolve_prompt_template(template: str, **values: str) -> str:
             return values[key]
         return match.group(0)  # leave unknown placeholders as-is
 
+    # NOTE: This regex deliberately does NOT match `:`. Namespaced
+    # runtime tokens like `{USER:HEALTH}` and `{WORLD:WEATHER}` are
+    # owned by `app.services.runtime_placeholders.apply_runtime_placeholders`
+    # and must not collide with this template-level pass. Do not
+    # widen the character class to include `:` without first
+    # auditing every namespaced token (feature 012).
     result = re.sub(r"\{([A-Z_]+)\}", replacer, template)
     result = re.sub(r"\n{3,}", "\n\n", result)
     return result.strip()
