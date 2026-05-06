@@ -75,14 +75,33 @@ function getCaretPixelPosition(
   return { top, left };
 }
 
-/** Find the partial placeholder text after the last unclosed `{`. */
+/**
+ * Find the partial placeholder text after the last unclosed `{`.
+ *
+ * Accepts:
+ *   - empty (`{`)               → trigger with all suggestions
+ *   - bare uppercase head       (`{USER`, `{INITIAL_M`)
+ *   - namespaced partial        (`{USER:`, `{USER:HE`, `{WORLD:W`)
+ *
+ * Rejects anything that doesn't look like an in-progress placeholder
+ * — JSON-style content (`{ "key"`) and lowercase prose (`{foo`)
+ * must not trigger. Constrained to the shape:
+ *
+ *   ^( [A-Z][A-Z0-9_]* (?: : [A-Z0-9_]* )? )?$
+ *
+ * (whitespace added for readability; actual regex is dense). The
+ * trailing `[A-Z0-9_]*` after `:` is allowed to be empty so that
+ * typing the colon alone keeps the dropdown live.
+ */
+const PARTIAL_RE = /^([A-Z][A-Z0-9_]*(?::[A-Z0-9_]*)?)?$/;
+
 function getPartial(text: string, cursorPos: number): string | null {
   const before = text.substring(0, cursorPos);
   const lastOpen = before.lastIndexOf("{");
   if (lastOpen === -1) return null;
   const afterBrace = before.substring(lastOpen + 1);
   if (afterBrace.includes("}")) return null;
-  if (!/^[A-Z_]*$/.test(afterBrace)) return null;
+  if (!PARTIAL_RE.test(afterBrace)) return null;
   return afterBrace;
 }
 

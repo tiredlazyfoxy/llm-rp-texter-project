@@ -1,6 +1,6 @@
 import { makeAutoObservable, runInAction } from "mobx";
 import { ApiError } from "../../api/client";
-import type { DocumentItem } from "../../types/world";
+import type { DocumentItem, StatDefinitionItem } from "../../types/world";
 import {
   createDocument,
   createLink,
@@ -8,6 +8,7 @@ import {
   deleteLink,
   getDocument,
   listDocuments,
+  listStats,
   updateDocument,
 } from "../../api/worlds";
 
@@ -85,6 +86,13 @@ export class DocumentEditPageState {
   // Options for related-document multi-selects
   locationOptions: { value: string; label: string }[] = [];
   linkOptions: { value: string; label: string }[] = [];
+
+  /**
+   * World's stat definitions (loaded once alongside the document).
+   * Drives the placeholder panel + autocomplete for `{USER:NAME}` /
+   * `{WORLD:NAME}` tokens.
+   */
+  statDefs: StatDefinitionItem[] = [];
 
   /** Link create/delete intents queued while `isNew` is true. */
   pendingLinkOps: LinkOp[] = [];
@@ -182,6 +190,7 @@ async function loadDraftDocument(
       linkOptions = npcs.map(n => ({ value: n.id, label: n.name || "(untitled)" }));
     }
 
+    const statDefs = await listStats(state.worldId, signal);
     if (signal.aborted) return;
     runInAction(() => {
       state.doc = emptyDraftDoc(state.worldId, state.docId, docType);
@@ -201,6 +210,7 @@ async function loadDraftDocument(
       state.linkOptions = linkOptions;
       state.pendingLinkOps = [];
       state.serverErrors = {};
+      state.statDefs = statDefs;
       state.loadStatus = "ready";
     });
   } catch (err) {
@@ -246,6 +256,7 @@ export async function loadDocument(state: DocumentEditPageState, signal: AbortSi
       prohibitedIds = links.filter(l => l.link_type === "excluded").map(l => l.npc_id);
     }
 
+    const statDefs = await listStats(state.worldId, signal);
     if (signal.aborted) return;
     runInAction(() => {
       state.doc = doc;
@@ -264,6 +275,7 @@ export async function loadDocument(state: DocumentEditPageState, signal: AbortSi
       state.locationOptions = locationOptions;
       state.linkOptions = linkOptions;
       state.serverErrors = {};
+      state.statDefs = statDefs;
       state.loadStatus = "ready";
     });
   } catch (err) {

@@ -26,6 +26,10 @@ import {
 } from "../components/placeholders/PlaceholderTextarea";
 import { RUNTIME_PLACEHOLDERS } from "../components/placeholders/runtimePlaceholders";
 import {
+  buildStatPlaceholders,
+  statPlaceholdersToInfo,
+} from "../components/placeholders/buildStatPlaceholders";
+import {
   DocumentEditPageState,
   loadDocument,
   saveDocument,
@@ -115,6 +119,12 @@ export const DocumentEditPage = observer(function DocumentEditPage({
   const prohibitedOptions = state.linkOptions.filter(o => !allowedSet.has(o.value));
 
   const linkLabel = doc.doc_type === "npc" ? "Locations" : "NPCs";
+
+  const statPlaceholders = buildStatPlaceholders(state.statDefs);
+  const allPlaceholders = [
+    ...RUNTIME_PLACEHOLDERS,
+    ...statPlaceholdersToInfo(statPlaceholders),
+  ];
 
   return (
     <Container size="lg" py="md">
@@ -231,7 +241,7 @@ export const DocumentEditPage = observer(function DocumentEditPage({
         <PlaceholderTextarea
           value={state.draft.content}
           onChange={(v) => { state.draft.content = v; }}
-          placeholders={RUNTIME_PLACEHOLDERS}
+          placeholders={allPlaceholders}
           controllerRef={controllerRef}
           textareaProps={{
             autosize: true,
@@ -244,6 +254,7 @@ export const DocumentEditPage = observer(function DocumentEditPage({
           placeholders={RUNTIME_PLACEHOLDERS}
           content={state.draft.content}
           onInsert={handleInsertPlaceholder}
+          statPlaceholders={statPlaceholders}
         />
       </Stack>
 

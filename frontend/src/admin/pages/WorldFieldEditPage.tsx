@@ -22,6 +22,10 @@ import {
 } from "../components/placeholders/PlaceholderTextarea";
 import { RUNTIME_PLACEHOLDERS } from "../components/placeholders/runtimePlaceholders";
 import {
+  buildStatPlaceholders,
+  statPlaceholdersToInfo,
+} from "../components/placeholders/buildStatPlaceholders";
+import {
   WorldFieldEditPageState,
   WorldFieldName,
   loadField,
@@ -83,6 +87,12 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
     );
   }
 
+  const statPlaceholders = buildStatPlaceholders(state.world?.stats ?? []);
+  const allPlaceholders = [
+    ...RUNTIME_PLACEHOLDERS,
+    ...statPlaceholdersToInfo(statPlaceholders),
+  ];
+
   return (
     <Container size="lg" py="md">
       {/* Top bar */}
@@ -131,7 +141,7 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
             <PlaceholderTextarea
               value={state.draft}
               onChange={(v) => { state.draft = v; }}
-              placeholders={RUNTIME_PLACEHOLDERS}
+              placeholders={allPlaceholders}
               controllerRef={controllerRef}
               textareaProps={{
                 autosize: false,
@@ -159,6 +169,7 @@ export const WorldFieldEditPage = observer(function WorldFieldEditPage({
             placeholders={RUNTIME_PLACEHOLDERS}
             content={state.draft}
             onInsert={handleInsertPlaceholder}
+            statPlaceholders={statPlaceholders}
           />
         )}
 
