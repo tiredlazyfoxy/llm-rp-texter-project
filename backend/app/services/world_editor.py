@@ -541,15 +541,23 @@ async def delete_document(world_id: int, doc_id: int) -> None:
 async def upload_documents(
     world_id: int, files: list[tuple[str, str]], doc_type: str
 ) -> list[DocumentSaveResult]:
-    """Upload markdown files. files is list of (filename, content). Upsert by name."""
+    """Upload markdown files. files is list of (filename, content).
+
+    For `location` / `npc`, upserts by filename stem. For `lore_fact`,
+    every file becomes a new row (no name to match on; filename is
+    discarded).
+    """
     _validate_doc_type(doc_type)
     await _require_world(world_id)
 
     if doc_type == "lore_fact":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Upload is not supported for lore_fact type (no name to match on)",
-        )
+        results: list[DocumentSaveResult] = []
+        for _filename, content in files:
+            result = await create_document(world_id, CreateDocumentRequest(
+                doc_type="lore_fact", content=content,
+            ))
+            results.append(result)
+        return results
 
     # Get existing docs for name matching
     existing: dict[str, int] = {}
@@ -560,7 +568,7 @@ async def upload_documents(
         for npc in await npcs.list_by_world(world_id):
             existing[npc.name.lower()] = npc.id
 
-    results: list[DocumentSaveResult] = []
+    results = []
     for filename, content in files:
         name = filename.rsplit(".", 1)[0] if "." in filename else filename
         existing_id = existing.get(name.lower())
