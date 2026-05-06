@@ -1,8 +1,21 @@
 """Pydantic request/response schemas for chat sessions."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.models.schemas.pipeline import GenerationPlanOutput
+
+
+def _normalize_character_name(value: str) -> str:
+    """Strip whitespace; reject empty / whitespace-only inputs.
+
+    Returns the trimmed value (the value that will be persisted).
+    Used by both create and update validators to keep semantics in
+    one place.
+    """
+    trimmed = value.strip()
+    if not trimmed:
+        raise ValueError("character_name must not be empty or whitespace-only")
+    return trimmed
 
 
 class ModelConfig(BaseModel):
@@ -19,6 +32,11 @@ class CreateChatRequest(BaseModel):
     starting_location_id: str
     tool_model: ModelConfig
     text_model: ModelConfig
+
+    @field_validator("character_name")
+    @classmethod
+    def _character_name_non_empty(cls, v: str) -> str:
+        return _normalize_character_name(v)
 
 
 class SendMessageRequest(BaseModel):
@@ -38,6 +56,14 @@ class RewindRequest(BaseModel):
 class UpdateChatSettingsRequest(BaseModel):
     tool_model: ModelConfig | None = None
     text_model: ModelConfig | None = None
+    character_name: str | None = None
+
+    @field_validator("character_name")
+    @classmethod
+    def _character_name_non_empty_optional(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return _normalize_character_name(v)
 
 
 class ChatSessionResponse(BaseModel):

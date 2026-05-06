@@ -220,3 +220,56 @@ async def test_move_to_location_end_to_end_substitutes_character_name(
     refreshed = await chats_db.get_session_by_id(session_id)
     assert refreshed is not None
     assert refreshed.current_location_id == dest.id
+
+
+# ---------------------------------------------------------------------------
+# update_settings: character_name forwarding
+# ---------------------------------------------------------------------------
+
+
+async def _create_minimal_chat(character_name: str = "Original") -> tuple[int, int]:
+    """Create a chat session and return (session_id, user_id)."""
+    world_id, loc_id, _name, _content = await _setup_world_and_location("hi")
+    user_id = generate_id()
+    resp = await chat_service.create_chat(
+        world_id=world_id,
+        user_id=user_id,
+        character_name=character_name,
+        template_variables={},
+        starting_location_id=loc_id,
+        tool_model=_empty_model_config(),
+        text_model=_empty_model_config(),
+    )
+    return int(resp.id), user_id
+
+
+async def test_update_settings_persists_character_name() -> None:
+    session_id, user_id = await _create_minimal_chat("Original")
+
+    await chat_service.update_settings(
+        session_id,
+        user_id,
+        tool_model=None,
+        text_model=None,
+        character_name="Updated",
+    )
+
+    refreshed = await chats_db.get_session_by_id(session_id)
+    assert refreshed is not None
+    assert refreshed.character_name == "Updated"
+
+
+async def test_update_settings_none_character_name_leaves_value_untouched() -> None:
+    session_id, user_id = await _create_minimal_chat("Original")
+
+    await chat_service.update_settings(
+        session_id,
+        user_id,
+        tool_model=None,
+        text_model=None,
+        character_name=None,
+    )
+
+    refreshed = await chats_db.get_session_by_id(session_id)
+    assert refreshed is not None
+    assert refreshed.character_name == "Original"

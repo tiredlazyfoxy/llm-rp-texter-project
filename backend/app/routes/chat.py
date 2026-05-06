@@ -201,7 +201,7 @@ async def update_settings(
     caller: User = Depends(_require_player),
 ) -> dict:
     await chat_service.update_settings(
-        int(chat_id), caller.id, req.tool_model, req.text_model,
+        int(chat_id), caller.id, req.tool_model, req.text_model, req.character_name,
     )
     return {"ok": True}
 

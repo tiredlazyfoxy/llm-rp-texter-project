@@ -499,6 +499,7 @@ async def update_settings(
     user_id: int,
     tool_model: ModelConfig | None,
     text_model: ModelConfig | None,
+    character_name: str | None = None,
 ) -> None:
     chat = await chats_db.get_session_by_id(session_id)
     if chat is None or chat.user_id != user_id:
@@ -510,9 +511,12 @@ async def update_settings(
         chat.tool_top_p = tool_model.top_p
     if text_model is not None:
         chat.text_model_id = text_model.model_id
-        chat.text_temperature = text_model.temperature
         chat.text_repeat_penalty = text_model.repeat_penalty
+        chat.text_temperature = text_model.temperature
         chat.text_top_p = text_model.top_p
+    if character_name is not None:
+        # Pre-trimmed by the Pydantic validator on UpdateChatSettingsRequest.
+        chat.character_name = character_name
     chat.modified_at = _now()
     await chats_db.update_session(chat)
 
