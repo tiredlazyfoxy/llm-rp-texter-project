@@ -5,10 +5,18 @@ Placeholders" block (with doubled-brace escaping in `_FIELD_ROLES` so the
 surrounding `.format(world_name=...)` call leaves literal `{CHARACTER_NAME}`),
 plus a regression assert that the `description` field role is **not**
 modified — `description` does not get runtime substitution.
+
+Feature 012 step 003 adds a "## Stat Placeholders" section listing the
+world's ``WorldStatDefinition`` names as literal ``{USER:NAME}`` /
+``{WORLD:NAME}`` tokens (every field type, gated only on whether any
+stat defs were passed in).
 """
 
 from __future__ import annotations
 
+import pytest
+
+from app.models.world import StatScope, StatType, WorldStatDefinition
 from app.services.prompts.world_field_editor_system_prompt import (
     build_world_field_editor_system,
 )
@@ -17,13 +25,46 @@ from app.services.prompts.world_field_editor_system_prompt import (
 _RUNTIME_TOKENS = ("{CHARACTER_NAME}", "{LOCATION_NAME}", "{LOCATION_SUMMARY}")
 
 
-def _build(field_type: str) -> str:
+def _stat(
+    name: str,
+    *,
+    scope: StatScope = StatScope.character,
+    stat_type: StatType = StatType.int_,
+    hidden: bool = False,
+) -> WorldStatDefinition:
+    return WorldStatDefinition(
+        id=0,
+        world_id=0,
+        name=name,
+        description="",
+        scope=scope,
+        stat_type=stat_type,
+        default_value="0",
+        hidden=hidden,
+    )
+
+
+_STAT_DEFS: list[WorldStatDefinition] = [
+    _stat("HEALTH", scope=StatScope.character, stat_type=StatType.int_),
+    _stat("INVENTORY", scope=StatScope.character, stat_type=StatType.set_),
+    _stat("MOOD", scope=StatScope.character, stat_type=StatType.enum_, hidden=True),
+    _stat("WEATHER", scope=StatScope.world, stat_type=StatType.enum_),
+    _stat("DOOMSDAY", scope=StatScope.world, stat_type=StatType.int_, hidden=True),
+]
+
+
+def _build(
+    field_type: str,
+    *,
+    stat_defs: list[WorldStatDefinition] | None = None,
+) -> str:
     return build_world_field_editor_system(
         field_type=field_type,
         world_name="Mythos",
         world_description="A grim fantasy realm.",
         world_lore="Ancient ruins dot the landscape.",
         current_content="",
+        stat_defs=stat_defs,
     )
 
 
@@ -81,3 +122,69 @@ def test_system_prompt_does_not_include_runtime_placeholders_block() -> None:
     """Sanity: only `initial_message` carries the substitution-aware block."""
     output = _build("system_prompt")
     assert "Runtime Placeholders" not in output
+
+
+# --- Stat Placeholders section (feature 012 step 003) ---
+
+
+@pytest.mark.parametrize(
+    "field_type", ["description", "system_prompt", "initial_message"]
+)
+def test_stat_section_emits_literal_user_and_world_tokens(field_type: str) -> None:
+    output = _build(field_type, stat_defs=_STAT_DEFS)
+
+    assert "## Stat Placeholders" in output
+    assert "{USER:HEALTH}" in output
+    assert "{USER:INVENTORY}" in output
+    assert "{USER:MOOD}" in output
+    assert "{WORLD:WEATHER}" in output
+    assert "{WORLD:DOOMSDAY}" in output
+
+
+def test_stat_section_uses_owner_namespace_per_scope() -> None:
+    output = _build("description", stat_defs=_STAT_DEFS)
+    assert "{WORLD:HEALTH}" not in output
+    assert "{USER:WEATHER}" not in output
+
+
+def test_stat_section_lists_hidden_stats() -> None:
+    """Hidden stats still substitute at chat runtime, so they must appear."""
+    output = _build("system_prompt", stat_defs=_STAT_DEFS)
+    assert "{USER:MOOD}" in output
+    assert "{WORLD:DOOMSDAY}" in output
+
+
+def test_stat_section_instructs_to_preserve_verbatim() -> None:
+    output = _build("description", stat_defs=_STAT_DEFS)
+    assert "verbatim" in output
+
+
+@pytest.mark.parametrize(
+    "field_type", ["description", "system_prompt", "initial_message"]
+)
+def test_stat_section_omitted_when_no_stat_defs(field_type: str) -> None:
+    """Zero-stats branch: section is omitted entirely."""
+    output = _build(field_type, stat_defs=[])
+    assert "## Stat Placeholders" not in output
+    assert "{USER:" not in output
+    assert "{WORLD:" not in output
+
+
+def test_stat_section_omitted_when_stat_defs_is_none() -> None:
+    """Default ``None`` behaves the same as empty list."""
+    output = _build("description", stat_defs=None)
+    assert "## Stat Placeholders" not in output
+
+
+def test_stat_tokens_are_not_clobbered_by_format_in_initial_message() -> None:
+    """The `initial_message` role uses `.format(world_name=...)`; the stat
+    section is appended *after* that format call so namespaced literals
+    must survive untouched (no escaping concerns there, but regression-
+    assert anyway).
+    """
+    output = _build("initial_message", stat_defs=_STAT_DEFS)
+    # Single-brace literal — would be the symptom of a stray format() call.
+    assert "{USER:HEALTH}" in output
+    assert "{{USER:HEALTH}}" not in output
+    assert "{WORLD:WEATHER}" in output
+    assert "{{WORLD:WEATHER}}" not in output

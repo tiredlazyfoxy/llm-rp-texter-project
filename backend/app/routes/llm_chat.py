@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from starlette.responses import StreamingResponse
 
 from app.db import lore_facts as lore_facts_db
+from app.db import stat_defs as stat_defs_db
 from app.db import worlds as worlds_db
 from app.models.schemas.llm_chat import LlmChatRequest, TranslateRequest
 from app.models.user import User, UserRole
@@ -142,6 +143,10 @@ async def chat_stream(
                     lore_parts.append(fact.content)
             world_lore = "\n\n".join(lore_parts)
 
+        # Stat definitions teach the editor LLM the world's {USER:NAME} /
+        # {WORLD:NAME} placeholder vocabulary so it preserves them verbatim.
+        world_stat_defs = await stat_defs_db.list_by_world(world_id_int)
+
         if req.field_type:
             system_prompt = build_world_field_editor_system(
                 field_type=req.field_type,
@@ -151,6 +156,7 @@ async def chat_stream(
                 injected_lore=injected_lore,
                 current_content=req.current_content,
                 enable_tools=req.enable_tools,
+                stat_defs=world_stat_defs,
             )
         else:
             system_prompt = build_document_editor_system(
@@ -161,6 +167,7 @@ async def chat_stream(
                 injected_lore=injected_lore,
                 current_content=req.current_content,
                 enable_tools=req.enable_tools,
+                stat_defs=world_stat_defs,
             )
 
     client = await get_llm_client_for_model(req.model_id)

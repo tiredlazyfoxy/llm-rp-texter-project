@@ -4,7 +4,7 @@
 |------|-------------------------------|---------|----------|------|
 | 001  | `001.runtime_helper.md`       | done    | PASS     | 2026-05-06 |
 | 002  | `002.context_threading.md`    | done    | PASS     | 2026-05-06 |
-| 003  | `003.editor_prompts.md`       | pending | —        | —    |
+| 003  | `003.editor_prompts.md`       | done    | PASS     | 2026-05-06 |
 | 004  | `004.admin_stats_endpoint.md` | pending | —        | —    |
 | 005  | `005.frontend_authoring.md`   | pending | —        | —    |
 | 006  | `006.admin_drawer.md`         | pending | —        | —    |
@@ -26,6 +26,14 @@
 - `backend/tests/services/test_runtime_placeholders.py` — added four cases for the new `build_stat_values_map` builder (scope routing, missing-def drop, scope-mismatch drop, int/enum/set/hidden coverage).
 - `backend/tests/services/test_chat_context.py` — added end-to-end cases asserting `ChatContext` exposes the raw stat dicts, that `{USER:HEALTH}` / `{WORLD:WEATHER}` substitute inside location content via the chat-runtime builder, and that the editor analogue (None ctx) leaves namespaced tokens literal.
 - `backend/tests/services/test_chat_service.py` — added end-to-end case asserting `create_chat` substitutes `{USER:HEALTH}` / `{WORLD:WEATHER}` in the seeded initial system message using the stats seeded from `WorldStatDefinition.default_value`.
+
+### Step 003 — editor system prompts learn `{USER:NAME}` / `{WORLD:NAME}`
+- `backend/app/services/prompts/stat_placeholders_section.py` — new shared helper `build_stat_placeholders_section(stat_defs)`; renders a "## Stat Placeholders" markdown section grouping defs by `StatScope` (User stats / World stats), bulleted with literal `` `{USER:NAME}` `` / `` `{WORLD:NAME}` `` tokens and the stat's `stat_type`; intro instructs the LLM to preserve placeholders **verbatim**; hidden stats are still listed (substitution is unaffected by `hidden`); empty `stat_defs` returns `""` so callers omit the section entirely (no "no stats defined" line). Pure helper — does NOT call `apply_runtime_placeholders`.
+- `backend/app/services/prompts/document_editor_system_prompt.py` — `build_document_editor_system(...)` gains optional `stat_defs: list[WorldStatDefinition] | None = None`; when truthy, the rendered stat section is appended right after the existing "## Runtime Placeholders" block. Default `None` keeps existing call sites/tests behavior identical.
+- `backend/app/services/prompts/world_field_editor_system_prompt.py` — `build_world_field_editor_system(...)` gains the same optional `stat_defs` param; section is inserted after role/task lines, before world description, applies to every `field_type` (description / system_prompt / initial_message) so any author-facing field surfaces the namespaced vocabulary.
+- `backend/app/routes/llm_chat.py` — added `from app.db import stat_defs as stat_defs_db`; in the world-scoped branch (after world load, before either builder call) loads `world_stat_defs = await stat_defs_db.list_by_world(world_id_int)` and passes it through `stat_defs=` to both builders. Pipeline-prompt branch unchanged (world-agnostic by design).
+- `backend/tests/services/prompts/test_document_editor_system_prompt.py` — added 7 new tests: literal `{USER:HEALTH}` / `{USER:INVENTORY}` / `{USER:MOOD}` / `{WORLD:WEATHER}` / `{WORLD:DOOMSDAY}` tokens for every `doc_type`; owner-vs-scope routing (no `{WORLD:HEALTH}` / `{USER:WEATHER}` cross-pollination); hidden stats still listed; "verbatim" imperative phrasing present; section omitted for empty list AND `None`; section survives `enable_tools=True`.
+- `backend/tests/services/prompts/test_world_field_editor_system_prompt.py` — added 7 new tests mirroring the document-editor coverage across all three `field_type`s, plus an explicit assertion that `initial_message`'s `.format(world_name=...)` flow does not double-brace the stat tokens (single-brace `{USER:HEALTH}` / `{WORLD:WEATHER}` literals survive).
 
 ## Notes & Issues
 

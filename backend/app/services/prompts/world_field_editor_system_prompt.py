@@ -27,7 +27,19 @@ DESIGN RATIONALE
 Each field has a distinct purpose so the role statement is field-specific.
 World description is included as background for system_prompt and initial_message
 editing, but omitted when editing the description itself to avoid circular context.
+
+CHANGELOG
+---------
+- v2 (feature_012_step_003): Adds optional ``stat_defs`` parameter; the prompt
+  emits a "## Stat Placeholders" section listing the world's
+  ``WorldStatDefinition`` names as literal ``{USER:NAME}`` / ``{WORLD:NAME}``
+  tokens so the editor LLM preserves them verbatim.
 """
+
+from app.models.world import WorldStatDefinition
+from app.services.prompts.stat_placeholders_section import (
+    build_stat_placeholders_section,
+)
 
 _FIELD_ROLES = {
     "description": (
@@ -146,6 +158,7 @@ def build_world_field_editor_system(
     current_content: str,
     enable_tools: bool = False,
     injected_lore: str = "",
+    stat_defs: list[WorldStatDefinition] | None = None,
 ) -> str:
     """Build the system prompt for the world field editor LLM chat."""
     role_template = _FIELD_ROLES.get(
@@ -161,6 +174,10 @@ def build_world_field_editor_system(
         "Respond with the text that should go into the field. "
         "Use markdown formatting where appropriate.",
     ]
+
+    stat_section = build_stat_placeholders_section(stat_defs or [])
+    if stat_section:
+        sections.append(stat_section)
 
     # Include world description as background context — except when editing it
     if world_description and field_type != "description":

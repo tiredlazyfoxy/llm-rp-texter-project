@@ -34,7 +34,16 @@ the LLM should be consistent with.
 CHANGELOG
 ---------
 - v1 (stage1_step5): Initial version — role, world context, current content, instructions.
+- v2 (feature_012_step_003): Adds optional ``stat_defs`` parameter; the prompt
+  emits a "## Stat Placeholders" section listing the world's
+  ``WorldStatDefinition`` names as literal ``{USER:NAME}`` / ``{WORLD:NAME}``
+  tokens so the editor LLM preserves them verbatim.
 """
+
+from app.models.world import WorldStatDefinition
+from app.services.prompts.stat_placeholders_section import (
+    build_stat_placeholders_section,
+)
 
 _DOC_TYPE_LABELS = {
     "location": "Location",
@@ -51,6 +60,7 @@ def build_document_editor_system(
     current_content: str,
     enable_tools: bool = False,
     injected_lore: str = "",
+    stat_defs: list[WorldStatDefinition] | None = None,
 ) -> str:
     """Build the system prompt for the document editor LLM chat."""
     label = _DOC_TYPE_LABELS.get(doc_type, doc_type)
@@ -75,6 +85,10 @@ def build_document_editor_system(
         "Write them with literal braces and uppercase letters, exactly as "
         "shown. Lowercase variants are not recognized."
     )
+
+    stat_section = build_stat_placeholders_section(stat_defs or [])
+    if stat_section:
+        sections.append(stat_section)
 
     if world_description:
         sections.append(f"## World Description\n\n{world_description}")
