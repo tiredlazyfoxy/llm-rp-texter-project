@@ -6,14 +6,16 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { IconSettings } from "@tabler/icons-react";
+import { IconAdjustmentsAlt, IconSettings } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
-import { ChatPageState, loadChat } from "./chatPageState";
+import { ChatPageState, loadChat, openStatDrawer } from "./chatPageState";
 import { MessageHistory } from "../components/chats/MessageHistory";
 import { ChatInput } from "../components/chats/ChatInput";
 import { StatsPanel } from "../components/chats/StatsPanel";
 import { ChatSettingsPanel } from "../components/chats/ChatSettingsPanel";
+import { StatEditorDrawer } from "../components/chats/StatEditorDrawer";
 import { ChatMemoriesButton } from "../components/chats/ChatMemoriesModal";
+import { getCurrentUser } from "../../auth";
 
 interface ChatViewPageProps {
   chatId: string;
@@ -31,6 +33,9 @@ export const ChatViewPage = observer(function ChatViewPage({ chatId }: ChatViewP
       state.dispose();
     };
   }, []);
+
+  const role = getCurrentUser()?.role ?? null;
+  const canEditStats = role === "admin" || role === "editor";
 
   if (state.loadStatus === "loading" || state.loadStatus === "idle") {
     return (
@@ -68,6 +73,18 @@ export const ChatViewPage = observer(function ChatViewPage({ chatId }: ChatViewP
         </Group>
         <Group gap="xs">
           <ChatMemoriesButton state={state} />
+          {canEditStats && (
+            <Tooltip label="Edit stats">
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="md"
+                onClick={() => openStatDrawer(state)}
+              >
+                <IconAdjustmentsAlt size={18} />
+              </ActionIcon>
+            </Tooltip>
+          )}
           <Tooltip label="Settings">
             <ActionIcon variant="subtle" color="gray" size="md" onClick={() => setSettingsOpen(true)}>
               <IconSettings size={18} />
@@ -86,6 +103,7 @@ export const ChatViewPage = observer(function ChatViewPage({ chatId }: ChatViewP
       </div>
 
       <ChatSettingsPanel state={state} opened={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {canEditStats && <StatEditorDrawer state={state} />}
     </div>
   );
 });

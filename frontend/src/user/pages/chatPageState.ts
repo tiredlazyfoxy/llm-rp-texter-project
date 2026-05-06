@@ -52,6 +52,10 @@ export class ChatPageState {
 
   debugMode = false;
 
+  statDrawerOpen = false;
+  statDrawerError: string | null = null;
+  statDrawerSubmitting = false;
+
   streamCtrl: AbortController | null = null;
 
   constructor(chatId: string) {
@@ -567,6 +571,53 @@ export async function updateSettings(
   // (e.g. character_name) re-renders with the saved value.
   if (req.character_name !== undefined) {
     refreshSidebarChats().catch(() => {});
+  }
+}
+
+export function openStatDrawer(state: ChatPageState): void {
+  state.statDrawerOpen = true;
+  state.statDrawerError = null;
+}
+
+export function closeStatDrawer(state: ChatPageState): void {
+  state.statDrawerOpen = false;
+  state.statDrawerError = null;
+  state.statDrawerSubmitting = false;
+}
+
+/**
+ * Admin/editor-only: submit one or more stat updates to the chat.
+ *
+ * The backend response echoes the requested values (pre-clamp), so we
+ * re-fetch chat detail and merge it to pick up the post-clamp persisted
+ * state. There is no SSE refresh on this endpoint by design (Feature
+ * 012, step 004 resolution).
+ */
+export async function submitStatUpdates(
+  state: ChatPageState,
+  updates: StatUpdateItem[],
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!state.currentChat) return;
+  const chatId = state.currentChat.session.id;
+  runInAction(() => {
+    state.statDrawerSubmitting = true;
+    state.statDrawerError = null;
+  });
+  try {
+    await chatApi.updateChatStats(chatId, { updates }, signal);
+    const detail = await chatApi.getChatDetail(chatId, signal);
+    runInAction(() => {
+      mergeChatDetail(state, detail);
+      state.statDrawerSubmitting = false;
+      state.statDrawerOpen = false;
+    });
+  } catch (err) {
+    if (signal?.aborted) return;
+    runInAction(() => {
+      state.statDrawerError = err instanceof Error ? err.message : String(err);
+      state.statDrawerSubmitting = false;
+    });
   }
 }
 

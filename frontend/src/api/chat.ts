@@ -66,6 +66,18 @@ export async function updateChatSettings(chatId: string, req: UpdateChatSettings
   });
 }
 
+export async function updateChatStats(
+  chatId: string,
+  body: UpdateChatStatsRequest,
+  signal?: AbortSignal,
+): Promise<UpdateChatStatsResponse> {
+  return request<UpdateChatStatsResponse>(`/api/chats/${chatId}/stats`, {
+    method: "PUT",
+    body,
+    signal,
+  });
+}
+
 export async function archiveChat(chatId: string, signal?: AbortSignal): Promise<void> {
   await request(`/api/chats/${chatId}/archive`, { method: "PUT", signal });
 }

@@ -40,6 +40,21 @@ interface UpdateChatSettingsRequest {
   character_name?: string;
 }
 
+interface StatUpdateItem {
+  owner: "user" | "world";
+  name: string;
+  value: number | string | string[];
+}
+
+interface UpdateChatStatsRequest {
+  updates: StatUpdateItem[];
+}
+
+interface UpdateChatStatsResponse {
+  chat_id: string;
+  applied: StatUpdateItem[];
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
