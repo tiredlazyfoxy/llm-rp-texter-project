@@ -7,6 +7,7 @@ from app.models.world import StatScope, StatType, WorldStatDefinition
 from app.services.runtime_placeholders import (
     RuntimePlaceholderContext,
     apply_runtime_placeholders,
+    build_stat_values_map,
 )
 
 
@@ -288,3 +289,72 @@ def test_world_owner_routes_to_world_scope_definition() -> None:
 
     # No world-scope definition exists, so render is empty.
     assert result == "[]"
+
+
+# --- Feature 012 step 002: build_stat_values_map -------------------------
+
+
+def test_build_stat_values_map_routes_scopes_to_owner_tokens() -> None:
+    defs = [
+        _stat_def(name="HEALTH", scope=StatScope.character, stat_type=StatType.int_),
+        _stat_def(name="WEATHER", scope=StatScope.world, stat_type=StatType.enum_,
+                  enum_values=["sunny", "rainy"]),
+    ]
+    char_stats = {"HEALTH": 42}
+    world_stats = {"WEATHER": "sunny"}
+
+    out = build_stat_values_map(defs, char_stats, world_stats)
+
+    assert out == {("user", "HEALTH"): 42, ("world", "WEATHER"): "sunny"}
+
+
+def test_build_stat_values_map_drops_stats_without_definition() -> None:
+    defs = [
+        _stat_def(name="HEALTH", scope=StatScope.character, stat_type=StatType.int_),
+    ]
+    # GHOST has no matching def; must be dropped silently (the helper
+    # logs DEBUG at render time on the miss path).
+    char_stats = {"HEALTH": 1, "GHOST": 99}
+    world_stats: dict[str, int | str | list[str]] = {}
+
+    out = build_stat_values_map(defs, char_stats, world_stats)
+
+    assert out == {("user", "HEALTH"): 1}
+
+
+def test_build_stat_values_map_drops_scope_mismatch() -> None:
+    # A character-scope value whose name only exists as a world-scope
+    # def must NOT be emitted under ("user", ...).
+    defs = [
+        _stat_def(name="WEATHER", scope=StatScope.world, stat_type=StatType.enum_,
+                  enum_values=["sunny"]),
+    ]
+    char_stats = {"WEATHER": "sunny"}  # wrong scope
+    world_stats: dict[str, int | str | list[str]] = {}
+
+    out = build_stat_values_map(defs, char_stats, world_stats)
+
+    assert out == {}
+
+
+def test_build_stat_values_map_handles_int_enum_set_and_hidden() -> None:
+    defs = [
+        _stat_def(name="HEALTH", scope=StatScope.character, stat_type=StatType.int_),
+        _stat_def(name="MOOD", scope=StatScope.character, stat_type=StatType.enum_,
+                  enum_values=["calm", "angry"]),
+        _stat_def(name="TAGS", scope=StatScope.character, stat_type=StatType.set_,
+                  enum_values=["a", "b"]),
+        _stat_def(name="SECRET", scope=StatScope.character, stat_type=StatType.int_,
+                  hidden=True),
+    ]
+    char_stats: dict[str, int | str | list[str]] = {
+        "HEALTH": 5, "MOOD": "calm", "TAGS": ["a"], "SECRET": 7,
+    }
+
+    out = build_stat_values_map(defs, char_stats, {})
+
+    assert out[("user", "HEALTH")] == 5
+    assert out[("user", "MOOD")] == "calm"
+    assert out[("user", "TAGS")] == ["a"]
+    # Hidden flag does not gate map inclusion (placeholders still resolve).
+    assert out[("user", "SECRET")] == 7

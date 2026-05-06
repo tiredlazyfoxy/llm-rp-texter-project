@@ -38,7 +38,10 @@ from app.services.chat_agent_service import (
 )
 from app.services.chat_context import build_chat_context
 from app.services.chat_tools import TOOL_REGISTRY, ToolContext, build_tools
-from app.services.runtime_placeholders import RuntimePlaceholderContext
+from app.services.runtime_placeholders import (
+    RuntimePlaceholderContext,
+    build_stat_values_map,
+)
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts.chat_system_prompt import build_rich_chat_system_prompt
 from app.services.prompts.prompt_injection import (
@@ -138,6 +141,12 @@ async def _run_generation(
             "character_name": chat.character_name,
             "location_name": context["location_name"],
             "location_summary": context["location_description"],
+            "stat_definitions": context["stat_defs_list"],
+            "stat_values": build_stat_values_map(
+                context["stat_defs_list"],
+                context["character_stats_raw"],
+                context["world_stats_raw"],
+            ),
         }
         tool_ctx = ToolContext(
             world_id=chat.world_id,

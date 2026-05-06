@@ -212,6 +212,38 @@ def _render_stat_value(
     return ""
 
 
+def build_stat_values_map(
+    stat_defs: list[WorldStatDefinition],
+    character_stats: dict[str, StatValue],
+    world_stats: dict[str, StatValue],
+) -> dict[tuple[str, str], StatValue]:
+    """Compose the `(owner, name) -> value` map consumed by the helper.
+
+    Pure builder shared by every chat-runtime entrypoint that wires
+    stat snapshots onto a `RuntimePlaceholderContext`. Centralizing it
+    keeps the StatScope -> owner-token mapping in one place and avoids
+    re-deriving the (owner, name) keys at five call sites.
+
+    Stats whose name has no matching definition are silently dropped:
+    the helper's miss path already DEBUG-logs unknown names at render
+    time, so dropping unknowns here is consistent with the "missing
+    definition -> empty string" contract.
+    """
+    by_name: dict[str, WorldStatDefinition] = {d.name: d for d in stat_defs}
+    out: dict[tuple[str, str], StatValue] = {}
+    for name, value in character_stats.items():
+        sd = by_name.get(name)
+        if sd is None or sd.scope != StatScope.character:
+            continue
+        out[("user", name)] = value
+    for name, value in world_stats.items():
+        sd = by_name.get(name)
+        if sd is None or sd.scope != StatScope.world:
+            continue
+        out[("world", name)] = value
+    return out
+
+
 def _iter_set_values(
     stat_def: WorldStatDefinition, value: list[str]
 ) -> list[str]:

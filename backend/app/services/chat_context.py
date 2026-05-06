@@ -32,7 +32,9 @@ from app.models.chat_session import ChatSession
 from app.models.world import World, WorldStatDefinition
 from app.services.runtime_placeholders import (
     RuntimePlaceholderContext,
+    StatValue,
     apply_runtime_placeholders,
+    build_stat_values_map,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,11 @@ class ChatContext(TypedDict):
     injected_lore: str
     memories: str
     stat_defs_list: list[WorldStatDefinition]
+    # Raw parsed stat dicts (single source for downstream sites that
+    # build a RuntimePlaceholderContext — avoids re-parsing the JSON
+    # strings off ChatSession at every chat-runtime entrypoint).
+    character_stats_raw: dict[str, StatValue]
+    world_stats_raw: dict[str, StatValue]
     # Consolidated fields for {PLACEHOLDER} template resolution
     location_block: str
     character_stats: str
@@ -73,6 +80,13 @@ async def build_chat_context(session: ChatSession) -> ChatContext:
             location_description = location.content
             location_exits = await _format_exits(location.exits)
 
+    # Stat snapshot — loaded up-front so the runtime_ctx built next
+    # carries live stat values for {USER:NAME} / {WORLD:NAME} resolution
+    # in NPC briefs, lore facts, and location content (feature 012).
+    stat_defs = await stat_defs_db.list_by_world(session.world_id)
+    char_stats = chats_db.parse_stats(session.character_stats)
+    world_stats_dict = chats_db.parse_stats(session.world_stats)
+
     # Runtime placeholder context built once from the session's
     # **current** location and reused for the three substitution
     # sites below (location.content, injected lore, NPC briefs).
@@ -80,6 +94,10 @@ async def build_chat_context(session: ChatSession) -> ChatContext:
         "character_name": session.character_name,
         "location_name": location_name,
         "location_summary": location_description,
+        "stat_definitions": stat_defs,
+        "stat_values": build_stat_values_map(
+            stat_defs, char_stats, world_stats_dict,
+        ),
     }
     location_description = apply_runtime_placeholders(
         location_description, runtime_ctx,
@@ -96,13 +114,10 @@ async def build_chat_context(session: ChatSession) -> ChatContext:
     rules_list = await rules_db.list_by_world(session.world_id)
     rules = "\n".join(f"{i}. {r.rule_text}" for i, r in enumerate(rules_list, 1)) if rules_list else ""
 
-    # Stat definitions
-    stat_defs = await stat_defs_db.list_by_world(session.world_id)
+    # Stat definitions (already loaded above for the runtime_ctx).
     stat_definitions = _format_stat_definitions(stat_defs)
 
-    # Current stats
-    char_stats = chats_db.parse_stats(session.character_stats)
-    world_stats_dict = chats_db.parse_stats(session.world_stats)
+    # Current stats (already parsed above for the runtime_ctx).
     current_stats = _format_current_stats(char_stats, world_stats_dict, stat_defs)
 
     # Injected lore
@@ -137,6 +152,8 @@ async def build_chat_context(session: ChatSession) -> ChatContext:
         injected_lore=injected_lore,
         memories=memories,
         stat_defs_list=stat_defs,
+        character_stats_raw=char_stats,
+        world_stats_raw=world_stats_dict,
         location_block=location_block,
         character_stats=character_stats_block,
         world_stats=world_stats_block,

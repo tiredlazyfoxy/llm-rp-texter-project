@@ -8,9 +8,17 @@ import pytest
 
 from app.db import chats as chats_db
 from app.db import locations as locations_db
+from app.db import stat_defs as stat_defs_db
 from app.db import worlds as worlds_db
 from app.models.schemas.chat import ModelConfig
-from app.models.world import World, WorldLocation, WorldStatus
+from app.models.world import (
+    StatScope,
+    StatType,
+    World,
+    WorldLocation,
+    WorldStatDefinition,
+    WorldStatus,
+)
 from app.services import chat_service, vector_storage
 from app.services.chat_tools import ToolContext, build_tools
 from app.services.runtime_placeholders import RuntimePlaceholderContext
@@ -257,6 +265,51 @@ async def test_update_settings_persists_character_name() -> None:
     refreshed = await chats_db.get_session_by_id(session_id)
     assert refreshed is not None
     assert refreshed.character_name == "Updated"
+
+
+async def test_create_chat_substitutes_namespaced_stat_tokens() -> None:
+    """Feature 012 step 002 end-to-end: a `{USER:HEALTH}` token in
+    `world.initial_message` is resolved at create_chat time using the
+    chat's seeded starting stats."""
+    template = (
+        "Hi {CHARACTER_NAME}. HP={USER:HEALTH}. Weather={WORLD:WEATHER}."
+    )
+    world_id, loc_id, _name, _content = await _setup_world_and_location(template)
+
+    # Seed stat defs whose default_value drives the seeded ChatSession stats.
+    await stat_defs_db.create(WorldStatDefinition(
+        id=generate_id(), world_id=world_id, name="HEALTH",
+        description="", scope=StatScope.character, stat_type=StatType.int_,
+        default_value="100",
+    ))
+    await stat_defs_db.create(WorldStatDefinition(
+        id=generate_id(), world_id=world_id, name="WEATHER",
+        description="", scope=StatScope.world, stat_type=StatType.enum_,
+        default_value="sunny",
+        enum_values=json.dumps(["sunny", "rainy"]),
+    ))
+
+    user_id = generate_id()
+    resp = await chat_service.create_chat(
+        world_id=world_id,
+        user_id=user_id,
+        character_name="Aelric",
+        template_variables={},
+        starting_location_id=loc_id,
+        tool_model=_empty_model_config(),
+        text_model=_empty_model_config(),
+    )
+
+    messages = await chats_db.list_active_messages(int(resp.id))
+    system_msgs = [m for m in messages if m.role == "system"]
+    assert len(system_msgs) == 1
+    content = system_msgs[0].content
+
+    assert "Aelric" in content
+    assert "HP=100" in content
+    assert "Weather=sunny" in content
+    assert "{USER:HEALTH}" not in content
+    assert "{WORLD:WEATHER}" not in content
 
 
 async def test_update_settings_none_character_name_leaves_value_untouched() -> None:

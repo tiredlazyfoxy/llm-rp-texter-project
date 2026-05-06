@@ -40,7 +40,10 @@ from app.services.chat_agent_service import (
 )
 from app.services.chat_context import ChatContext, build_chat_context
 from app.services.chat_tools import DecisionState, ToolContext, build_tools
-from app.services.runtime_placeholders import RuntimePlaceholderContext
+from app.services.runtime_placeholders import (
+    RuntimePlaceholderContext,
+    build_stat_values_map,
+)
 from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts.planning_system_prompt import build_planning_system_prompt
 from app.services.prompts.prompt_injection import (
@@ -320,6 +323,10 @@ async def _run_tool_stage(
         "character_name": chat.character_name,
         "location_name": context["location_name"],
         "location_summary": context["location_description"],
+        "stat_definitions": context["stat_defs_list"],
+        "stat_values": build_stat_values_map(
+            context["stat_defs_list"], char_stats, world_stats,
+        ),
     }
     tool_ctx = ToolContext(
         world_id=chat.world_id,
@@ -466,6 +473,10 @@ async def _run_writer_stage(
         "character_name": chat.character_name,
         "location_name": context["location_name"],
         "location_summary": context["location_description"],
+        "stat_definitions": context["stat_defs_list"],
+        "stat_values": build_stat_values_map(
+            context["stat_defs_list"], char_stats, world_stats,
+        ),
     }
     tool_ctx = ToolContext(
         world_id=chat.world_id,

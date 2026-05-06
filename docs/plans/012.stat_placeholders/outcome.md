@@ -56,3 +56,8 @@
   architect wants to cross-link the new endpoint from the
   `ChatStat` row in the model index.)
 
+## Observations
+
+- Step 002: the `(StatScope -> owner-token)` mapping is centralized in `runtime_placeholders.build_stat_values_map(stat_defs, character_stats, world_stats)` (pure builder, no DB). Every chat-runtime entrypoint (`chat_context.build_chat_context`, `chat_service.create_chat`, `simple_generation_service`, both `chain_generation_service` sites) calls it. Possible impact: add to the new Runtime Placeholders section in `quick-reference.md` so future contributors know not to re-derive owner tokens at new call sites.
+- Step 002: `ChatContext` now surfaces `character_stats_raw: dict[str, int|str|list[str]]` and `world_stats_raw: dict[str, int|str|list[str]]` (raw parsed JSON dicts) so downstream chat-runtime sites consume one source instead of re-parsing `ChatSession.character_stats` / `.world_stats`. Possible impact: brief note in `backend.md` under chat context structure (or quick-reference Stat System section).
+- Step 002: `chat_agent_service.py` does not actually build a `ToolContext` or `RuntimePlaceholderContext` — it is purely a dispatcher. The step-002 plan and `002.context.md` both list it as a chat-runtime entrypoint requiring the wiring; the planner may want to drop it from that list when finalizing or clarify that the dispatcher itself owns no chat-runtime context.

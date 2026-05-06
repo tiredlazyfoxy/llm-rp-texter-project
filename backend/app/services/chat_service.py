@@ -35,6 +35,7 @@ from app.services import snowflake as snowflake_svc
 from app.services.runtime_placeholders import (
     RuntimePlaceholderContext,
     apply_runtime_placeholders,
+    build_stat_values_map,
 )
 
 logger = logging.getLogger(__name__)
@@ -426,11 +427,18 @@ async def create_chat(
     )
     await chats_db.create_snapshot(snap)
 
-    # Initial system message using world.initial_message
+    # Initial system message using world.initial_message. Stat snapshot
+    # (defs already loaded above; values were just initialized from
+    # defaults) is attached so {USER:NAME} / {WORLD:NAME} tokens in the
+    # initial message resolve against the chat's starting stats.
     runtime_ctx: RuntimePlaceholderContext = {
         "character_name": character_name,
         "location_name": loc.name,
         "location_summary": loc.content or "",
+        "stat_definitions": stat_defs,
+        "stat_values": build_stat_values_map(
+            stat_defs, char_stats, world_stats,
+        ),
     }
     initial_content = apply_runtime_placeholders(
         world.initial_message or "", runtime_ctx,
