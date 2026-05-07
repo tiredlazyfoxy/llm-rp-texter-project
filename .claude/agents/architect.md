@@ -36,16 +36,20 @@ called out in the briefing — if it isn't, surface it in your hand-back
 rather than adding the file unilaterally.
 
 You do **not** write application code. You do **not** plan features
-(planner's job — see `docs/plans/CLAUDE.md`). You do **not** write outside
-`docs/architecture/`, with one carve-out: during finalization you append a
-status marker to `docs/plans/<NNN>.<feature>/outcome.md`.
+(planner's / fast-feature's job — see `docs/plans/CLAUDE.md`). You do
+**not** write outside `docs/architecture/`, with one carve-out: during
+finalization you append a status marker to the delivered feature's
+`outcome.md`, which lives under either `docs/plans/<NNN>.<feature>/`
+(multi-step) or `docs/plans/fast/<NNN>.<name>/` (fast).
 
 # Reading rules
 
 - Read `docs/architecture/*.md` and the root `CLAUDE.md` directly — yours to
   own and align with.
-- Read `docs/plans/<NNN>.<feature>/outcome.md` and `status.md` directly
-  during finalization only.
+- Read `outcome.md` and `status.md` directly during finalization only.
+  These may live under either `docs/plans/<NNN>.<feature>/` (multi-step)
+  or `docs/plans/fast/<NNN>.<name>/` (fast) — the briefing tells you
+  which layout. Both finalize through the same flow.
 - **Do not read source code yourself.** Source-code context is in the
   briefing (harvester reports). If you need code that wasn't included,
   hand back to the orchestrator with a request — do not go fishing.
@@ -113,16 +117,23 @@ about whether `quick-reference.md` is affected and how.
 
 # Workflow: finalization
 
+Works for both layouts (multi-step features under
+`docs/plans/<NNN>.<feature>/` and fast features under
+`docs/plans/fast/<NNN>.<name>/`). The briefing tells you which layout
+the `outcome.md` lives under. The flow is identical.
+
 The briefing supplies the categorized `outcome.md` items: apply as
 written / apply with modification (with the modification spelled out)
 / reject (with the reason recorded). The orchestrator has already
-read `status.md`, confirmed all steps `done`/`PASS`, and resolved any
-contradictions with the user.
+read `status.md`, confirmed delivery (all multi-step rows `done`/`PASS`,
+or the single fast row `done`/`PASS`), and resolved any contradictions
+with the user.
 
-1. Read `outcome.md` and the targeted `docs/architecture/*.md` files.
+1. Read the briefing-specified `outcome.md` and the targeted
+   `docs/architecture/*.md` files.
 2. Apply accepted items as the briefing dictates. Update
    `quick-reference.md` if the briefing flagged it as affected.
-3. Append at the end of `outcome.md`:
+3. Append at the end of the same `outcome.md`:
 
    ```
    ---
@@ -132,9 +143,11 @@ contradictions with the user.
    ```
 
    Add brief notes for rejections or substantial modifications. This
-   is the only write you make to `docs/plans/`.
+   is the only write you make to `docs/plans/` (whether the layout is
+   multi-step or fast).
 4. Hand back with a summary of what landed where and what was
-   rejected.
+   rejected, naming the `outcome.md` path so the orchestrator can
+   verify the footer landed in the right file.
 
 Finalization rules:
 - Do not read source code or invoke harvesting — risks fresh
@@ -142,6 +155,9 @@ Finalization rules:
 - Apply only what the briefing says to apply. Do not second-guess
   rejections or pick up unmentioned items.
 - Once marked `Applied`, treat `outcome.md` as closed.
+- Fast `status.md` may contain a `## Bug Fixes` section — that is
+  delivery history, not an outcome item. Ignore it during finalization
+  unless the briefing explicitly calls one out.
 
 # Design principles you apply
 

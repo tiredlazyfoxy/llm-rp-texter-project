@@ -53,9 +53,10 @@ See `docs/architecture/` for full documentation.
 ## Conventions
 
 - Planning docs go to `docs/plans/` folder (tracked in git) — **not** `~/.claude/plans/`
-- **Features** live in `docs/plans/<NNN>.<feature_name>/` (3-digit feature number, sorts the list); each folder has required `context.md`, `outcome.md`, `status.md` plus one or more `<SSS>.<name>.md` step plans (3-digit step number, optional letter suffix like `001b`/`002a`) and optional `<SSS>.context.md`
+- **Multi-step features** live in `docs/plans/<NNN>.<feature_name>/` (3-digit feature number, sorts the list); each folder has required `context.md`, `outcome.md`, `status.md` plus one or more `<SSS>.<name>.md` step plans (3-digit step number, optional letter suffix like `001b`/`002a`) and optional `<SSS>.context.md`
+- **Fast features** (single-pass small features or large bug fixes) live in `docs/plans/fast/<NNN>.<name>/` with `context.md`, `plan.md`, `status.md`, `outcome.md` — own counter, planned and implemented in one session via `/fast-feature`
 - **Backlog ideas**: `docs/plans/backlog/<idea_name>.md` — ideas not yet promoted to a feature
-- See `docs/plans/CLAUDE.md` for full layout and lifecycle
+- See `docs/plans/CLAUDE.md` for full layout, lifecycle, and the fast↔multi-step promotion rule
 - Final architecture docs go to `docs/architecture/`
 - Every project subfolder must have a `CLAUDE.md`
 
