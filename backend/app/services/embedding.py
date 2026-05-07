@@ -80,8 +80,8 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
     global _cached_dim
 
     server = await _get_server()
-    client = _create_client(server)
-    vectors = await client.embed_batch(texts)
+    async with _create_client(server) as client:
+        vectors = await client.embed_batch(texts)
 
     # Cache dimension from first successful call
     if _cached_dim is None and vectors:
