@@ -16,6 +16,7 @@ from app.db import chats as chats_db
 from app.db import stat_defs as stat_defs_db
 from app.db import worlds as worlds_db
 from app.models.chat_session import ChatSession
+from app.models.chat_state_snapshot import ChatStateSnapshot
 from app.models.user import User
 from app.models.world import (
     StatScope,
@@ -117,6 +118,18 @@ async def _make_chat(world_id: int, user_id: int) -> int:
         modified_at=_now(),
     )
     await chats_db.create_session(chat)
+    # Mirror real chat creation: a turn-0 snapshot exists alongside
+    # the session row. The UI reads stats from snapshots[], so the
+    # admin endpoint must keep this row in sync.
+    await chats_db.create_snapshot(ChatStateSnapshot(
+        id=generate_id(),
+        session_id=chat.id,
+        turn_number=0,
+        location_id=None,
+        character_stats=chat.character_stats,
+        world_stats=chat.world_stats,
+        created_at=_now(),
+    ))
     return chat.id
 
 
@@ -159,6 +172,37 @@ async def test_admin_valid_updates_returns_200_and_persists(
         "INVENTORY": ["sword", "potion"],
     }
     assert chats_db.parse_stats(chat.world_stats) == {"WEATHER": "rainy"}
+
+    # Bug-fix to step 004: the UI reads stats from the latest
+    # ChatStateSnapshot row at current_turn — the admin write must
+    # mirror onto that snapshot so the drawer / sidebar reflect the
+    # change after refresh. Both the direct snapshot row and the
+    # snapshot exposed by the chat-detail GET path must be updated.
+    snapshots = await chats_db.list_snapshots(chat_id)
+    assert snapshots, "expected at least one snapshot row"
+    current_snap = next(s for s in snapshots if s.turn_number == chat.current_turn)
+    assert chats_db.parse_stats(current_snap.character_stats) == {
+        "HEALTH": 42,
+        "INVENTORY": ["sword", "potion"],
+    }
+    assert chats_db.parse_stats(current_snap.world_stats) == {"WEATHER": "rainy"}
+
+    # And the player-facing chat-detail endpoint sees the same values
+    # (this is the path StatsPanel / StatEditorDrawer read from).
+    detail_resp = await http_client.get(
+        f"/api/chats/{chat_id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert detail_resp.status_code == 200, detail_resp.text
+    detail = detail_resp.json()
+    detail_snap = next(
+        s for s in detail["snapshots"] if s["turn_number"] == chat.current_turn
+    )
+    assert detail_snap["character_stats"] == {
+        "HEALTH": 42,
+        "INVENTORY": ["sword", "potion"],
+    }
+    assert detail_snap["world_stats"] == {"WEATHER": "rainy"}
 
 
 async def test_admin_valid_int_clamps_to_min_max_and_echoes_input(

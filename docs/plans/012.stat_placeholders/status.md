@@ -58,6 +58,12 @@
 - `backend/tests/services/prompts/test_document_editor_system_prompt.py` — added 7 new tests: literal `{USER:HEALTH}` / `{USER:INVENTORY}` / `{USER:MOOD}` / `{WORLD:WEATHER}` / `{WORLD:DOOMSDAY}` tokens for every `doc_type`; owner-vs-scope routing (no `{WORLD:HEALTH}` / `{USER:WEATHER}` cross-pollination); hidden stats still listed; "verbatim" imperative phrasing present; section omitted for empty list AND `None`; section survives `enable_tools=True`.
 - `backend/tests/services/prompts/test_world_field_editor_system_prompt.py` — added 7 new tests mirroring the document-editor coverage across all three `field_type`s, plus an explicit assertion that `initial_message`'s `.format(world_name=...)` flow does not double-brace the stat tokens (single-brace `{USER:HEALTH}` / `{WORLD:WEATHER}` literals survive).
 
+## Bug Fixes
+
+### Step 004 — admin stat edits invisible until snapshot row updated (2026-05-06)
+- `backend/app/db/chats.py` — extended `update_session_stats` to also mirror the new `character_stats_json` / `world_stats_json` onto the `ChatStateSnapshot` row at `ChatSession.current_turn` in the same session/commit. The UI's read path (`StatsPanel`, `StatEditorDrawer`, `chatPageState.currentSnapshot`) resolves stats via `currentChat.snapshots.find(s => s.turn_number === current_turn)`, so a session-only write left stale values visible after refresh. Falls back to the latest snapshot by `turn_number` if none exists at `current_turn` (defensive — both the initial-message branch and the LLM generation pipeline create one per turn, so the fallback should never fire in practice). No service-layer change needed: `apply_admin_stat_updates` already calls this helper, the new behavior is fully transparent. Layer separation preserved (DB write stays in `db/chats.py`).
+- `backend/tests/routes/test_chats_stats_admin.py` — `_make_chat` now seeds a turn-0 `ChatStateSnapshot` (mirrors real chat creation in `chat_service.create_chat`); the happy-path test now asserts (a) the snapshot row at `current_turn` reflects the new values via `chats_db.list_snapshots`, and (b) the player-facing `GET /api/chats/{chat_id}` response's `snapshots[]` entry at `current_turn` reflects the new values — catches future regressions of the same UI/snapshot mismatch.
+
 ## Notes & Issues
 
 ### Step 001

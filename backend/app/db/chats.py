@@ -60,12 +60,24 @@ async def update_session_stats(
     world_stats_json: str,
     modified_at: datetime,
 ) -> bool:
-    """Persist a batch stat correction onto a chat session.
+    """Persist a batch stat correction onto a chat session AND mirror it
+    onto the latest `ChatStateSnapshot` for that chat.
 
     Used by the admin stats endpoint (Feature 012) to apply multiple
     `ChatStat`-equivalent updates atomically without forcing the
     service layer to load and re-merge the full ChatSession row.
-    Returns False if the session does not exist.
+
+    Both writes happen in a single session/commit so the chat row and
+    the snapshot at `chat.current_turn` stay in sync — the UI reads
+    the snapshot row (via `_build_detail_response`'s snapshots[]
+    list), so a session-only write would leave stale values visible
+    after refresh (Feature 012 bug-fix to step 004).
+
+    If no snapshot row exists at `current_turn` (shouldn't happen —
+    the initial-message branch creates one at turn 0 and the LLM path
+    appends one per turn), the most recent snapshot is updated
+    instead so the UI's "currentSnapshot" lookup still sees fresh
+    values. Returns False if the session itself does not exist.
     """
     session = await get_standalone_session()
     async with session:
@@ -78,6 +90,25 @@ async def update_session_stats(
         chat.world_stats = world_stats_json
         chat.modified_at = modified_at
         await session.merge(chat)
+
+        # Mirror onto the snapshot the UI reads. Prefer the snapshot at
+        # current_turn; fall back to the latest by turn_number.
+        snap = (await session.exec(
+            select(ChatStateSnapshot)
+            .where(ChatStateSnapshot.session_id == session_id)
+            .where(ChatStateSnapshot.turn_number == chat.current_turn)
+        )).one_or_none()
+        if snap is None:
+            snap = (await session.exec(
+                select(ChatStateSnapshot)
+                .where(ChatStateSnapshot.session_id == session_id)
+                .order_by(ChatStateSnapshot.turn_number.desc())  # type: ignore[arg-type]
+            )).first()
+        if snap is not None:
+            snap.character_stats = character_stats_json
+            snap.world_stats = world_stats_json
+            await session.merge(snap)
+
         await session.commit()
         return True
 
