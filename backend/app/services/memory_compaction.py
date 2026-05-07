@@ -77,9 +77,16 @@ async def compact_new_memories(
     is empty.
     """
     if not new_memory_ids:
+        logger.debug("Memory compaction: no new memories to compact (session=%d)", session_id)
         return MemoryCompactionResult(
             kept=[], dropped=[], skipped=True, skip_reason="no_new_memories",
         )
+
+    logger.debug(
+        "Memory compaction starting: session=%d, new_memory_ids=%d",
+        session_id,
+        len(new_memory_ids),
+    )
 
     if not await is_embedding_configured():
         logger.debug("Memory compaction skipped: no embedding server configured")
@@ -89,6 +96,11 @@ async def compact_new_memories(
 
     new_ids_set = set(new_memory_ids)
     all_memories = await chats_db.list_memories(session_id)
+    logger.debug(
+        "Memory compaction: %d existing session memories + %d new this run",
+        len(all_memories) - sum(1 for m in all_memories if m.id in new_ids_set),
+        sum(1 for m in all_memories if m.id in new_ids_set),
+    )
 
     # Index everything for fast lookup; preserve "new vs existing" classification.
     by_id = {m.id: m for m in all_memories}
@@ -115,6 +127,21 @@ async def compact_new_memories(
 
     fresh_embeddings: dict[int, list[float]] = {}
     if needs_embedding:
+        new_needing = sum(1 for mid, _ in needs_embedding if mid in new_ids_set)
+        existing_needing = len(needs_embedding) - new_needing
+        if existing_needing == 0:
+            mix = "new only"
+        elif new_needing == 0:
+            mix = "lazy backfill of pre-existing"
+        else:
+            mix = "mixed"
+        logger.debug(
+            "Memory compaction: embedding %d texts (%s; new=%d, backfill=%d)",
+            len(needs_embedding),
+            mix,
+            new_needing,
+            existing_needing,
+        )
         try:
             vectors = await embed_texts([text for _, text in needs_embedding])
         except EmbeddingNotConfiguredError:
@@ -165,6 +192,12 @@ async def compact_new_memories(
 
         if best_id is not None and best_sim >= MEMORY_DEDUP_COSINE_THRESHOLD:
             peer = by_id[best_id]
+            logger.debug(
+                "Memory compaction: dropping memory %d (duplicate_of=%d, similarity=%.4f)",
+                row.id,
+                peer.id,
+                best_sim,
+            )
             dropped.append(DroppedMemory(
                 id=row.id,
                 content=row.content,
@@ -193,6 +226,13 @@ async def compact_new_memories(
         for mid in kept_new
         if mid in by_id
     ]
+
+    logger.debug(
+        "Memory compaction complete: kept=%d, dropped=%d, skipped=%s",
+        len(kept_refs),
+        len(dropped),
+        False,
+    )
 
     return MemoryCompactionResult(
         kept=kept_refs,

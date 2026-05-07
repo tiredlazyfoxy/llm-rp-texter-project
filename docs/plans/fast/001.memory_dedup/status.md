@@ -15,6 +15,11 @@
 - `backend/app/services/db_import_export.py` — `_chat_memory_to_dict` / `_dict_to_chat_memory` round-trip `embedding`; absent key imports as `None`.
 - `backend/tests/services/test_memory_dedup.py` — new test module covering cosine helper, dedup happy path (new vs existing), new-vs-new dedup, threshold boundary, no-embedding-server skip, empty-ids skip, and import/export round-trip including legacy export with no `embedding` key.
 
+## Bug Fixes
+
+### Add DEBUG observability to memory compaction (2026-05-07)
+- `backend/app/services/memory_compaction.py` — added six `logger.debug` lines: empty-input skip, run-start with new-id count, existing-vs-new framing after DB load, embed-batch call with new/backfill/mixed classification, per-dropped row (id, duplicate_of, similarity), and final kept/dropped/skipped summary. The pre-existing skip log for "no embedding server configured" was already present and is left as-is. No behavior change.
+
 ## Notes & Issues
 
 - Test path placed under `backend/tests/services/test_memory_dedup.py` to match the existing per-service test layout (the plan allowed this confirmation).
