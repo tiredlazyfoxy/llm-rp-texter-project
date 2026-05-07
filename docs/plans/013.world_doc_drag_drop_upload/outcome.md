@@ -48,3 +48,9 @@
 
 ## Observations
 
+
+---
+Status: Applied 2026-05-06
+Applied items: 4
+Rejected items: 1 (`db-models.md` cross-link from `WorldLoreFact` to upload endpoint — no schema change; cross-link adds noise)
+Notes: Native HTML5 DnD pattern sanctioned in `frontend-components.md` (UI-pattern decision) rather than `frontend.md`.

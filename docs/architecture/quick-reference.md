@@ -18,7 +18,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **users**: id, username, pwdhash, salt, role (admin/editor/player), jwt_signing_key, last_login, last_key_update
 
-**worlds**: id, name, description, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message, supports `{character_name}`, `{location_name}`, `{location_summary}`), pipeline_id (FK pipelines.id, nullable — a world without a pipeline cannot start generation), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts. The legacy columns `system_prompt`, `simple_tools`, `pipeline`, `generation_mode`, `agent_config` remain on the table but are write-dead post Feature 007 — kept for old-export compatibility and one-shot rollback; cleanup is a follow-up.)
+**worlds**: id, name, description, character_template (with `{PLACEHOLDER}` tokens), initial_message (template for first chat message; supports the runtime placeholders documented under "Runtime Placeholders" below), pipeline_id (FK pipelines.id, nullable — a world without a pipeline cannot start generation), status (draft/public/private/archived), owner_id (FK users.id, nullable — private worlds visible only to owner), created_at, modified_at. (`lore` field exists in DB but is deprecated — hidden from UI, not used in prompts. The legacy columns `system_prompt`, `simple_tools`, `pipeline`, `generation_mode`, `agent_config` remain on the table but are write-dead post Feature 007 — kept for old-export compatibility and one-shot rollback; cleanup is a follow-up.)
 
 **pipelines** (Feature 007): id, name, description, kind (`"simple"` | `"chain"` | `"agentic"`), system_prompt (used when kind == "simple"), simple_tools (JSON list of tool names; simple mode), pipeline_config (JSON — `PipelineConfig`; chain mode), agent_config (JSON; future agentic mode), created_at, modified_at. A pipeline is the standalone, world-agnostic definition of a generation flow; multiple worlds may share one pipeline.
 
@@ -92,6 +92,16 @@ Chunks: id, world_id, source_type (location/npc/lore_fact), source_id, chunk_ind
 
 CRUD for worlds, locations, NPCs, lore facts, stat definitions, rules. All require editor+ role. Includes `POST /api/admin/worlds/:id/reindex` for per-world vector reindex. World responses carry `pipeline_id` (nullable); pipeline definition lives in the Pipelines API (below). (See `docs/plans/001.admin_setup/004.world_editor.md` for full endpoint list.)
 
+`POST /api/admin/worlds/:id/documents` accepts an **optional** `id` field (snowflake string) — used by the draft editor when a child-resource id is needed before first save. Server falls back to `generate_id()` when absent; HTTP 409 on collision; HTTP 400 on non-numeric input.
+
+`POST /api/admin/worlds/:id/documents/upload` accepts `doc_type=location` / `npc` / `lore_fact`. `location` and `npc` upsert by lowercased filename stem; `lore_fact` always creates a new `WorldLoreFact` row (filename discarded — there is no name field on lore facts).
+
+### Admin — Misc
+
+| Method | Path | Purpose | Role |
+| ------ | ---- | ------- | ---- |
+| GET | `/api/admin/snowflake/new` | Pre-allocate a snowflake id (`{ id: string }`). Used by draft editors that need an id before first save (e.g. `DocumentEditPage` with `?new=1`). | editor |
+
 ### Admin — Pipelines (`/api/admin/pipelines`) — feature 007
 
 Standalone CRUD for shared pipelines. Worlds reference a pipeline via `world.pipeline_id`.
@@ -119,7 +129,8 @@ Standalone CRUD for shared pipelines. Worlds reference a pipeline via `world.pip
 | POST | `/api/chats/:id/rewind` | Rewind to target turn |
 | PUT | `/api/chats/:id/messages/:msg_id` | Edit user message content, delete assistant at that turn + all after, rewind to turn-1 |
 | DELETE | `/api/chats/:id/messages/:msg_id` | Delete message + everything after it (user: whole turn+after; assistant: keep user msg, delete turn+1 onward) |
-| PUT | `/api/chats/:id/settings` | Update model config |
+| PUT | `/api/chats/:id/settings` | Update editable session fields: `tool_model`, `text_model`, `character_name`. The next chat turn re-resolves `{CHARACTER_NAME}` from the live session value (auto-pickup; no history rewrite). |
+| PUT | `/api/chats/:id/stats` | Admin-or-editor batch stat edit. Pre-validates every item; HTTP 422 with `{status, reason, all_stats}` on the first invalid item — all-or-nothing (chat row untouched on 422), in contrast to the LLM `update_stat` tool which silently skips invalid entries. **Does NOT emit SSE.** Response `applied` echoes the **requested** (pre-clamp) values; clients should re-fetch `getChatDetail` for a faithful refresh. |
 | PUT | `/api/chats/:id/archive` | Archive chat (read-only) |
 | DELETE | `/api/chats/:id` | Delete chat and all related data |
 
@@ -137,7 +148,7 @@ Used for chat message generation and regeneration.
 | `tool_call_result` | `{"tool_name": "...", "result": "..."}` | Tool returned | Editor+ only |
 | `user_ack` | `{"id": "...", "turn_number": N, "created_at": "..."}` | User message saved to DB | All |
 | `token` | `{"content": "...delta..."}` | Content token delta | All |
-| `stat_update` | `{"character_stats": {...}, "world_stats": {...}, "turn_number": N}` | Stats changed | All |
+| `stat_update` | `{"character_stats": {...}, "world_stats": {...}, "turn_number": N}` | Stats changed during LLM tool execution. **LLM-tool-only — `PUT /api/chats/:id/stats` does NOT emit this event.** | All |
 | `variants_update` | `{"variants": GenerationVariant[]}` | Updated variants list (regeneration only) | All |
 | `done` | `{"message": ChatMessageResponse}` | Final message | All |
 | `error` | `{"detail": "..."}` | Error | All |
@@ -209,15 +220,51 @@ Tool registration: single `TOOL_REGISTRY` (12 tools) + `build_tools(names, ToolC
 
 **Lore injection filter:** `get_lore` skips lore facts already injected into the system prompt (same logic as admin `get_lore` — avoids duplicating context).
 
+## Runtime Placeholders
+
+Single substitution surface for chat-runtime prose. All substitution goes through `services/runtime_placeholders.apply_runtime_placeholders(text, ctx)` (the one source-of-truth helper). Editor flows construct `ToolContext.runtime_placeholders = None` so tokens stay literal in admin/editor surfaces; chat-bound construction populates the context.
+
+**Tokens (Feature 010 — current-location-aware fields):**
+
+| Token | Source | Notes |
+| ----- | ------ | ----- |
+| `{CHARACTER_NAME}` | `chat_session.character_name` | Live value — re-resolved each turn (no history rewrite when edited via settings). |
+| `{LOCATION_NAME}` | Current location at substitution time | "Current location" semantics for non-initial-message uses (e.g. NPC briefs, location content, tool results). |
+| `{LOCATION_SUMMARY}` | Current location's summary | Same current-location semantics. |
+
+**Tokens (Feature 012 — namespaced stats):**
+
+`{USER:NAME}` and `{WORLD:NAME}` resolve `WorldStatDefinition` rows by scope+name. The `(StatScope -> owner-token)` mapping is built once via `runtime_placeholders.build_stat_values_map(stat_defs, character_stats, world_stats)` — every chat-runtime entrypoint calls this; **do not re-derive owner tokens at new sites**.
+
+Render rules:
+
+- `int` → `str(value)`
+- `enum` → value as-is
+- `set` → comma-space joined (declared `enum_values` order when parseable, else stored iteration order)
+- missing/unknown name → empty string + DEBUG log
+- **hidden stats DO substitute** — the `hidden` flag only gates the player-facing stats panel
+- editor flows leave namespaced tokens literal (editor-bound ctx carries no stats)
+
+**Substitution sites (chat-runtime):**
+
+- `chat_service.create_chat` — `world.initial_message`
+- `chat_context.build_chat_context` — location.content, injected lore, NPC briefs
+- `chat_tools.py` chat-side bindings — `get_location_info`, `get_npc_info`, `move_to_location`, `get_memory`, `_b_search`, `_b_get_lore`
+
+**Editor-side (literal — tokens preserved):** `admin_tools.py`, world-field editor (no runtime ctx), document editor (no runtime ctx).
+
+**Editor system prompts** (`document_editor_system_prompt.py`, `world_field_editor_system_prompt.py`) teach the AI about all four tokens via the shared `prompts/stat_placeholders_section.py` (rendered as a "## Stat Placeholders" markdown section grouped by owner; empty `stat_defs` → section omitted entirely). `world_field_editor_system_prompt.py` writes literal placeholder tokens as `{{CHARACTER_NAME}}` etc. because its role string is rendered through `.format()`.
+
 ## Stat System
 
-- **Defined per world** via `world_stat_definitions` (schema/template)
+- **Defined per world** via `world_stat_definitions` (schema/template). `WorldStatDefinition.name` values are usable inside chat-runtime prose as `{USER:NAME}` / `{WORLD:NAME}` — see Runtime Placeholders above.
 - **Valued per chat session** in `character_stats` / `world_stats` JSON fields
 - **Types**: int (min/max range), enum (single from list), set (multiple from list)
 - **Updates (simple mode)**: LLM outputs `[STAT_UPDATE]...[/STAT_UPDATE]` block, parsed and validated server-side via `stat_validation.validate_and_apply_stat_updates()`
 - **Updates (chain mode)**: Planning agent calls `update_stat()` tool; results collected in `PlanningContext`, converted to `GenerationPlanOutput`, validated server-side
+- **Updates (admin/editor)**: `PUT /api/chats/:id/stats` → `services/stat_validation.apply_admin_stat_updates` → `db.chats.update_session_stats`. All-or-nothing 422 vs LLM-tool silent-skip — both share `validate_single_value` per-value, but the admin path surfaces errors while the LLM tool can't crash a streaming generation.
 - **Validation**: int values clamped to `[min, max]` range; enum values checked against allowed list; set elements filtered to valid values; unknown stats logged and skipped
-- **Snapshots**: `chat_state_snapshots` records stats at each turn for rewind
+- **Snapshots**: `chat_state_snapshots` records stats at each turn for rewind. Admin stat edits via `db.chats.update_session_stats` mirror the new values into the snapshot row at `current_turn` — the UI's read path goes through snapshot, not session.
 
 ## Regeneration & Variants
 
@@ -273,7 +320,7 @@ Editor+ toggle in user settings. Controls UI visibility of tool call details, th
 
 ## Key Patterns
 
-- **Prompts**: All pre-coded prompt parts in `backend/app/services/prompts/` — one documented file per prompt (stage-4 docstring: PURPOSE, USAGE, VARIABLES, DESIGN RATIONALE, CHANGELOG), re-exported via `__init__.py`. Admin-editable parts injected as variables. No hardcoded prompt text in service files.
+- **Prompts**: All pre-coded prompt parts in `backend/app/services/prompts/` — one documented file per prompt (stage-4 docstring: PURPOSE, USAGE, VARIABLES, DESIGN RATIONALE, CHANGELOG), re-exported via `__init__.py`. Admin-editable parts injected as variables. No hardcoded prompt text in service files. Doubled-brace gotcha: `world_field_editor_system_prompt.py`'s role string is rendered through `.format()`, so literal placeholder tokens (e.g. `{CHARACTER_NAME}`) must be written as `{{CHARACTER_NAME}}`.
 - **LLM client**: PythonLLMClient, `pydantic_to_openai_tool()` for tool schemas
 - **Auth**: Per-user HS256 JWT signing key (no global secret), key rotation on login (30-day interval)
 - **Password**: App-level salt + bcrypt (direct `bcrypt` library, not passlib)

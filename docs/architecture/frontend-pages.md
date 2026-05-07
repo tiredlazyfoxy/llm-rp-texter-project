@@ -146,6 +146,18 @@ A page state may own ancillary lookup data its child components need rather than
 
 When a create surface has more than two or three fields, prefer a "shadow" `/<resource>/new` route that reuses the edit page (POST on first save, PUT thereafter — see `PipelineEditPage`'s shadow/edit modes in `pipelineEditPageState.ts`) over an inline create modal. Worlds and users keep their inline create modals because their create surfaces are small.
 
+## Draft routes via `?new=1`
+
+When the editor needs a real id before first save (e.g. the document editor wires child-resource links that must reference a parent id), the create flow uses a real URL with a server-allocated id and a `?new=1` query flag rather than a URL-synthetic shadow path:
+
+1. Caller hits `GET /api/admin/snowflake/new` to pre-allocate an id.
+2. Navigate to `/admin/.../<id>/edit?new=1&doc_type=...`.
+3. The page sees `isNew=true` and **skips the URL-driven load**, initializing an empty draft for the supplied `doc_type` instead. Reload re-initializes the same draft (same id, same doc_type).
+
+This differs from `PipelineEditPage`'s shadow mode: that pattern uses a synthetic `/pipelines/new` URL with no real id. `?new=1` opens a real, refreshable URL with a real id; the page just skips the load. See `frontend-forms.md` § "Pre-allocated id drafts" for the form-side pattern (queued child-resource ops).
+
+Route wrappers may surface query params as **typed props** rather than letting each page read `useSearchParams` ad hoc. `DocumentEditPageRoute` is the precedent: it reads `?new` / `?doc_type` and passes `isNew: boolean` / `initialDocType?: string` as props to the page, which keeps page state construction free of router knowledge.
+
 ## No upward callbacks across pages
 
 A common mistake: opening a modal child page that reports back to its parent ("the parent list should refresh now"). We don't do this.
@@ -219,6 +231,11 @@ useEffect(() => {
 ```
 
 The state instance itself doesn't need explicit disposal — when the component unmounts, the `useState`-held reference drops, and GC cleans up.
+
+## Page-specific notes
+
+- **`CharacterSetupPage`** (Feature 011) — has an explicit "Character Name" input above the template-variable inputs, replacing the prior heuristic `state.variables["NAME"] || ... || "Hero"` derivation in `submitCharacter`. The input is the sole source of truth for `chat.character_name` and is independent of any world `{NAME}` template variable. See `frontend-forms.md` for the trim-and-reject validation rule.
+- **`ChatViewPage`** (Feature 012) — admin-or-editor users see a stat editor drawer trigger in the header. The drawer (`frontend/src/user/components/chats/StatEditorDrawer.tsx`) submits `PUT /api/chats/:id/stats`, then refreshes via `getChatDetail` re-fetch + `mergeChatDetail` (NOT via SSE — the admin endpoint does not emit `stat_update`). Trigger gate: `role === "admin" || role === "editor"` — matches the backend `require_role(UserRole.editor)` minimum.
 
 ## Anti-patterns
 

@@ -38,6 +38,8 @@ Three layers, each with a clear lifetime and purpose:
 
 **Globals are plain module state, not a MobX store, not a class.** Auth and global settings are read via plain function calls (`getToken()`, `getTranslationSettings()`). React components don't need to react to them — auth changes navigate away, settings changes are explicit user actions that re-read on next use. If a future global truly needs to be reactive in the UI, that's the moment to introduce a single small observable; until then, **don't**.
 
+> **Documented exception — navigation-shell singletons.** The user-SPA's `userSidebarState` (`frontend/src/user/components/userSidebarState.ts`) is a module-level singleton MobX class — an explicit exception to the "module-level globals are plain functions, not classes" rule. **Scope:** the user-SPA's left-side worlds+chats navigation sidebar only. **Lifetime:** SPA boot → unload (same as the navigation shell that hosts it). **Reason:** the sidebar must reflect cross-page mutations (e.g. `character_name` saved on `ChatSettingsPanel`) without remounting the SPA shell. This is **not** a fourth tier in the canonical state ladder. Future cross-page reactivity should still default to per-page state + refetch unless the requirement matches this navigation-shell shape (long-lived shell aggregating derived state from multiple page interactions).
+
 Component state is reserved for genuinely component-local concerns (e.g., a transient hover index, a popover open flag, the input bar's translation buffer) — most pages won't have it.
 
 ## State is data + computed, never effectful methods

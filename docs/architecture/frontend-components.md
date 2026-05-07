@@ -203,7 +203,19 @@ This replaces every custom hook in the codebase. A `useTranslation` returning `{
 
 **Imperative API escape valve.** When a wrapper component must expose a small named imperative API to its parent (e.g. `PlaceholderTextarea` → `insertAtCursor`), prefer a typed `controllerRef?: RefObject<XController | null>` published via mount/unmount `useEffect` over re-exposing internal DOM refs. Two- or three-method ceiling — anything wider is a sign the behavior should be lifted into observable state instead.
 
+`PlaceholderTextarea` (the canonical example) is reused across the pipeline-stage editor, the world initial-message editor (`WorldFieldEditPage`), and the document editor (`DocumentEditPage` Content). It graduated from a one-page utility to a shared admin component under `admin/components/placeholders/`.
+
 **Disabled-state composition.** `LlmInputBar` derives the textarea-disabled state as `disabled || busy || isTranslating` — the textarea is greyed out in any of those conditions; callers don't get to enable it while sending is busy. If a future caller needs split control (textarea enabled while send is disabled, or vice versa), introduce separate `inputDisabled` / `sendDisabled` props rather than working around the combined check.
+
+## Native HTML5 drag-and-drop
+
+File-drop affordances use **native HTML5 DnD**, not `@mantine/dropzone` / `react-dropzone`. The dependency surface is small and the integration with MobX page state is direct. Established by Feature 013 (`WorldViewPage` documents table); reuse this pattern for any new file-drop target.
+
+Gotchas (codify, don't relearn):
+
+- `e.preventDefault()` on **both** `dragover` AND `drop`. Missing the `dragover` preventDefault drops files onto a no-op browser default.
+- `dragleave` fires on every descendant boundary crossing. Use a **depth counter** (increment on `dragenter`, decrement on `dragleave`, drop visual when counter hits 0) — a boolean flag flickers as the cursor moves between child elements.
+- The drag-over visual flag lives on **MobX page state**, not `useState`. Same rule as everywhere else: reactive UI state on the page, not in component-local hooks.
 
 ## Cross-SPA shared modals — `useState` exception
 

@@ -18,7 +18,8 @@ API client functions. Strongly typed end-to-end against `src/types/` definitions
 - `client.ts` — `request<T>`, `authHeaders()`, `ApiError`, `throwApiError`. The only place `fetch` is wrapped.
 - `auth.ts` — `getAuthStatus`, `login`, `setupCreate`, `setupImport`, `changePassword`. Login/setup endpoints don't require auth.
 - `worlds.ts` — worlds, documents, stats, rules, npc-location-links (admin).
-- `pipelines.ts`, `llmServers.ts`, `dbManagement.ts`, `admin.ts` — admin resources.
+- `pipelines.ts`, `llmServers.ts`, `dbManagement.ts` — admin resources.
+- `admin.ts` — admin resources (users) plus cross-cutting admin endpoints — e.g. `getNewSnowflakeId()` for the draft-editor pre-allocator (`GET /api/admin/snowflake/new`).
 - `chat.ts` — user chat sessions, messages, summaries, plus SSE streamers (sendMessage, regenerateMessage, compactChatStream).
 - `llmChat.ts` — admin LLM chat panel + admin translate.
 - `userSettings.ts` — current user's settings (translation defaults, model list).

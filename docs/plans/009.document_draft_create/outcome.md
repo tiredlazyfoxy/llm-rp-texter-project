@@ -90,3 +90,8 @@
   note that `isDirty` should always be true in draft mode — the
   alternative ("only mark dirty on field edits") leaves the user with no
   way to commit an empty-but-valid draft.
+
+---
+Status: Applied 2026-05-06
+Applied items: 7
+Rejected items: 1 (one-router-per-file pattern observation — already implicit in existing docs, no need to re-state)

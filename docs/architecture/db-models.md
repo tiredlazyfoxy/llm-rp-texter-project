@@ -24,3 +24,6 @@ SQLModel table definitions live in [`backend/app/models/`](../backend/app/models
 
 - **Feature 007 — pipelines extracted from worlds.** Generation flows (simple / chain / agentic) live on the `pipelines` table; worlds reference one via `world.pipeline_id`. The legacy world columns `system_prompt`, `simple_tools`, `pipeline`, `generation_mode`, `agent_config` remain on the schema but are write-dead — kept for old-export backward compat and one-shot rollback. Cleanup of those columns is a planned follow-up.
 - **`world.lore`** continues to be deprecated (unchanged by Feature 007).
+- **`chat_sessions.character_name`** (Feature 011) is user-editable post-creation via `PUT /api/chats/:id/settings` and is the source of truth for the `{CHARACTER_NAME}` runtime placeholder. No row-shape change.
+- **`chat_state_snapshots`** (Feature 012) — `db.chats.update_session_stats` mirrors admin/editor stat edits into the snapshot row at `current_turn` in the same commit. This is architecturally significant: the UI read path resolves stats via snapshots, not session JSON.
+- **Cross-table id space.** `WorldLocation`, `WorldNPC`, `WorldLoreFact` share one snowflake id space. `db.worlds.document_id_exists(doc_id)` is the canonical collision check.

@@ -23,11 +23,16 @@ admin/
                        and owns a component-local draft class (held via `useState(() => new XDraft())`)
                        with external `submit*(draft, args, signal)` mutation fns colocated in the
                        same file.
-    placeholders/    — PlaceholderPanel, PlaceholderSuggestions, PlaceholderTextarea (+ placeholderAutocompleteState.ts).
-                       Shared between pipeline-stage and world-field editors.
+    placeholders/    — PlaceholderPanel, PlaceholderSuggestions, PlaceholderTextarea
+                       (+ placeholderAutocompleteState.ts, runtimePlaceholders.ts exporting
+                       RUNTIME_PLACEHOLDERS, buildStatPlaceholders.ts).
+                       Shared between pipeline-stage editor, world-field editor, and document editor
+                       (graduated to a shared admin component in Feature 010).
                        PlaceholderTextarea exposes an optional `controllerRef` of type
                        `PlaceholderTextareaController` ({ insertAtCursor(text) }) for callers that
-                       need cursor-position insertion (e.g. PipelineStageEditPage's PlaceholderPanel).
+                       need cursor-position insertion. Feature 012: `buildStatPlaceholders(defs)` lifts
+                       `WorldStatDefinition` rows into placeholder badges; `PlaceholderPanel` renders
+                       them as a "Stats" subgroup under the existing flat runtime-placeholder row.
     llm/             — LlmChatPanel (+ llmChatPanelState.ts) — public props unchanged; per-mount
                        internal state class with external (state, args, signal) mutation fns.
 ```
@@ -39,7 +44,7 @@ Routing uses `react-router-dom`'s `BrowserRouter` with `basename="/admin"` mount
 ## Routes
 
 - `/admin/worlds` — WorldsListPage
-- `/admin/worlds/:id` — WorldViewPage (tabbed: Info, All Docs, Locations, NPCs, Lore Facts, Chats)
+- `/admin/worlds/:id` — WorldViewPage (tabbed: Info, All Docs, Locations, NPCs, Lore Facts, Chats). Documents table on typed tabs (`location` / `npc` / `lore_fact`) is a native HTML5 drag-and-drop target for `.md` / `.txt` files. The `all` tab is intentionally NOT a drop target (uploaded `doc_type` would be ambiguous). Empty tables remain drop targets; existing Upload menu kept alongside the drop zone.
 - `/admin/worlds/:id/edit` — WorldEditPage (Pipeline picker; pipeline editing happens under `/admin/pipelines/:id`)
 - `/admin/worlds/:id/field/:fieldName` — WorldFieldEditPage (AI-assisted editing of `description` / `initial_message`; `system_prompt` is no longer a world field — it lives on the Pipeline)
 - `/admin/worlds/:id/documents/:docId/edit` — DocumentEditPage

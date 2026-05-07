@@ -50,6 +50,7 @@ src/
       common/
       worlds/
       pipelines/
+      placeholders/
       users/
       llm/
 

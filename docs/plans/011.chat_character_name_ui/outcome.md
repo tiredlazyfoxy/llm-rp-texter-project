@@ -105,3 +105,9 @@ otherwise `backend/app/models/CLAUDE.md` or `backend/CLAUDE.md`)
 ## Observations
 
 _populated by the coder during implementation_
+
+---
+Status: Applied 2026-05-06
+Applied items: 7
+Rejected items: 2 (per-page state shape detail for `characterSetupPageState` in `frontend-state.md` — architecture doc keeps general rules, not per-page schemas; composition / changelog notes belong outside architecture)
+Notes: `userSidebarState` singleton sanctioned in `frontend-state.md` as a documented exception (navigation-shell scope only — not elevated to a fourth tier in the state ladder).

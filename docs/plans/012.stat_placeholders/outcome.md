@@ -72,3 +72,16 @@
 - Step 006: drawer refresh strategy is **re-fetch + merge**, not "trust the response." The step-004 endpoint's `UpdateChatStatsResponse.applied` echoes the *requested* values rather than the post-clamp persisted ones (e.g. an int submitted past `max_value` is clamped on persist but echoed verbatim). The drawer therefore calls `getChatDetail` after a successful PUT and merges through the existing `mergeChatDetail` helper so the snapshot reflects the actual stored state. Possible impact: when finalizing `quick-reference.md`'s row for `PUT /api/chats/{chat_id}/stats`, document the response-vs-persisted divergence and recommend the re-fetch pattern for any future admin-write client.
 - Step 006: frontend trigger gating is `role === "admin" || role === "editor"` — matches the backend's `require_role(UserRole.editor)` minimum-role gate (admin still passes). Step 006's step file said admin-only; the gate widening was decided during step 004 follow-up. Possible impact: the planner-authored `outcome.md` section above ("trigger gated on `auth.role === 'admin'`") is now stale — when finalizing `frontend.md` / user-SPA notes, write "admin or editor" so future readers don't reintroduce the narrower gate.
 - Step 006: drawer mounted under `frontend/src/user/components/chats/` (alongside `ChatSettingsPanel.tsx` / `StatsPanel.tsx`), not at `components/` root. The step file's path used the bare `components/` folder, but only `UserSidebar.tsx` lives there as a layout-shell exception per `frontend/src/user/CLAUDE.md`. Possible impact: when updating `frontend/CLAUDE.md` or the user-SPA architecture notes, list `StatEditorDrawer.tsx` under `components/chats/` so the convention sticks.
+
+---
+Status: Applied 2026-05-06
+Applied items: 11
+Rejected items: 5
+Notes:
+- **SSE-emit claim REJECTED.** The endpoint does not emit `stat_update` (Step 004 resolution, option 1). `quick-reference.md` API row and SSE-events table updated accordingly; admin drawer refreshes via `getChatDetail` re-fetch + `mergeChatDetail`.
+- **Admin-only gate claim MODIFIED to admin-or-editor.** Backend gates at `require_role(UserRole.editor)` minimum; frontend matches `role === "admin" || role === "editor"`.
+- **Module name MODIFIED:** `services/stat_validation.apply_admin_stat_updates` (not `services/stat_service` — that module does not exist; the new helper lives alongside `validate_and_apply_stat_updates`).
+- **`chat_agent_service.py` REJECTED as a chat-runtime context builder.** It is purely a dispatcher; existing docs are correct.
+- **`routes/llm_chat.py` per-request `stat_defs_db.list_by_world` load REJECTED** — implementation detail, not architectural.
+- **"No frontend test framework" architectural note REJECTED** — handled instead via the new `docs/plans/backlog/frontend_test_runner.md` backlog idea.
+- Runtime Placeholders section in `quick-reference.md` is consolidated with Feature 010 — single section, single source of truth.

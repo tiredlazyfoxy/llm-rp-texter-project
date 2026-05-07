@@ -151,3 +151,9 @@ docs:
   pays off once 004 + 005 are live.
 - Possible impact: mention the composition in the release /
   changelog note alongside the original 001 + 003 composition.
+
+---
+Status: Applied 2026-05-06
+Applied items: 8
+Rejected items: 2 (composition / changelog "must ship together" notes belong in commit/PR notes, not architecture)
+Notes: The `quick-reference.md` Runtime Placeholders section is consolidated with Feature 012's namespaced stat tokens — single section, single source of truth. Constant exported is `RUNTIME_PLACEHOLDERS` from `runtimePlaceholders.ts` (renamed from `INITIAL_MESSAGE_PLACEHOLDERS` / `initialMessagePlaceholders.ts` in step 007).

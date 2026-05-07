@@ -215,7 +215,17 @@ FastAPI app
 └── /api/admin   — Admin API (user & world management)
 ```
 
-Each sub-API is a separate FastAPI `APIRouter` mounted on the main app.
+Each sub-API is a separate FastAPI `APIRouter` mounted on the main app. **Note**: `/api/admin/*` is an admin-namespace prefix, not a strict admin-role gate — some paths (e.g. `GET /api/admin/snowflake/new`, the world editor CRUD, `/api/admin/pipelines`) gate at editor minimum.
+
+## ID Generation
+
+Snowflake ids (int64) are server-assigned by default via `generate_id()`. Create endpoints **may** accept an optional client-supplied `id` field on the request body when the workflow requires the id before first save (e.g. draft editors with child relationships). Contract:
+
+- Request body carries optional `id: str` (snowflake string).
+- Server falls back to `generate_id()` when absent.
+- HTTP 409 on collision; HTTP 400 on non-numeric input.
+
+`db.worlds.document_id_exists(doc_id)` is the canonical cross-table id-collision check across `WorldLocation` / `WorldNPC` / `WorldLoreFact` (these share one snowflake id space). `GET /api/admin/snowflake/new` is the canonical pre-allocator for the admin SPA's draft flows.
 
 ## Generation Modes
 
@@ -233,10 +243,26 @@ A world picks a pipeline via `world.pipeline_id` (Feature 007); the pipeline's `
 
 **Shared infrastructure** (used by all modes):
 
-- `chat_tools.py` — Universal tool registry (`TOOL_REGISTRY`, 12 tools: 8 chat tools, 3 planning tools, 1 director tool). One factory, `build_tools(names, ToolContext)`, binds admin-selected names to whatever state (`world_id`, `session_id`, `planning_context`, `stat_defs`, `char_stats`, `world_stats`, `decision_state`) the caller supplies. Unknown name or unmet `requires` → `ValueError`. No per-stage factories or hardcoded bundles — every stage (simple, chain-tool, chain-writer) honors `stage.tools` verbatim.
-- `chat_context.py` — Loads location, NPCs, rules, stats, lore, memories; formats into prompt-ready strings
-- `stat_validation.py` — Validates stat updates against definitions (int range clamping, enum membership, set filtering)
+- `chat_tools.py` — Universal tool registry (`TOOL_REGISTRY`, 12 tools: 8 chat tools, 3 planning tools, 1 director tool). One factory, `build_tools(names, ToolContext)`, binds admin-selected names to whatever state (`world_id`, `session_id`, `planning_context`, `stat_defs`, `char_stats`, `world_stats`, `decision_state`, `runtime_placeholders`) the caller supplies. Unknown name or unmet `requires` → `ValueError`. No per-stage factories or hardcoded bundles — every stage (simple, chain-tool, chain-writer) honors `stage.tools` verbatim.
+- `chat_context.py` — Loads location, NPCs, rules, stats, lore, memories; formats into prompt-ready strings. `ChatContext` exposes `character_stats_raw` / `world_stats_raw` (parsed JSON dicts) so downstream chat-runtime sites consume one source instead of re-parsing `ChatSession.character_stats` / `.world_stats`.
+- `stat_validation.py` — Validates stat updates against definitions (int range clamping, enum membership, set filtering). Hosts both the LLM-tool path (`validate_and_apply_stat_updates`, silent-skip) and the admin-route adapter `apply_admin_stat_updates` (all-or-nothing 422). Both share `validate_single_value` for per-value checks; the divergent failure semantics are intentional (admin path surfaces errors, LLM tool can't crash a streaming generation).
+- `runtime_placeholders.py` — Single chat-runtime substitution helper (`apply_runtime_placeholders(text, ctx)`) plus the centralized `build_stat_values_map(stat_defs, character_stats, world_stats)` `(StatScope -> owner-token)` builder. `ToolContext.runtime_placeholders` distinguishes chat-bound construction (populated) from editor-bound (left `None`) — this is what keeps `admin_tools.py` raw while making `chat_tools.py` substitute. See `quick-reference.md` § "Runtime Placeholders" for the full token surface.
 - `prompts/chat_system_prompt.py` — Rich system prompt builder with full world context and memory management instructions
+- `prompts/stat_placeholders_section.py` — Shared "## Stat Placeholders" markdown section consumed by both `document_editor_system_prompt.py` and `world_field_editor_system_prompt.py`. Empty `stat_defs` → section omitted entirely.
+
+**Stat-edit layering example (admin/editor path):**
+
+```
+routes/chat.py:update_chat_stats        — HTTP, role-gates editor+
+  → services/stat_validation.apply_admin_stat_updates  — pre-validates every item; raises HTTPException(422, {status, reason, all_stats}) on first invalid; on success delegates
+    → db.chats.update_session_stats     — persists JSON to ChatSession AND mirrors into ChatStateSnapshot at current_turn (UI read path goes through snapshot)
+```
+
+The 422 body shape matches what the LLM `update_stat` tool returns — same renderer works for both. Failure semantics differ on purpose (see above).
+
+**Document upload service.** `services/world_editor.upload_documents` accepts all three document types: `location` (upsert by lowercased filename stem), `npc` (upsert by lowercased filename stem), `lore_fact` (always create — no name field on `WorldLoreFact`; filename is discarded).
+
+**Chat session edits.** `UpdateChatSettingsRequest` has three editable fields: `tool_model`, `text_model`, `character_name`. `character_name` uses a trim-and-reject validator shared with `CreateChatRequest` (HTTP 400 on empty / whitespace-only). The next chat turn re-resolves `{CHARACTER_NAME}` from the live session value — no history rewrite.
 
 ## Prompt Architecture
 

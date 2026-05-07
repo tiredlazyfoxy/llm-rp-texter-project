@@ -37,6 +37,10 @@ The draft is initialized from the loaded `world` after the load completes (in th
 
 Keeping the server snapshot and the draft separate is what makes `isDirty` cheap and reliable.
 
+## Pre-allocated id drafts
+
+When the editor needs a real id before first save (e.g. child-resource links that must reference a parent id), the page uses a real URL with `?new=1` and a server-allocated id: client fetches an id from `GET /api/admin/snowflake/new`, navigates to `/admin/.../<id>/edit?new=1&doc_type=...`, and the page initializes an empty draft instead of loading. Child-resource intents (e.g. NPC ↔ Location links) are **queued in page state** during draft mode and flushed sequentially against existing APIs after the parent POST succeeds. Two caveats: the queue is a **snapshot** taken at save time from `draft.{allowed,prohibited}Ids` — drafts with truly live child APIs would need a different shape; and `isDirty` returns true while `isNew` so Save stays visible during draft mode. See `frontend-pages.md` § "Draft routes via `?new=1`".
+
 ## Validation as computed derivations
 
 Validation is **`get` computed derivations on state** — pure functions of observable fields. No `validate()` method, no separate validation pass run at submit time.
@@ -100,6 +104,10 @@ get errors(): DraftErrors {
 ```
 
 Validators are pure — input → string-or-null. They never read state, they never call APIs, they never have side effects.
+
+### Canonical input rules
+
+- **Character Name** (Feature 011) — applied in both `CharacterSetupPage` and `ChatSettingsPanel`. **Trim-and-reject**: empty / whitespace-only input is invalid. Submit button is disabled while invalid; backend mirrors the validator (HTTP 400 on empty/whitespace), shared between `CreateChatRequest` and `UpdateChatSettingsRequest`. The input is the sole source of truth for `chat.character_name` — independent of any world `{NAME}` template variable.
 
 ## Server-side errors merge in
 
