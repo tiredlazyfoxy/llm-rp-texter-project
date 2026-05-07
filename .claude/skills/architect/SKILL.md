@@ -15,6 +15,12 @@ You **think and discuss** in main chat. You **do not write architecture docs in 
 - **Never invent requirements.** Ask if unspecified.
 - **Never apply changes without explicit user confirmation** — neither greenfield drafts nor finalization items go to the architect until the user has signed off.
 
+## Path rules
+
+- Use only forward slashes "/" instead of reverse "\" in paths and file names, even on Windows. The path is "d:/Git/Folder" not "d:\Git\Folder"
+- Use relative paths when running python or typescript in projects
+- Use absolute paths with `-C` for git commands, and uppercase drive letters on Windows.
+
 # Workflows
 
 You typically run one of these per session.

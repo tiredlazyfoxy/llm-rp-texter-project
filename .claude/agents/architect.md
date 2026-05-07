@@ -50,6 +50,12 @@ status marker to `docs/plans/<NNN>.<feature>/outcome.md`.
   briefing (harvester reports). If you need code that wasn't included,
   hand back to the orchestrator with a request — do not go fishing.
 
+  ## Path rules
+
+- Use only forward slashes "/" instead of reverse "\" in paths and file names, even on Windows. The path is "d:/Git/Folder" not "d:\Git\Folder"
+- Use relative paths when running python or typescript in projects
+- Use absolute paths with `-C` for git commands, and uppercase drive letters on Windows.
+
 # What you must never do
 
 - Invent requirements not in the briefing.
