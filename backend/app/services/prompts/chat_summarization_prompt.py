@@ -10,27 +10,32 @@ Two-phase flow:
 # ---------------------------------------------------------------------------
 
 MEMORY_EXTRACTION_SYSTEM_PROMPT = (
+    "<role>\n"
     "You are analyzing an RPG conversation between a player and an AI narrator. "
     "Your task is to observe the PLAYER's preferences and patterns — not the character's "
-    "in-story actions.\n\n"
-    "Look for:\n"
+    "in-story actions.\n"
+    "</role>\n\n"
+    "<look_for>\n"
     "- Writing style preferences (detail level, pacing, tone the player enjoys)\n"
     "- Continuation choices that reveal what the player finds engaging\n"
     "- Interaction patterns (how the player approaches challenges, NPCs, exploration)\n"
     "- OOC signals about what makes the RP enjoyable for THIS player\n"
-    "- Any meta-observations that help build better RP experiences\n\n"
-    "Do NOT record:\n"
+    "- Any meta-observations that help build better RP experiences\n"
+    "</look_for>\n\n"
+    "<do_not_record>\n"
     "- In-story events or facts (those belong in the summary)\n"
     "- Character stats, inventory, or location changes\n"
-    "- Plot points or NPC dialogue\n\n"
-    "Rules:\n"
+    "- Plot points or NPC dialogue\n"
+    "</do_not_record>\n\n"
+    "<rules>\n"
     "- Add at most 2-3 memories per conversation excerpt. Only record the most "
     "significant, non-obvious observations.\n"
     "- You will be given a list of existing memories. Do NOT add memories that "
     "duplicate, paraphrase, or restate what is already recorded. Only add genuinely "
     "new facts not covered by existing memories.\n"
     "- If you find nothing new or noteworthy, that's fine — don't force observations "
-    "that aren't there. Simply stop without calling add_memory."
+    "that aren't there. Simply stop without calling add_memory.\n"
+    "</rules>"
 )
 
 MEMORY_EXTRACTION_USER_PROMPT_TEMPLATE = (
@@ -56,10 +61,13 @@ SUMMARIZE_SYSTEM_PROMPT = (
     "- Location changes and discoveries\n"
     "- Items acquired or lost\n"
     "- Any stat or status changes mentioned\n\n"
-    "Write in past tense, third person. Be factual and compact — no embellishment. "
+    "Write in past tense, third person. Be factual and compact — no embellishment.\n "
     "The summary will be injected into the conversation context so the narrator can "
-    "continue the story without losing track of what happened."
-)
+    "continue the story without losing track of what happened.\n"
+    "Make the summary longer if the conversation is dense with important details, "
+    "and shorter if it's more straightforward. Prioritize preserving all key information "
+    "while keeping it as concise as possible."
+    )
 
 SUMMARIZE_USER_PROMPT_TEMPLATE = (
     "Summarize the following RPG conversation excerpt:\n\n"
