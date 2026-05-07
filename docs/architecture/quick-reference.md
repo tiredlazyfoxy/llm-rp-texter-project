@@ -46,7 +46,7 @@ Condensed technical reference for the LLM RPG project. Sourced from plan documen
 
 **chat_summaries**: id, session_id, start_message_id, end_message_id, start_turn, end_turn, content, created_at
 
-**chat_memories**: id (snowflake, natural order), session_id, content (free text), created_at. Managed via MCP tools.
+**chat_memories**: id (snowflake, natural order), session_id, content (free text), embedding (JSON `list[float]`, nullable), created_at. Managed via MCP tools. The `embedding` is written by the post-extraction compaction step, not by `add_memory`; absence means the row predates compaction or compaction was skipped (no embedding server configured).
 
 ### Vector Storage (LanceDB, external)
 
@@ -146,6 +146,7 @@ Used for chat message generation and regeneration.
 | `thinking_done` | `{}` | End of thinking | Editor+ only |
 | `tool_call_start` | `{"tool_name": "...", "arguments": {...}}` | Tool invocation begins | Editor+ only |
 | `tool_call_result` | `{"tool_name": "...", "result": "..."}` | Tool returned | Editor+ only |
+| `memory_compaction` | `{"kept": [{"id": "...", "content": "..."}], "dropped": [{"id": "...", "content": "...", "duplicate_of_id": "...", "duplicate_of_content": "...", "similarity": <float>}], "skipped": <bool>, "skip_reason": <string\|null>}` | After Phase 1, before Phase 2 of compaction (one event per compaction run, including when skipped) | Editor+ only |
 | `user_ack` | `{"id": "...", "turn_number": N, "created_at": "..."}` | User message saved to DB | All |
 | `token` | `{"content": "...delta..."}` | Content token delta | All |
 | `stat_update` | `{"character_stats": {...}, "world_stats": {...}, "turn_number": N}` | Stats changed during LLM tool execution. **LLM-tool-only — `PUT /api/chats/:id/stats` does NOT emit this event.** | All |
@@ -206,7 +207,7 @@ All document-lookup tools use **free text → vector search → full document** 
 - **search(query, source_type?)** — Vector search across all types, returns top 10 chunks with metadata. `source_type` filters to `"location"`, `"npc"`, or `"lore_fact"`.
 - **web_search(query)** — Google Custom Search API. Requires `SEARCH_CSE_KEY` and `SEARCH_CSE_ID`. Returns 5 results (title, URL, snippet). (Same env vars and logic as admin `web_search` — separate implementation.)
 - **get_memory()** — Returns all `ChatMemory` rows for the session concatenated with `\n---\n`.
-- **add_memory(content)** — Appends a new `ChatMemory` row for the session. LLM is instructed to save story-significant facts (promises, relationship changes, plot developments) as 1-2 short factual sentences.
+- **add_memory(content)** — Appends a new `ChatMemory` row for the session. LLM is instructed to save story-significant facts (promises, relationship changes, plot developments) as 1-2 short factual sentences. Rows are stored without an embedding; the embedding is computed during the next compaction pass. The LLM-facing return is unchanged (`"Memory saved."`).
 - **move_to_location(location_name)** — Resolves location name via vector search, updates `session.current_location_id`, returns new location info (description, exits, NPCs).
 
 Tool registration: single `TOOL_REGISTRY` (12 tools) + `build_tools(names, ToolContext)` factory. Each registry entry declares `requires` (which `ToolContext` fields must be set). Admin picks tool names per stage (`stage.tools` / `World.simple_tools`); the generation service constructs a `ToolContext` with the state it has (simple mode: `world_id`+`session_id`; chain tool stage: adds `planning_context`, `stat_defs`, `char_stats`, `world_stats`, `decision_state`; chain writer stage: `world_id`+`session_id` only) and calls `build_tools(stage.tools, ctx)`. Unknown names or unmet requirements raise `ValueError`. Planning/director tools:
@@ -285,6 +286,14 @@ Render rules:
 - Summarized messages get `summary_id` set (not deleted)
 - Context build order: system prompt -> summaries (by start_turn ASC) -> raw non-summarized active messages
 - Lazy-loaded, triggered when context exceeds threshold
+
+Live flow: **Phase 1** (memory extraction via `add_memory` tool calls) -> **memory compaction** -> **Phase 2** (streaming summary). Compaction (fast feature 001):
+
+- Computes embeddings for newly-added memories AND any pre-existing session memories that lack them (lazy backfill).
+- Cosine-compares each new memory against every other session memory; new memories with cosine similarity >= `MEMORY_DEDUP_COSINE_THRESHOLD` (= 0.92) to any other memory are deleted (younger row loses ties).
+- Persists embeddings on the surviving rows.
+- Emits exactly one `memory_compaction` SSE event between Phase 1 and Phase 2.
+- **Silent skip** when no embedding server is configured: log at DEBUG, no error, the SSE event is still emitted with `skipped=True` and `skip_reason="no_embedding_server"`, summarization continues normally. Errors during compaction are caught and reported the same way (`skip_reason="error"`).
 
 ## Generation Modes (feature 003, ownership revised in feature 007)
 

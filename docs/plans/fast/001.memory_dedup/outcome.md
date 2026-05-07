@@ -41,3 +41,11 @@ Doc changes the architect should apply to `docs/architecture/` after this featur
 ## Observations
 
 _(empty — the coder fills this in if anything surprised them during implementation)_
+
+---
+
+Status: Applied 2026-05-07
+Applied items: 4
+Rejected items: 1 (notes below)
+
+Applied 2026-05-07. Items 1-4 landed in `docs/architecture/quick-reference.md` (chat_memories row gained `embedding`; SSE table gained `memory_compaction` row, placed between `tool_call_result` and `user_ack`; Summarization section extended with the Phase 1 -> compaction -> Phase 2 flow and silent-skip behavior; `add_memory` bullet notes that embeddings are deferred to compaction). `backend.md` was reviewed and skipped (conditional bar not met — no existing summarization description to drift). Frontend docs unchanged per outcome.md.
