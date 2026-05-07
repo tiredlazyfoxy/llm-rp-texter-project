@@ -500,6 +500,38 @@ async def create_memory(memory: ChatMemory) -> ChatMemory:
         return memory
 
 
+async def update_memory_embeddings(updates: dict[int, list[float]]) -> None:
+    """Set `embedding` on the given memory ids in a single transaction."""
+    if not updates:
+        return
+    session = await get_standalone_session()
+    async with session:
+        rows = (await session.exec(
+            select(ChatMemory).where(ChatMemory.id.in_(list(updates.keys())))  # type: ignore[arg-type]
+        )).all()
+        for row in rows:
+            new_embedding = updates.get(row.id)
+            if new_embedding is None:
+                continue
+            row.embedding = new_embedding
+            await session.merge(row)
+        await session.commit()
+
+
+async def delete_memories(memory_ids: list[int]) -> None:
+    """Hard-delete `chat_memories` rows by id."""
+    if not memory_ids:
+        return
+    session = await get_standalone_session()
+    async with session:
+        rows = (await session.exec(
+            select(ChatMemory).where(ChatMemory.id.in_(memory_ids))  # type: ignore[arg-type]
+        )).all()
+        for row in rows:
+            await session.delete(row)
+        await session.commit()
+
+
 async def delete_memory(memory_id: int, session_id: int) -> bool:
     """Delete a memory by ID (scoped to session). Returns True if deleted."""
     session = await get_standalone_session()

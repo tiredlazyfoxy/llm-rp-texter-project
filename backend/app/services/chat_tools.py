@@ -221,8 +221,17 @@ async def get_memory_impl(session_id: int) -> str:
     return "\n---\n".join(m.content for m in memories)
 
 
-async def add_memory_impl(session_id: int, content: str) -> str:
-    """Create a new ChatMemory record."""
+async def add_memory_impl(
+    session_id: int,
+    content: str,
+    saved_memory_ids: list[int] | None = None,
+) -> str:
+    """Create a new ChatMemory record.
+
+    If `saved_memory_ids` is provided, the new row's id is appended to it
+    so callers (e.g. summarization compaction) can post-process the rows.
+    The LLM-facing return string is unchanged.
+    """
     from app.db import chats as chats_db
     from app.models.chat_memory import ChatMemory
     from app.services import snowflake as snowflake_svc
@@ -234,6 +243,8 @@ async def add_memory_impl(session_id: int, content: str) -> str:
         created_at=datetime.now(timezone.utc),
     )
     await chats_db.create_memory(memory)
+    if saved_memory_ids is not None:
+        saved_memory_ids.append(memory.id)
     return "Memory saved."
 
 

@@ -90,6 +90,11 @@ async def init_db() -> None:
             logger.info("Migration: added pipeline_id column to worlds")
         except Exception:
             pass  # column already exists
+        try:
+            await conn.execute(text("ALTER TABLE chat_memories ADD COLUMN embedding JSON"))
+            logger.info("Migration: added embedding column to chat_memories")
+        except Exception:
+            pass  # column already exists
 
 
 async def get_standalone_session() -> AsyncSession:

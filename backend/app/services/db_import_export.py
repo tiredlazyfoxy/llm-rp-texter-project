@@ -573,6 +573,7 @@ def _chat_memory_to_dict(m: ChatMemory) -> dict:
         "session_id": m.session_id,
         "content": m.content,
         "created_at": _serialize_datetime(m.created_at),
+        "embedding": m.embedding,
     }
 
 
@@ -582,6 +583,7 @@ def _dict_to_chat_memory(d: dict) -> ChatMemory:
         session_id=d["session_id"],
         content=d.get("content", ""),
         created_at=_parse_datetime(d.get("created_at")),
+        embedding=d.get("embedding"),
     )
 
 

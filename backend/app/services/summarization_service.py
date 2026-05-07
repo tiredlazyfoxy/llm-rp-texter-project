@@ -27,8 +27,13 @@ from app.db import chats as chats_db
 from app.models.chat_summary import ChatSummary
 from app.models.schemas.chat import ChatMessageResponse, ChatSummaryResponse, GenerationVariant
 from app.services import snowflake as snowflake_svc
-from app.services.chat_tools import ToolContext, build_tools
+from app.services.chat_tools import ToolContext, add_memory_impl, build_tools
+from app.services.embedding import is_embedding_configured
 from app.services.llm_chat import get_llm_client_for_model
+from app.services.memory_compaction import (
+    MemoryCompactionResult,
+    compact_new_memories,
+)
 from app.services.prompts import (
     MEMORY_EXTRACTION_SYSTEM_PROMPT,
     MEMORY_EXTRACTION_USER_PROMPT_TEMPLATE,
@@ -191,6 +196,7 @@ async def compact_messages_stream(
         # Counting wrapper: cap add_memory calls and return structured JSON
         MAX_MEMORIES_PER_COMPACT = 5
         saved_memories: list[str] = []
+        saved_memory_ids: list[int] = []
         original_add_memory = tool_callables["add_memory"]
 
         @functools.wraps(original_add_memory)
@@ -203,7 +209,14 @@ async def compact_messages_stream(
                     "already_saved": saved_memories,
                     "message": "Maximum memories already saved. Stop calling add_memory.",
                 })
-            await original_add_memory(content=content)
+            # Bypass the registry binding so we can capture the new row id
+            # without leaking it to the LLM. The literal "Memory saved." return
+            # is preserved by add_memory_impl.
+            await add_memory_impl(
+                session_id=session_id,
+                content=content,
+                saved_memory_ids=saved_memory_ids,
+            )
             saved_memories.append(content)
             return json.dumps({
                 "status": "ok",
@@ -263,6 +276,31 @@ async def compact_messages_stream(
         finally:
             if not mem_task.done():
                 mem_task.cancel()
+
+        # ---------------------------------------------------------------
+        # Memory compaction — between Phase 1 and Phase 2.
+        # Embed new rows, cosine-dedup vs every other session memory, drop
+        # younger duplicates, persist embeddings on survivors. Errors do not
+        # abort summarization — they are reported via the SSE event.
+        # ---------------------------------------------------------------
+        try:
+            if not saved_memory_ids:
+                compaction_result = MemoryCompactionResult(
+                    kept=[], dropped=[], skipped=True, skip_reason="no_new_memories",
+                )
+            elif not await is_embedding_configured():
+                compaction_result = MemoryCompactionResult(
+                    kept=[], dropped=[], skipped=True, skip_reason="no_embedding_server",
+                )
+            else:
+                compaction_result = await compact_new_memories(session_id, saved_memory_ids)
+        except Exception:
+            logger.exception("memory compaction failed for session %s", session_id)
+            compaction_result = MemoryCompactionResult(
+                kept=[], dropped=[], skipped=True, skip_reason="error",
+            )
+
+        yield _sse("memory_compaction", compaction_result.model_dump())
 
         # ---------------------------------------------------------------
         # Phase 2: Summarization (streaming tokens)
