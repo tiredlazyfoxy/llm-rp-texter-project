@@ -393,7 +393,20 @@ const DocsTab = observer(function DocsTab({ state }: { state: WorldViewPageState
         const tableContent = loading ? (
         <Group justify="center" py="xl"><Loader /></Group>
       ) : state.docs.length === 0 ? (
-        <Text c="dimmed" ta="center" py="xl">No documents yet.</Text>
+        docTypeFilter ? (
+          <Stack
+            align="center"
+            justify="center"
+            gap={4}
+            py="xl"
+            style={{ minHeight: 160 }}
+          >
+            <Text c="dimmed" ta="center">No documents yet.</Text>
+            <Text c="dimmed" size="sm" ta="center">Drop .md or .txt files here to upload.</Text>
+          </Stack>
+        ) : (
+          <Text c="dimmed" ta="center" py="xl">No documents yet.</Text>
+        )
       ) : (() => {
         const isLoreTab = docTypeFilter === "lore_fact";
         const injected = isLoreTab ? [...state.docs].filter(d => d.is_injected).sort((a, b) => a.weight - b.weight) : [];
@@ -463,21 +476,42 @@ const DocsTab = observer(function DocsTab({ state }: { state: WorldViewPageState
       })();
 
         if (!docTypeFilter) return tableContent;
+        // Border has three visible states so the drop zone is discoverable
+        // before the user starts dragging:
+        //   - idle  → faint dashed gray  (signals the area is a drop target)
+        //   - hover → mid dashed gray    (hover affordance, no drag yet)
+        //   - drag  → solid dashed blue + translucent overlay (drag in progress)
+        // dropActive trumps dropHover.
+        // Idle + hover affordance is only shown on the empty-state branch
+        // (no documents yet) — once the table is populated, the dashed
+        // border becomes visual noise. Drag-active styling always applies.
+        const isEmpty = state.docs.length === 0;
+        const showIdleAffordance = isEmpty;
+        const borderColor = state.dropActive
+          ? "var(--mantine-color-blue-5)"
+          : showIdleAffordance && state.dropHover
+            ? "var(--mantine-color-gray-5)"
+            : showIdleAffordance
+              ? "var(--mantine-color-gray-3)"
+              : "transparent";
         return (
           <div
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            onMouseEnter={() => state.setDropHover(true)}
+            onMouseLeave={() => state.setDropHover(false)}
             style={{
               position: "relative",
-              border: state.dropActive
-                ? "2px dashed var(--mantine-color-blue-5)"
-                : "2px dashed transparent",
+              border: `2px dashed ${borderColor}`,
               borderRadius: 4,
               padding: 4,
-              transition: "border-color 120ms ease",
+              transition: "border-color 120ms ease, background-color 120ms ease",
               minHeight: 80,
+              backgroundColor: showIdleAffordance && state.dropHover && !state.dropActive
+                ? "var(--mantine-color-default-hover)"
+                : undefined,
             }}
           >
             {tableContent}

@@ -51,6 +51,14 @@ export class WorldViewPageState {
    */
   dropDepth: number = 0;
 
+  /**
+   * Mouse-hover state for the documents drop zone — drives a hover
+   * affordance (highlighted dashed border) so the user can see the
+   * area is a drop target before they start dragging. Toggled by
+   * `onMouseEnter` / `onMouseLeave` on the wrapper.
+   */
+  dropHover: boolean = false;
+
   constructor(worldId: string, initialTab: WorldViewTab = "info") {
     this.worldId = worldId;
     this.tab = initialTab;
@@ -83,6 +91,10 @@ export class WorldViewPageState {
 
   resetDropDepth(): void {
     this.dropDepth = 0;
+  }
+
+  setDropHover(value: boolean): void {
+    this.dropHover = value;
   }
 }
 
