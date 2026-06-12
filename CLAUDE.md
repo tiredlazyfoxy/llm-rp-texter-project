@@ -36,6 +36,23 @@ See `docs/architecture/` for full documentation.
 - **Prod**: Docker (nginx + FastAPI), no CORS
 - **Dev**: API on :8085, Frontend on :8094, CORS enabled
 
+## Build & Test Commands
+
+Agents (coder, fast-coder, verifiers, fixers) read commands from this section.
+If the area you're touching isn't covered here, ask before inventing a command.
+
+- **Backend tests**: `cd backend && .venv/Scripts/python -m pytest`
+  - From repo root, equivalent: `.venv/Scripts/python -m pytest` (run from `backend/`)
+  - No separate static type-check is configured for the backend.
+- **Frontend build (= typecheck + bundle)**: `cd frontend && npm run build`
+  - Internally runs `tsc && vite build`. Treat this as the frontend typecheck command.
+- **Frontend typecheck only (no bundle)**: `cd frontend && npx tsc --noEmit`
+- **Dev servers** (manual; not run by verifiers):
+  - Backend: `cd backend && .venv/Scripts/uvicorn app.main:app --port 8085 --reload`
+  - Frontend: `cd frontend && npx vite --port 8094`
+- **Linter**: none configured — do not run lint commands unless added here later.
+- **Python path convention**: invoke Python via `.venv/Scripts/python` (Windows venv layout); never call `python` from PATH inside this project.
+
 ## Project Structure
 
 - `docs/` — Documentation root
