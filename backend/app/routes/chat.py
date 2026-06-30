@@ -146,9 +146,11 @@ async def regenerate(
     caller: User = Depends(_require_player),
 ) -> StreamingResponse:
     turn = req.turn_number if req else None
+    scope = req.scope if req else None
+    comment = req.comment if req else None
     generator = await chat_agent_service.regenerate_response(
         int(chat_id), caller.id, caller_role=caller.role.value,
-        turn_number=turn,
+        turn_number=turn, scope=scope, comment=comment,
     )
     return StreamingResponse(generator, media_type="text/event-stream")
 

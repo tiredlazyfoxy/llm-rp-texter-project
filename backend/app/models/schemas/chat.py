@@ -201,6 +201,8 @@ class EditMessageRequest(BaseModel):
 
 class RegenerateRequest(BaseModel):
     turn_number: int | None = None
+    scope: Literal["plan", "text"] | None = None
+    comment: str | None = None
 
 
 class CompactRequest(BaseModel):
@@ -237,3 +239,20 @@ class UpdateChatStatsRequest(BaseModel):
 class UpdateChatStatsResponse(BaseModel):
     chat_id: str
     applied: list[StatUpdateItem]
+
+
+# ---------------------------------------------------------------------------
+# Chat tuning profile — per (user, world) preference tuning (Feature 014)
+# ---------------------------------------------------------------------------
+
+
+class TuningProfileResponse(BaseModel):
+    id: str
+    world_id: str
+    plan_tuning: str
+    tone_tuning: str
+
+
+class UpdateTuningProfileRequest(BaseModel):
+    plan_tuning: str
+    tone_tuning: str

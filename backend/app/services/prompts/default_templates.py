@@ -156,6 +156,10 @@ story-significant happens.
 **Do NOT save:** routine actions, location descriptions, combat details, \
 or anything already tracked by stats or location.
 
+## Player Preferences (Plan)
+
+{PLAN_TUNING}
+
 {USER_INSTRUCTIONS}\
 """
 
@@ -198,6 +202,10 @@ top-level narrative direction for this turn. Examples:
 Call `set_decision(content="<one sentence>")` and stop. The planning stage will \
 unfold your decision into concrete actions; the writer will render the prose.
 
+## Player Preferences (Plan)
+
+{PLAN_TUNING}
+
 {USER_INSTRUCTIONS}\
 """
 
@@ -224,6 +232,10 @@ plot points, NPC actions, or outcomes.
 - Your output is ONLY narrative prose
 - Do NOT include stat updates, JSON, tags, tool calls, or meta-information
 - Do NOT include [STAT_UPDATE] blocks — stats are handled separately
+
+## Player Preferences (Tone)
+
+{TONE_TUNING}
 
 {USER_INSTRUCTIONS}\
 """

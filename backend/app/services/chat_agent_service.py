@@ -11,7 +11,7 @@ import logging
 import re
 from collections.abc import AsyncGenerator, Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException, status
 
@@ -260,6 +260,8 @@ async def regenerate_response(
     user_id: int,
     caller_role: str = "player",
     turn_number: int | None = None,
+    scope: Literal["plan", "text"] | None = None,
+    comment: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Dispatch to mode-specific regeneration service.
 
@@ -297,6 +299,7 @@ async def regenerate_response(
         return chain_generation_service.regenerate_chain_response(
             session_id, user_id, caller_role,
             pipeline=pipeline,
+            scope=scope, comment=comment,
         )
     elif mode == "agentic":
         raise HTTPException(

@@ -13,11 +13,13 @@ from datetime import datetime
 
 from app.db.import_export_queries import export_table, upsert_batch
 from app.db.worlds import rewrite_initial_message_tokens
+from app.models.chat_generation_feedback import ChatGenerationFeedback
 from app.models.chat_memory import ChatMemory
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.chat_state_snapshot import ChatStateSnapshot
 from app.models.chat_summary import ChatSummary
+from app.models.chat_tuning_profile import ChatTuningProfile
 from app.models.llm_server import LlmServer
 from app.models.pipeline import Pipeline, PipelineKind
 from app.models.user import User, UserRole
@@ -587,12 +589,75 @@ def _dict_to_chat_memory(d: dict) -> ChatMemory:
     )
 
 
+# ---------------------------------------------------------------------------
+# Chat Tuning Profiles
+# ---------------------------------------------------------------------------
+
+
+def _chat_tuning_profile_to_dict(p: ChatTuningProfile) -> dict:
+    return {
+        "id": p.id,
+        "user_id": p.user_id,
+        "world_id": p.world_id,
+        "plan_tuning": p.plan_tuning,
+        "tone_tuning": p.tone_tuning,
+        "created_at": _serialize_datetime(p.created_at),
+        "modified_at": _serialize_datetime(p.modified_at),
+    }
+
+
+def _dict_to_chat_tuning_profile(d: dict) -> ChatTuningProfile:
+    return ChatTuningProfile(
+        id=d["id"],
+        user_id=d["user_id"],
+        world_id=d["world_id"],
+        plan_tuning=d.get("plan_tuning", ""),
+        tone_tuning=d.get("tone_tuning", ""),
+        created_at=_parse_datetime(d.get("created_at")),
+        modified_at=_parse_datetime(d.get("modified_at")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chat Generation Feedback
+# ---------------------------------------------------------------------------
+
+
+def _chat_generation_feedback_to_dict(f: ChatGenerationFeedback) -> dict:
+    return {
+        "id": f.id,
+        "session_id": f.session_id,
+        "turn_number": f.turn_number,
+        "verdict": f.verdict,
+        "scope": f.scope,
+        "comment": f.comment,
+        "content_snapshot": f.content_snapshot,
+        "plan_snapshot": f.plan_snapshot,
+        "created_at": _serialize_datetime(f.created_at),
+    }
+
+
+def _dict_to_chat_generation_feedback(d: dict) -> ChatGenerationFeedback:
+    return ChatGenerationFeedback(
+        id=d["id"],
+        session_id=d["session_id"],
+        turn_number=d["turn_number"],
+        verdict=d["verdict"],
+        scope=d.get("scope"),
+        comment=d.get("comment"),
+        content_snapshot=d.get("content_snapshot", ""),
+        plan_snapshot=d.get("plan_snapshot"),
+        created_at=_parse_datetime(d.get("created_at")),
+    )
+
+
 TABLE_REGISTRY = [
     ("users", User, _user_to_dict, _dict_to_user),
     ("user_settings", UserSettings, _user_settings_to_dict, _dict_to_user_settings),
     ("llm_servers", LlmServer, _llm_server_to_dict, _dict_to_llm_server),
     ("pipelines", Pipeline, _pipeline_to_dict, _dict_to_pipeline),
     ("worlds", World, _world_to_dict, _dict_to_world),
+    ("chat_tuning_profiles", ChatTuningProfile, _chat_tuning_profile_to_dict, _dict_to_chat_tuning_profile),
     ("world_locations", WorldLocation, _location_to_dict, _dict_to_location),
     ("world_npcs", WorldNPC, _npc_to_dict, _dict_to_npc),
     ("world_lore_facts", WorldLoreFact, _lore_fact_to_dict, _dict_to_lore_fact),
@@ -600,6 +665,7 @@ TABLE_REGISTRY = [
     ("world_stat_definitions", WorldStatDefinition, _stat_def_to_dict, _dict_to_stat_def),
     ("world_rules", WorldRule, _rule_to_dict, _dict_to_rule),
     ("chat_sessions", ChatSession, _chat_session_to_dict, _dict_to_chat_session),
+    ("chat_generation_feedback", ChatGenerationFeedback, _chat_generation_feedback_to_dict, _dict_to_chat_generation_feedback),
     ("chat_summaries", ChatSummary, _chat_summary_to_dict, _dict_to_chat_summary),
     ("chat_messages", ChatMessage, _chat_message_to_dict, _dict_to_chat_message),
     ("chat_state_snapshots", ChatStateSnapshot, _chat_state_snapshot_to_dict, _dict_to_chat_state_snapshot),

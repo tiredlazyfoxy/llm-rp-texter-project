@@ -18,13 +18,16 @@ import functools
 import json
 import logging
 from collections.abc import AsyncGenerator, Callable
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import HTTPException, status
 
 from app.db import chats as chats_db
+from app.db import generation_feedback as feedback_db
 from app.db import locations as locations_db
+from app.db import tuning_profiles as tuning_profiles_db
 from app.db import worlds as worlds_db
+from app.models.chat_generation_feedback import ChatGenerationFeedback
 from app.models.chat_message import ChatMessage
 from app.models.chat_state_snapshot import ChatStateSnapshot
 from app.models.pipeline import Pipeline
@@ -190,6 +193,7 @@ def _create_filtered_thinking_callback(
 def _build_placeholder_values(
     context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
     tools_desc: str, decision: str = "", user_instructions: str | None = None,
+    plan_tuning: str = "", tone_tuning: str = "",
 ) -> dict[str, str]:
     """Build the common placeholder kwargs for resolve_prompt_template."""
     return {
@@ -205,16 +209,22 @@ def _build_placeholder_values(
         "TURN_DECISIONS": turn_decisions,
         "DECISION": decision,
         "TOOLS": tools_desc,
+        "PLAN_TUNING": plan_tuning,
+        "TONE_TUNING": tone_tuning,
     }
 
 
 def _resolve_tool_prompt(
     stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
     tools_desc: str, decision: str = "", user_instructions: str | None = None,
+    plan_tuning: str = "", tone_tuning: str = "",
 ) -> str:
     """Resolve tool-step system prompt: template or legacy fallback."""
     if stage.prompt and stage.prompt.strip():
-        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc, decision, user_instructions)
+        values = _build_placeholder_values(
+            context, chat, turn_facts, turn_decisions, tools_desc, decision,
+            user_instructions, plan_tuning=plan_tuning, tone_tuning=tone_tuning,
+        )
         return resolve_prompt_template(stage.prompt, **values)
     return build_planning_system_prompt(
         world_name=context["world"].name,
@@ -237,11 +247,15 @@ def _resolve_tool_prompt(
 def _resolve_writer_prompt(
     stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
     decision: str = "", user_instructions: str | None = None,
+    plan_tuning: str = "", tone_tuning: str = "",
 ) -> str:
     """Resolve writer-step system prompt: template or legacy fallback."""
     if stage.prompt and stage.prompt.strip():
         tools_desc = build_tools_description(stage.tools)
-        values = _build_placeholder_values(context, chat, turn_facts, turn_decisions, tools_desc, decision, user_instructions)
+        values = _build_placeholder_values(
+            context, chat, turn_facts, turn_decisions, tools_desc, decision,
+            user_instructions, plan_tuning=plan_tuning, tone_tuning=tone_tuning,
+        )
         return resolve_prompt_template(stage.prompt, **values)
     return build_writing_system_prompt(
         world_name=context["world"].name,
@@ -308,6 +322,8 @@ async def _run_tool_stage(
     decision_state: DecisionState,
     current_decision: str,
     user_instructions: str | None = None,
+    plan_tuning: str = "",
+    tone_tuning: str = "",
 ) -> str:
     """Execute a single tool step. Returns thinking text (may be empty)."""
     phase_label = stage.name or f"Tool step {stage_idx + 1}"
@@ -347,6 +363,7 @@ async def _run_tool_stage(
     system_prompt = _resolve_tool_prompt(
         stage, context, chat, prev_facts, prev_decisions, tools_desc, current_decision,
         user_instructions=user_instructions,
+        plan_tuning=plan_tuning, tone_tuning=tone_tuning,
     )
     logger.debug("%s Tool prompt: %d chars", lp, len(system_prompt))
 
@@ -413,6 +430,8 @@ async def _run_writer_stage(
     tool_call_records: list[dict[str, Any]],
     current_decision: str,
     user_instructions: str | None = None,
+    plan_tuning: str = "",
+    tone_tuning: str = "",
 ) -> tuple[str, str]:
     """Execute a single writer step. Returns (prose_content, thinking_text)."""
     phase_label = stage.name or "Writing"
@@ -426,6 +445,7 @@ async def _run_writer_stage(
     system_prompt = _resolve_writer_prompt(
         stage, context, chat, all_facts, all_decisions_str, current_decision,
         user_instructions=user_instructions,
+        plan_tuning=plan_tuning, tone_tuning=tone_tuning,
     )
 
     # Build writer messages: summaries + clean history + plan
@@ -616,6 +636,22 @@ async def _finalize_chain(
 
 
 # ---------------------------------------------------------------------------
+# Tuning profile load seam
+# ---------------------------------------------------------------------------
+
+async def _load_tuning(chat) -> tuple[str, str]:
+    """Load (plan_tuning, tone_tuning) for the chat's (user_id, world_id).
+
+    Returns ("", "") when no profile row exists. Service layer - reads the
+    profile through the db module directly; no sessions/select here.
+    """
+    profile = await tuning_profiles_db.get(chat.user_id, chat.world_id)
+    if profile is None:
+        return "", ""
+    return profile.plan_tuning, profile.tone_tuning
+
+
+# ---------------------------------------------------------------------------
 # Core chain generation
 # ---------------------------------------------------------------------------
 
@@ -629,8 +665,15 @@ async def _run_chain_generation(
     pipeline_obj: Pipeline,
     is_regenerate: bool = False,
     user_instructions: str | None = None,
+    writer_only: bool = False,
+    prior_plan: GenerationPlanOutput | None = None,
 ) -> None:
-    """Run the dynamic N-step chain pipeline: tool steps → writer step."""
+    """Run the dynamic N-step chain pipeline: tool steps → writer step.
+
+    When ``writer_only`` is set (scope="text" regenerate), tool stages are
+    skipped and ``prior_plan`` seeds ``all_planning_contexts`` so the writer is
+    fed the previously-produced plan instead of re-running planning.
+    """
     try:
         lp = _lp(session_id, turn)
 
@@ -659,12 +702,31 @@ async def _run_chain_generation(
         world_stats = chats_db.parse_stats(chat.world_stats)
         director_decision: str = ""
 
+        # Writer-only regen (scope="text"): seed the planning contexts from the
+        # discarded message's stored plan so the writer reuses it. A single
+        # PlanningContext round-trips back to the same GenerationPlanOutput via
+        # _combine_planning_contexts (collected_data -> one fact, decisions and
+        # stat_updates carried verbatim).
+        if writer_only and prior_plan is not None:
+            all_planning_contexts.append(PlanningContext(
+                facts=[prior_plan.collected_data] if prior_plan.collected_data else [],
+                decisions=list(prior_plan.decisions),
+                stat_updates=list(prior_plan.stat_updates),
+            ))
+
+        # Load the per-(user, world) tuning profile once at run start via the
+        # directly-bindable _load_tuning seam; ("", "") when no profile exists.
+        plan_tuning, tone_tuning = await _load_tuning(chat)
+
         # Run pipeline stages
         for stage_idx, stage in enumerate(pipeline.stages):
             if not stage.enabled:
                 logger.debug("%s Stage %d (%s) disabled, skipping", lp, stage_idx, stage.name or stage.step_type)
                 continue
             if stage.step_type == "tool":
+                if writer_only:
+                    logger.debug("%s Stage %d (tool) skipped (writer-only regen)", lp, stage_idx)
+                    continue
                 stage_label = stage.name or f"Tool step {stage_idx + 1}"
                 stage_decision_state = DecisionState()
                 thinking_text = await _run_tool_stage(
@@ -673,6 +735,7 @@ async def _run_chain_generation(
                     tool_call_records,
                     stage_decision_state, director_decision,
                     user_instructions=user_instructions,
+                    plan_tuning=plan_tuning, tone_tuning=tone_tuning,
                 )
                 if stage_decision_state.decision:
                     director_decision = stage_decision_state.decision
@@ -692,6 +755,7 @@ async def _run_chain_generation(
                     all_planning_contexts, char_stats, world_stats,
                     tool_call_records, director_decision,
                     user_instructions=user_instructions,
+                    plan_tuning=plan_tuning, tone_tuning=tone_tuning,
                 )
                 if thinking_text:
                     thinking_parts.append({"stage_name": stage_label, "content": thinking_text})
@@ -810,6 +874,8 @@ def regenerate_chain_response(
     user_id: int,
     caller_role: str,
     pipeline: Pipeline,
+    scope: Literal["plan", "text"] | None = None,
+    comment: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """Chain mode regeneration: mark old inactive, restore stats, re-run pipeline."""
 
@@ -835,7 +901,23 @@ def regenerate_chain_response(
         # Move current assistant message to generation_variants
         from app.services.chat_service import _msg_to_variant, _load_variants, _save_variants
         current_asst = await chats_db.get_active_assistant_at_turn(session_id, turn)
+        discarded_plan_json: str | None = None
         if current_asst:
+            discarded_plan_json = current_asst.generation_plan
+            # Write exactly one rejected-feedback row while the discarded
+            # message snapshot is still available (before deletion below).
+            await feedback_db.create(ChatGenerationFeedback(
+                id=snowflake_svc.generate_id(),
+                session_id=session_id,
+                turn_number=turn,
+                verdict="rejected",
+                scope=scope,
+                comment=comment,
+                content_snapshot=current_asst.content,
+                plan_snapshot=current_asst.generation_plan,
+                created_at=now(),
+            ))
+
             variants = _load_variants(chat)
             variants.append(_msg_to_variant(
                 current_asst,
@@ -881,6 +963,16 @@ def regenerate_chain_response(
         if user_content:
             llm_messages.append({"role": "user", "content": user_content})
 
+        # Scope branch: scope="text" runs writer-only reusing the prior plan;
+        # scope in {"plan", None} runs the full chain (re-plan + re-write).
+        writer_only = scope == "text"
+        prior_plan: GenerationPlanOutput | None = None
+        if writer_only and discarded_plan_json:
+            try:
+                prior_plan = GenerationPlanOutput.model_validate_json(discarded_plan_json)
+            except Exception:
+                prior_plan = None
+
         # Run chain generation
         queue: asyncio.Queue[str | None] = asyncio.Queue()
         task = asyncio.create_task(
@@ -888,6 +980,7 @@ def regenerate_chain_response(
                 chat, turn, session_id, llm_messages, queue, caller_role,
                 pipeline_obj=pipeline,
                 is_regenerate=True, user_instructions=user_instructions,
+                writer_only=writer_only, prior_plan=prior_plan,
             )
         )
 

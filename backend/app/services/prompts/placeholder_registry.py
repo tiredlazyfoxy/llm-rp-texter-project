@@ -38,6 +38,8 @@ PLACEHOLDER_REGISTRY: list[PlaceholderInfo] = [
     {"name": "TURN_DECISIONS", "description": "Decisions/outcomes to execute from previous tool steps. Only meaningful for writer step in chain mode.", "category": "Pipeline"},
     {"name": "DECISION", "description": "Short single-sentence decision committed by the director stage via set_decision. Empty string if no director stage ran.", "category": "Pipeline"},
     {"name": "TOOLS", "description": "Auto-generated list of available tools for this step with descriptions.", "category": "Pipeline"},
+    {"name": "PLAN_TUNING", "description": "Accumulated user plan/structure preferences for this (user, world), injected into tool/planning stages. Empty string if no tuning profile exists.", "category": "Pipeline"},
+    {"name": "TONE_TUNING", "description": "Accumulated user tone/writing-style preferences for this (user, world), injected into the writer stage. Empty string if no tuning profile exists.", "category": "Pipeline"},
 ]
 
 VALID_PLACEHOLDERS: set[str] = {p["name"] for p in PLACEHOLDER_REGISTRY}

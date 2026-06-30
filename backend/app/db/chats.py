@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from sqlmodel import select
 
+from app.db import generation_feedback
 from app.db.engine import get_standalone_session
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
@@ -135,6 +136,9 @@ async def delete_session(session_id: int) -> bool:
         )).all()
         for m in messages:
             await db.delete(m)
+
+        # delete generation feedback rows (FK chat_sessions.id) before the session
+        await generation_feedback.delete_by_session(session_id)
 
         chat = (await db.exec(
             select(ChatSession).where(ChatSession.id == session_id)
