@@ -21,9 +21,11 @@ from app.models.schemas.chat import (
     RegenerateRequest,
     RewindRequest,
     SendMessageRequest,
+    TuningProfileResponse,
     UpdateChatSettingsRequest,
     UpdateChatStatsRequest,
     UpdateChatStatsResponse,
+    UpdateTuningProfileRequest,
     WorldInfoResponse,
 )
 from app.models.schemas.llm_chat import TranslateRequest
@@ -33,6 +35,7 @@ from app.services import chat_agent_service
 from app.services import llm_chat as llm_chat_service
 from app.services import stat_validation as stat_validation_service
 from app.services import summarization_service
+from app.services import tuning_service
 from app.services.auth import require_role
 
 logger = logging.getLogger(__name__)
@@ -231,6 +234,27 @@ async def update_chat_stats(
         int(chat_id), req.updates,
     )
     return UpdateChatStatsResponse(chat_id=chat_id, applied=applied)
+
+
+# ---------------------------------------------------------------------------
+# Tuning profile (per user + world)
+# ---------------------------------------------------------------------------
+
+@router.get("/tuning-profile/{world_id}", response_model=TuningProfileResponse)
+async def get_tuning_profile(
+    world_id: str,
+    caller: User = Depends(_require_player),
+) -> TuningProfileResponse:
+    return await tuning_service.get_profile(caller.id, int(world_id))
+
+
+@router.put("/tuning-profile/{world_id}", response_model=TuningProfileResponse)
+async def update_tuning_profile(
+    world_id: str,
+    req: UpdateTuningProfileRequest,
+    caller: User = Depends(_require_player),
+) -> TuningProfileResponse:
+    return await tuning_service.update_profile(caller.id, int(world_id), req)
 
 
 @router.put("/{chat_id}/archive", response_model=dict)

@@ -13,6 +13,7 @@ export interface ChatSSEHandlers {
   onStatUpdate?: (data: { character_stats: Record<string, number | string | string[]>; world_stats: Record<string, number | string | string[]>; turn_number: number }) => void;
   onUserAck?: (ack: { id: string; turn_number: number; created_at: string }) => void;
   onVariantsUpdate?: (variants: GenerationVariant[]) => void;
+  onTuningUpdate?: (data: TuningUpdate) => void;
   onDone?: (message: ChatMessage) => void;
   onError?: (detail: string) => void;
 }
@@ -294,6 +295,10 @@ function _streamChat(
               console.debug("[SSE] variants_update:", parsed.variants);
               handlers.onVariantsUpdate?.(parsed.variants as GenerationVariant[]);
               break;
+            case "tuning_update":
+              console.debug("[SSE] tuning_update:", parsed);
+              handlers.onTuningUpdate?.(parsed as unknown as TuningUpdate);
+              break;
             case "user_ack":
               console.debug("[SSE] user_ack:", parsed);
               handlers.onUserAck?.(parsed as { id: string; turn_number: number; created_at: string });
@@ -331,8 +336,13 @@ export function regenerateMessage(
   chatId: string,
   handlers: ChatSSEHandlers,
   turnNumber?: number,
+  scope?: "plan" | "text",
+  comment?: string,
 ): AbortController {
-  const body = turnNumber != null ? { turn_number: turnNumber } : {};
+  const body: RegenerateRequest = {};
+  if (turnNumber != null) body.turn_number = turnNumber;
+  if (scope != null) body.scope = scope;
+  if (comment != null) body.comment = comment;
   return _streamChat(`/api/chats/${chatId}/regenerate`, body, handlers);
 }
 

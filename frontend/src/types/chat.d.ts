@@ -148,6 +148,14 @@ interface EditMessageRequest {
 
 interface RegenerateRequest {
   turn_number?: number;
+  scope?: "plan" | "text";
+  comment?: string;
+}
+
+interface TuningUpdate {
+  plan_tuning: string;
+  tone_tuning: string;
+  world_id: string;
 }
 
 interface CreateChatRequest {

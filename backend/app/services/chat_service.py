@@ -9,9 +9,11 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from app.db import chats as chats_db
+from app.db import generation_feedback as feedback_db
 from app.db import locations as locations_db
 from app.db import stat_defs as stat_defs_db
 from app.db import worlds as worlds_db
+from app.models.chat_generation_feedback import ChatGenerationFeedback
 from app.models.chat_message import ChatMessage
 from app.models.chat_session import ChatSession
 from app.models.chat_state_snapshot import ChatStateSnapshot
@@ -606,6 +608,32 @@ async def continue_chat(session_id: int, user_id: int, variant_index: int) -> No
     _save_variants(chat, [])
     chat.modified_at = datetime.now(timezone.utc)
     await chats_db.update_session(chat)
+
+    # Accept hook (Feature 014): record one approved feedback row for the turn,
+    # then trigger retune. maybe_retune self-gates (no-op when the turn had no
+    # rejects). continue_chat is non-streaming, so no emitter is available here.
+    from app.services import retune_service
+
+    await feedback_db.create(ChatGenerationFeedback(
+        id=snowflake_svc.generate_id(),
+        session_id=session_id,
+        turn_number=chat.current_turn,
+        verdict="approved",
+        scope=None,
+        comment=None,
+        content_snapshot=chosen.content,
+        plan_snapshot=chosen.generation_plan.model_dump_json() if chosen.generation_plan else None,
+        created_at=datetime.now(timezone.utc),
+    ))
+    await retune_service.maybe_retune(
+        session_id=session_id,
+        user_id=user_id,
+        world_id=chat.world_id,
+        turn_number=chat.current_turn,
+        accepted_content=chosen.content,
+        model_id=chat.text_model_id,
+        emitter=None,
+    )
 
 
 async def rewind_chat(
