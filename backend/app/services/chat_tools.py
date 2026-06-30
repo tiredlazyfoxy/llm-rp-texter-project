@@ -231,16 +231,34 @@ async def add_memory_impl(
     If `saved_memory_ids` is provided, the new row's id is appended to it
     so callers (e.g. summarization compaction) can post-process the rows.
     The LLM-facing return string is unchanged.
+
+    Inline dedup: before persisting, `find_duplicate_memory` embeds the
+    candidate and compares it against every existing session memory. A
+    near-duplicate (cosine >= 0.85) is silently suppressed — nothing is
+    persisted and nothing is appended to `saved_memory_ids`. Non-duplicates
+    are inserted carrying their freshly-computed embedding.
     """
     from app.db import chats as chats_db
     from app.models.chat_memory import ChatMemory
     from app.services import snowflake as snowflake_svc
+    from app.services.memory_compaction import find_duplicate_memory
+
+    dedup = await find_duplicate_memory(session_id, content)
+    if dedup.is_duplicate:
+        logger.debug(
+            "Inline dedup suppressed memory (session=%d, duplicate_of=%s, similarity=%s)",
+            session_id,
+            dedup.duplicate_of_id,
+            dedup.similarity,
+        )
+        return "Memory saved."
 
     memory = ChatMemory(
         id=snowflake_svc.generate_id(),
         session_id=session_id,
         content=content,
         created_at=datetime.now(timezone.utc),
+        embedding=dedup.embedding,
     )
     await chats_db.create_memory(memory)
     if saved_memory_ids is not None:

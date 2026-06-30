@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 
 MEMORY_DEDUP_COSINE_THRESHOLD: float = 0.92
 
+# Inline-dedup cutoff applied at write time inside `add_memory_impl`. Separate
+# from and independent of the batch `MEMORY_DEDUP_COSINE_THRESHOLD` above.
+MEMORY_DEDUP_INLINE_COSINE_THRESHOLD: float = 0.85
+
 
 class MemoryRef(BaseModel):
     id: int
@@ -47,6 +51,15 @@ class MemoryCompactionResult(BaseModel):
     dropped: list[DroppedMemory]
     skipped: bool = False
     skip_reason: str | None = None
+
+
+class InlineDedupResult(BaseModel):
+    """Outcome of an inline dedup check for one candidate memory."""
+
+    is_duplicate: bool
+    embedding: list[float] | None = None
+    duplicate_of_id: int | None = None
+    similarity: float | None = None
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
@@ -239,4 +252,108 @@ async def compact_new_memories(
         dropped=dropped,
         skipped=False,
         skip_reason=None,
+    )
+
+
+async def find_duplicate_memory(session_id: int, content: str) -> InlineDedupResult:
+    """Decide whether `content` duplicates an existing memory in the session and
+    compute its embedding, in order:
+
+    1. Gate on `await is_embedding_configured()`. If false, return immediately
+       with `is_duplicate=False`, `embedding=None` — no DB load, no embed call.
+    2. Load the comparison set via `list_memories(session_id)` (the candidate is
+       not yet persisted, so there is no self-match to exclude).
+    3. Embed the candidate content together with any existing rows that lack an
+       embedding, in a single `embed_texts` round-trip where possible.
+    4. Persist the freshly-computed embeddings for those backfilled existing rows
+       via `update_memory_embeddings` (lazy backfill, so later calls are cheap).
+    5. Cosine-compare the candidate vector against every existing row's vector via
+       `_cosine`, tracking the highest-similarity peer.
+    6. If the max cosine `>= MEMORY_DEDUP_INLINE_COSINE_THRESHOLD`, return
+       `is_duplicate=True` with that peer's id and similarity (and the candidate
+       embedding). Otherwise return `is_duplicate=False` with the candidate
+       embedding.
+
+    If no embedding server is configured at any point (including
+    `EmbeddingNotConfiguredError` raised mid-flight), return `is_duplicate=False`,
+    `embedding=None` so the caller inserts the row without dedup or embedding.
+    """
+    if not await is_embedding_configured():
+        logger.debug(
+            "Inline dedup skipped: no embedding server configured (session=%d)",
+            session_id,
+        )
+        return InlineDedupResult(is_duplicate=False, embedding=None)
+
+    existing_rows = await chats_db.list_memories(session_id)
+
+    # Build a single embed batch: the candidate plus every existing row that
+    # lacks an embedding (lazy backfill). Candidate goes first; backfill rows
+    # follow, tracked by id so results map back by index.
+    backfill_ids: list[int] = [r.id for r in existing_rows if r.embedding is None]
+    backfill_texts: list[str] = [
+        r.content for r in existing_rows if r.embedding is None
+    ]
+    texts_to_embed: list[str] = [content, *backfill_texts]
+
+    try:
+        vectors = await embed_texts(texts_to_embed)
+    except EmbeddingNotConfiguredError:
+        logger.debug(
+            "Inline dedup skipped mid-flight: embedding not configured (session=%d)",
+            session_id,
+        )
+        return InlineDedupResult(is_duplicate=False, embedding=None)
+
+    candidate_vec = vectors[0]
+    fresh_embeddings: dict[int, list[float]] = {
+        mid: vec for mid, vec in zip(backfill_ids, vectors[1:])
+    }
+
+    logger.debug(
+        "Inline dedup: candidate embedded (session=%d, existing=%d, backfilled=%d)",
+        session_id,
+        len(existing_rows),
+        len(backfill_ids),
+    )
+
+    # Persist freshly-computed embeddings for the backfilled existing rows.
+    if fresh_embeddings:
+        await chats_db.update_memory_embeddings(fresh_embeddings)
+
+    def _vec_for(row) -> list[float] | None:  # type: ignore[no-untyped-def]
+        if row.id in fresh_embeddings:
+            return fresh_embeddings[row.id]
+        return row.embedding
+
+    best_id: int | None = None
+    best_sim: float = -1.0
+    for row in existing_rows:
+        peer_vec = _vec_for(row)
+        if peer_vec is None:
+            continue
+        sim = _cosine(candidate_vec, peer_vec)
+        if sim > best_sim:
+            best_sim = sim
+            best_id = row.id
+
+    if best_id is not None and best_sim >= MEMORY_DEDUP_INLINE_COSINE_THRESHOLD:
+        logger.debug(
+            "Inline dedup: duplicate found (session=%d, duplicate_of=%d, similarity=%.4f)",
+            session_id,
+            best_id,
+            best_sim,
+        )
+        return InlineDedupResult(
+            is_duplicate=True,
+            embedding=candidate_vec,
+            duplicate_of_id=best_id,
+            similarity=best_sim,
+        )
+
+    return InlineDedupResult(
+        is_duplicate=False,
+        embedding=candidate_vec,
+        duplicate_of_id=None,
+        similarity=None,
     )
