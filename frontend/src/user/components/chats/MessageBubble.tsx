@@ -18,7 +18,9 @@ import {
   IconChevronRight,
   IconCornerUpLeft,
   IconEdit,
+  IconMessage,
   IconRefresh,
+  IconThumbDown,
   IconTrash,
 } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
@@ -28,8 +30,10 @@ import {
   ChatPageState,
   deleteMessage,
   editMessage,
+  fastReject,
   regenerate,
   regenerateAtTurn,
+  rejectWithComment,
   rewindToTurn,
 } from "../../pages/chatPageState";
 
@@ -121,6 +125,7 @@ export const MessageBubble = observer(function MessageBubble({
   const debug = state.debugMode;
   const isSummarized = false; // Messages in active list are not summarized
   const currentTurn = currentTurnProp ?? 0;
+  const isChainMode = state.world?.generation_mode === "chain";
 
   // Resolve display fields: variant (rich types) or message (JSON strings)
   const displayToolCalls = viewedVariant ? viewedVariant.tool_calls : message.tool_calls;
@@ -427,11 +432,43 @@ export const MessageBubble = observer(function MessageBubble({
                     <IconCornerUpLeft size={12} />
                   </ActionIcon>
                 </Tooltip>
-                <Tooltip label="Regenerate">
-                  <ActionIcon variant="subtle" size="xs" color="gray" disabled={actionsDisabled} onClick={handleRegenerate}>
-                    <IconRefresh size={12} />
-                  </ActionIcon>
-                </Tooltip>
+                {isChainMode ? (
+                  <>
+                    <Tooltip label="Reject — bad plan, redo the whole chain">
+                      <ActionIcon
+                        variant="subtle" size="xs" color="gray"
+                        disabled={actionsDisabled}
+                        onClick={() => fastReject(state, "plan")}
+                      >
+                        <IconThumbDown size={12} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label="Reject generation — plan is fine, rewrite the text">
+                      <ActionIcon
+                        variant="subtle" size="xs" color="gray"
+                        disabled={actionsDisabled}
+                        onClick={() => fastReject(state, "text")}
+                      >
+                        <IconRefresh size={12} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label="Reject with comment">
+                      <ActionIcon
+                        variant="subtle" size="xs" color="gray"
+                        disabled={actionsDisabled}
+                        onClick={() => { state.rejectCommentOpen = !state.rejectCommentOpen; }}
+                      >
+                        <IconMessage size={12} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </>
+                ) : (
+                  <Tooltip label="Regenerate">
+                    <ActionIcon variant="subtle" size="xs" color="gray" disabled={actionsDisabled} onClick={handleRegenerate}>
+                      <IconRefresh size={12} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
                 <Tooltip label="Delete message">
                   <ActionIcon variant="subtle" size="xs" color="gray" disabled={actionsDisabled} onClick={handleDelete}>
                     <IconTrash size={12} />
@@ -440,6 +477,43 @@ export const MessageBubble = observer(function MessageBubble({
               </>
             )}
           </Group>
+        )}
+
+        {/* Reject-with-comment input (chain mode, assistant messages) */}
+        {showActions && !isUser && isChainMode && state.rejectCommentOpen && (
+          <Stack gap="xs" mt="xs">
+            <Text size="xs" c="dimmed" fw={600}>Rejected generation</Text>
+            <Text
+              size="xs"
+              c="dimmed"
+              style={{
+                whiteSpace: "pre-wrap",
+                maxHeight: 160,
+                overflow: "auto",
+                borderLeft: "2px solid var(--mantine-color-dark-4)",
+                paddingLeft: 8,
+              }}
+            >
+              {content}
+            </Text>
+            <Textarea
+              placeholder="What's wrong with this generation? (sent with the re-plan)"
+              value={state.rejectComment}
+              onChange={(e) => { state.rejectComment = e.currentTarget.value; }}
+              minRows={2}
+              maxRows={6}
+              autosize
+              size="xs"
+            />
+            <Group gap="xs">
+              <Button size="xs" disabled={actionsDisabled} onClick={() => rejectWithComment(state)}>
+                Submit reject
+              </Button>
+              <Button size="xs" variant="subtle" onClick={() => { state.rejectCommentOpen = false; }}>
+                Cancel
+              </Button>
+            </Group>
+          </Stack>
         )}
       </div>
     </Stack>

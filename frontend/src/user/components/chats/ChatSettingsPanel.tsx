@@ -3,16 +3,21 @@ import {
   Button,
   Divider,
   Drawer,
+  Group,
   Select,
   Slider,
   Stack,
   Switch,
   Text,
+  Textarea,
   TextInput,
 } from "@mantine/core";
 import { observer } from "mobx-react-lite";
 import {
   ChatPageState,
+  loadTuningProfile,
+  revertTuningProfile,
+  saveTuningProfile,
   toggleDebugMode,
   updateSettings,
 } from "../../pages/chatPageState";
@@ -89,6 +94,14 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
   const [characterName, setCharacterName] = useState<string>(session?.character_name ?? "");
   const [availableModels, setAvailableModels] = useState<EnabledModelInfo[]>([]);
   const [saving, setSaving] = useState(false);
+  const [planTuning, setPlanTuning] = useState("");
+  const [toneTuning, setToneTuning] = useState("");
+  const [tuningSaving, setTuningSaving] = useState(false);
+
+  const role = getCurrentUser()?.role;
+  const isEditor = role === "editor" || role === "admin";
+  const isChainMode = state.world?.generation_mode === "chain";
+  const showTuning = isEditor && isChainMode;
 
   useEffect(() => {
     if (opened && session) {
@@ -100,6 +113,32 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
         .catch(() => {});
     }
   }, [opened, session?.id]);
+
+  // Load the tuning profile when the panel opens in chain mode, if not already loaded.
+  useEffect(() => {
+    if (opened && showTuning && !state.tuningProfile) {
+      loadTuningProfile(state).catch(() => {});
+    }
+  }, [opened, showTuning]);
+
+  // Reseed editable copies from the live profile (also picks up `tuning_update`).
+  useEffect(() => {
+    setPlanTuning(state.tuningProfile?.plan_tuning ?? "");
+    setToneTuning(state.tuningProfile?.tone_tuning ?? "");
+  }, [opened, state.tuningProfile?.plan_tuning, state.tuningProfile?.tone_tuning]);
+
+  async function handleSaveTuning() {
+    setTuningSaving(true);
+    try {
+      await saveTuningProfile(state, { plan_tuning: planTuning, tone_tuning: toneTuning });
+    } finally {
+      setTuningSaving(false);
+    }
+  }
+
+  async function handleRevertTuning() {
+    await revertTuningProfile(state);
+  }
 
   const trimmedCharacterName = characterName.trim();
   const canSave = trimmedCharacterName !== "";
@@ -150,7 +189,7 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
         <Divider />
         <Button onClick={handleSave} loading={saving} disabled={!canSave}>Save</Button>
 
-        {(getCurrentUser()?.role === "editor" || getCurrentUser()?.role === "admin") && (
+        {isEditor && (
           <>
             <Divider />
             <Switch
@@ -159,6 +198,41 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
               checked={state.debugMode}
               onChange={() => toggleDebugMode(state)}
             />
+          </>
+        )}
+
+        {showTuning && (
+          <>
+            <Divider />
+            <Text size="sm" fw={500}>Preference tuning</Text>
+            <Text size="xs" c="dimmed">
+              Learned plan/tone guidance injected into chain generation. Updates
+              automatically as you accept and reject generations.
+            </Text>
+            <Textarea
+              label="Plan tuning"
+              value={planTuning}
+              onChange={(e) => setPlanTuning(e.currentTarget.value)}
+              minRows={3}
+              maxRows={10}
+              autosize
+              size="xs"
+            />
+            <Textarea
+              label="Tone tuning"
+              value={toneTuning}
+              onChange={(e) => setToneTuning(e.currentTarget.value)}
+              minRows={3}
+              maxRows={10}
+              autosize
+              size="xs"
+            />
+            <Group gap="xs">
+              <Button size="xs" onClick={handleSaveTuning} loading={tuningSaving}>Save</Button>
+              <Button size="xs" variant="subtle" onClick={handleRevertTuning} disabled={tuningSaving}>
+                Revert
+              </Button>
+            </Group>
           </>
         )}
       </Stack>

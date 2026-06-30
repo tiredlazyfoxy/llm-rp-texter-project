@@ -7,7 +7,7 @@
 | 003  | `003.reject_attribution.md`| done    | PASS     | 2026-06-30 |
 | 004  | `004.retune_service.md`    | done    | PASS     | 2026-06-30 |
 | 005  | `005.profile_api_transport.md` | done    | PASS     | 2026-06-30 |
-| 006  | `006.frontend_ui.md`       | pending | —        | —    |
+| 006  | `006.frontend_ui.md`       | done    | PASS     | 2026-06-30 |
 
 ## Files Changed
 
@@ -46,7 +46,42 @@
 - `frontend/src/types/chat.d.ts` — `RegenerateRequest` scope/comment + ambient `TuningUpdate` (skeleton-wired, verified)
 - `frontend/src/api/chat.ts` — `onTuningUpdate` handler, `tuning_update` case (double-cast), regenerate scope/comment body (skeleton-wired, verified)
 
+### Step 006 — Frontend UI: reject affordances + preferences panel
+- `frontend/src/user/pages/chatPageState.ts` — filled the 6 frozen actions (`fastReject`/`rejectWithComment` via new shared `streamRegenerate` helper that forwards scope+comment; `applyTuningUpdate`, `loadTuningProfile`, `saveTuningProfile`, `revertTuningProfile`); wired `onTuningUpdate` into `sendMessage`/`regenerate`/`regenerateAtTurn`/`streamRegenerate` handler objects; `loadChat` now loads the tuning profile when the world resolves as chain mode
+- `frontend/src/user/components/chats/MessageBubble.tsx` — chain-mode three reject affordances (fast plan / fast text / reject-with-comment) replacing the single regenerate; comment input renders the rejected generation's content (no new fetch); non-chain keeps plain regenerate; variant switcher + green accept untouched
+- `frontend/src/user/components/chats/ChatInput.tsx` — bottom regenerate mirrors the same chain-mode three-affordance set + comment input showing the latest assistant content; non-chain keeps plain regenerate
+- `frontend/src/user/components/chats/ChatSettingsPanel.tsx` — editor+/admin- and chain-gated preferences section (editable `plan_tuning`/`tone_tuning` Textareas, Save + Revert), seeded from `state.tuningProfile`, reseeded live on `tuning_update`; loads the profile when opened in chain mode if unloaded
+
 ## Skeleton
+
+### Step 006 — frozen interface (2026-06-30)
+
+Frontend (`frontend/`), all in `src/user/pages/chatPageState.ts`:
+
+New MobX observables on class `ChatPageState` (field initializers, auto-picked by `makeAutoObservable`):
+- `rejectComment = ""` — pending free-text for the "reject with comment" affordance.
+- `rejectCommentOpen = false` — toggles the comment input.
+- `tuningProfile: TuningProfile | null = null` — in-memory preference profile (plan_tuning / tone_tuning).
+- Added `import type { TuningProfile, UpdateTuningProfile } from "../../types/tuningProfile";` (`TuningUpdate` is ambient, no import).
+
+New free-function actions (stub bodies `throw new Error("not implemented: …")`; params marked used via `void` to satisfy `noUnusedParameters`):
+- `export async function fastReject(state: ChatPageState, scope: "plan" | "text"): Promise<void>` — new (one-click, comment-less reject).
+- `export async function rejectWithComment(state: ChatPageState): Promise<void>` — new (always `scope="plan"` + `state.rejectComment`, then clears/closes the input).
+- `export function applyTuningUpdate(state: ChatPageState, data: TuningUpdate): void` — new (the `onTuningUpdate` SSE handler; overwrites `state.tuningProfile`).
+- `export async function loadTuningProfile(state: ChatPageState, signal?: AbortSignal): Promise<void>` — new.
+- `export async function saveTuningProfile(state: ChatPageState, body: UpdateTuningProfile, signal?: AbortSignal): Promise<void>` — new.
+- `export async function revertTuningProfile(state: ChatPageState, signal?: AbortSignal): Promise<void>` — new (reload from server).
+
+Components — no signature changes:
+- `MessageBubble.tsx`, `ChatInput.tsx`, `ChatSettingsPanel.tsx` all already receive `state: ChatPageState` and read everything they need off it. No new props or exported helpers were needed, so these files are untouched. JSX affordances (three reject controls, comment input rendering the rejected content, the debug-gated preferences panel) are UI behavior left entirely for the coder.
+
+Caller-compile edits (out of Source-files scope): None. (All additions are new exports/fields; no existing signature changed.)
+
+Contract notes for downstream roles:
+- Chain-mode detection signal (per harvested facts): `state.world?.generation_mode === "chain"`. Not re-frozen here — `world: WorldInfo | null` already exists on `ChatPageState`.
+- `applyTuningUpdate` is exported so the coder can wire it into the inline SSE handler objects' `onTuningUpdate` slot (currently unconsumed in `chatApi.regenerateMessage`/`sendMessage` call sites).
+- `saveTuningProfile` takes an explicit `UpdateTuningProfile` body (matches `updateTuningProfile` transport); the coder decides whether the panel holds local edit state or mutates `state.tuningProfile` directly.
+- No frontend test runner exists; the only gate is `npx tsc --noEmit`, which passes clean with these stubs.
 
 ### Step 005 — frozen interface (2026-06-30)
 
@@ -88,6 +123,7 @@ Contract notes for downstream roles:
 
 ## Notes & Issues
 
+- Step 006: `rejectComment`/`rejectCommentOpen` are single shared observables (frozen design), so toggling the comment input opens it on every visible assistant `MessageBubble` at once. Acceptable for the typical single-active-reject flow; flag if per-message scoping is later required.
 - Step 004: `maybe_retune` treats `model_id is None` (session has no `text_model_id`) as a no-op — no LLM call, no profile change, no emission — since no model means no revised text can be produced. Logged at INFO.
 - Step 003: writer-only regen does NOT re-apply the prior plan's `stat_updates` to session stats (no tool stages run, so stats stay at the restored prev-turn snapshot). Spec lists only "feed prior plan to writer → finalize"; stat reapplication was out of scope. Flag if live behavior expects stat changes carried over.
 

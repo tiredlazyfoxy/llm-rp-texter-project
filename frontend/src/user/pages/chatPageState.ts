@@ -1,7 +1,9 @@
 import { makeAutoObservable, observable, runInAction } from "mobx";
 import * as chatApi from "../../api/chat";
+import { getTuningProfile, updateTuningProfile } from "../../api/tuningProfile";
 import { refreshSidebarChats } from "../components/userSidebarState";
 import { extractUserInstructions } from "../../utils/oocParser";
+import type { TuningProfile, UpdateTuningProfile } from "../../types/tuningProfile";
 
 type AsyncStatus = "idle" | "loading" | "ready" | "error";
 
@@ -55,6 +57,18 @@ export class ChatPageState {
   statDrawerOpen = false;
   statDrawerError: string | null = null;
   statDrawerSubmitting = false;
+
+  // Chain-mode reject affordances (Feature 014, step 006).
+  // `rejectComment` is the pending free-text for the "reject with comment"
+  // affordance; `rejectCommentOpen` toggles its input. Both are meaningful
+  // only for affordance (3); the two fast rejects are one-click.
+  rejectComment = "";
+  rejectCommentOpen = false;
+
+  // Editor/debug-gated preference profile (plan_tuning / tone_tuning) for the
+  // current (user, world). Loaded from the profile API; refreshed live by the
+  // `tuning_update` SSE event.
+  tuningProfile: TuningProfile | null = null;
 
   streamCtrl: AbortController | null = null;
 
@@ -237,6 +251,9 @@ export async function loadChat(state: ChatPageState, signal: AbortSignal): Promi
       if (signal.aborted) return;
       const found = worlds.find((w) => w.id === worldId) ?? null;
       runInAction(() => { state.world = found; });
+      if (found?.generation_mode === "chain") {
+        loadTuningProfile(state, signal).catch(() => {});
+      }
     }).catch(() => {});
     loadMemories(state, signal).catch(() => {});
   } catch (err) {
@@ -329,6 +346,7 @@ export async function sendMessage(
       onPhase: (phase) => runInAction(() => { state.currentPhase = phase; }),
       onStatus: (text) => runInAction(() => { state.currentStatus = text; }),
       onStatUpdate: (data) => runInAction(() => { applyStatUpdate(state, data); }),
+      onTuningUpdate: (data) => applyTuningUpdate(state, data),
       onDone: (message) => {
         console.debug("[Chat] done, message:", message.id);
         runInAction(() => {
@@ -400,6 +418,7 @@ export async function regenerate(state: ChatPageState): Promise<void> {
       onPhase: (phase) => runInAction(() => { state.currentPhase = phase; }),
       onStatus: (text) => runInAction(() => { state.currentStatus = text; }),
       onStatUpdate: (data) => runInAction(() => { applyStatUpdate(state, data); }),
+      onTuningUpdate: (data) => applyTuningUpdate(state, data),
       onVariantsUpdate: (variants) => runInAction(() => {
         if (!state.currentChat) return;
         const cur = state.currentChat.variants;
@@ -482,6 +501,7 @@ export async function regenerateAtTurn(state: ChatPageState, turnNumber: number)
       onPhase: (phase) => runInAction(() => { state.currentPhase = phase; }),
       onStatus: (text) => runInAction(() => { state.currentStatus = text; }),
       onStatUpdate: (data) => runInAction(() => { applyStatUpdate(state, data); }),
+      onTuningUpdate: (data) => applyTuningUpdate(state, data),
       onVariantsUpdate: (variants) => runInAction(() => {
         if (!state.currentChat) return;
         const cur = state.currentChat.variants;
@@ -542,6 +562,185 @@ export async function continueWithVariant(
   state.viewingVariantIndex = null;
   const detail = await chatApi.getChatDetail(chatId, signal);
   runInAction(() => { mergeChatDetail(state, detail); });
+}
+
+// --- Feature 014: chain-mode reject affordances + preference tuning ---------
+// SKELETON: signatures frozen, bodies unimplemented. The coder fills these.
+
+/**
+ * Shared regenerate stream used by the chain-mode reject affordances. Mirrors
+ * `regenerate(state)` but forwards `scope` (and optional `comment`) to the
+ * transport so the backend can attribute the rejection and pick whole-chain vs
+ * writer-only redo.
+ */
+async function streamRegenerate(
+  state: ChatPageState,
+  scope: "plan" | "text",
+  comment?: string,
+): Promise<void> {
+  if (!state.currentChat || state.isSending) return;
+  const chatId = state.currentChat.session.id;
+  runInAction(() => {
+    state.isSending = true;
+    state.error = null;
+    state.streamingContent = "";
+    state.streamingThinking = "";
+    state.streamingToolCalls = [];
+    state.currentPhase = null;
+    state.currentStatus = null;
+  });
+
+  await new Promise<void>((resolve) => {
+    state.streamCtrl = chatApi.regenerateMessage(
+      chatId,
+      {
+        onToken: (t) => runInAction(() => { state.streamingContent += t; }),
+        onThinking: (t) => runInAction(() => { state.streamingThinking += t; }),
+        onThinkingDone: () => runInAction(() => { state.isThinking = false; }),
+        onToolCallStart: (name, args, stageName) =>
+          runInAction(() => {
+            state.streamingToolCalls.push({ tool_name: name, arguments: args, stage_name: stageName });
+          }),
+        onToolCallResult: (name, result) =>
+          runInAction(() => {
+            const tc = state.streamingToolCalls.find((t) => t.tool_name === name && !t.result);
+            if (tc) tc.result = result;
+          }),
+        onPhase: (phase) => runInAction(() => { state.currentPhase = phase; }),
+        onStatus: (text) => runInAction(() => { state.currentStatus = text; }),
+        onStatUpdate: (data) => runInAction(() => { applyStatUpdate(state, data); }),
+        onTuningUpdate: (data) => applyTuningUpdate(state, data),
+        onVariantsUpdate: (variants) => runInAction(() => {
+          if (!state.currentChat) return;
+          const cur = state.currentChat.variants;
+          const oldLen = cur.length;
+          for (let i = 0; i < variants.length; i++) {
+            if (i < oldLen) {
+              Object.assign(cur[i], variants[i]);
+            } else {
+              cur.push(variants[i]);
+            }
+          }
+          cur.length = variants.length;
+        }),
+        onDone: (message) => {
+          runInAction(() => {
+            if (state.currentChat) {
+              const msgs = state.currentChat.messages;
+              const oldIdx = msgs.findLastIndex(
+                (m) => m.role === "assistant" && m.turn_number === message.turn_number,
+              );
+              if (oldIdx >= 0) msgs[oldIdx] = message;
+              else msgs.push(message);
+              state.currentChat.session.current_turn = message.turn_number;
+            }
+            state.streamingContent = "";
+            state.isSending = false;
+            state.currentPhase = null;
+            state.currentStatus = null;
+            state.viewingVariantIndex = null;
+          });
+          loadMemories(state).catch(() => {});
+          resolve();
+        },
+        onError: (detail) => {
+          runInAction(() => {
+            state.error = detail;
+            state.isSending = false;
+            state.isThinking = false;
+            state.currentPhase = null;
+            state.currentStatus = null;
+          });
+          if (state.currentChat) {
+            const ctrl = new AbortController();
+            chatApi.getChatDetail(state.currentChat.session.id, ctrl.signal)
+              .then((d) => runInAction(() => { mergeChatDetail(state, d); }))
+              .catch(() => {});
+          }
+          resolve();
+        },
+      },
+      undefined,
+      scope,
+      comment,
+    );
+  });
+}
+
+/**
+ * Fast (one-click, comment-less) reject. `scope="plan"` redoes the whole
+ * chain; `scope="text"` redoes only the writer stage. Never carries a comment.
+ */
+export async function fastReject(
+  state: ChatPageState,
+  scope: "plan" | "text",
+): Promise<void> {
+  await streamRegenerate(state, scope);
+}
+
+/**
+ * Reject with a free-text comment. Always uses `scope="plan"` plus the pending
+ * `state.rejectComment`; on submit it clears `rejectComment` and closes
+ * `rejectCommentOpen`.
+ */
+export async function rejectWithComment(state: ChatPageState): Promise<void> {
+  const comment = state.rejectComment;
+  await streamRegenerate(state, "plan", comment);
+  runInAction(() => {
+    state.rejectComment = "";
+    state.rejectCommentOpen = false;
+  });
+}
+
+/**
+ * Apply a `tuning_update` SSE payload: overwrite the in-memory profile with the
+ * event's `plan_tuning` / `tone_tuning`. Wired into the SSE handler objects.
+ */
+export function applyTuningUpdate(state: ChatPageState, data: TuningUpdate): void {
+  runInAction(() => {
+    state.tuningProfile = {
+      id: state.tuningProfile?.id ?? "",
+      world_id: data.world_id,
+      plan_tuning: data.plan_tuning,
+      tone_tuning: data.tone_tuning,
+    };
+  });
+}
+
+/** Load the current (user, world) tuning profile into `state.tuningProfile`. */
+export async function loadTuningProfile(
+  state: ChatPageState,
+  signal?: AbortSignal,
+): Promise<void> {
+  const worldId = state.currentChat?.session.world_id;
+  if (!worldId) return;
+  try {
+    const profile = await getTuningProfile(worldId, signal);
+    runInAction(() => { state.tuningProfile = profile; });
+  } catch (err) {
+    if (signal?.aborted) return;
+    runInAction(() => { state.error = err instanceof Error ? err.message : String(err); });
+  }
+}
+
+/** Save edited `plan_tuning` / `tone_tuning` via the profile API. */
+export async function saveTuningProfile(
+  state: ChatPageState,
+  body: UpdateTuningProfile,
+  signal?: AbortSignal,
+): Promise<void> {
+  const worldId = state.currentChat?.session.world_id;
+  if (!worldId) return;
+  const profile = await updateTuningProfile(worldId, body, signal);
+  runInAction(() => { state.tuningProfile = profile; });
+}
+
+/** Revert local edits by reloading the profile from the server. */
+export async function revertTuningProfile(
+  state: ChatPageState,
+  signal?: AbortSignal,
+): Promise<void> {
+  await loadTuningProfile(state, signal);
 }
 
 export async function rewindToTurn(
