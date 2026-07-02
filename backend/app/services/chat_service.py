@@ -4,9 +4,12 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, status
+
+if TYPE_CHECKING:
+    from app.services.retune_service import RetuneEmitter
 
 from app.db import chats as chats_db
 from app.db import generation_feedback as feedback_db
@@ -555,6 +558,44 @@ async def delete_chat(session_id: int, user_id: int) -> None:
 # Public API: continue / rewind
 # ---------------------------------------------------------------------------
 
+async def _record_accept_and_retune(
+    session_id: int,
+    user_id: int,
+    chat: ChatSession,
+    accepted_content: str,
+    accepted_plan_json: str | None,
+    emitter: "RetuneEmitter | None" = None,
+) -> None:
+    """Accept hook (Feature 014): write one ``approved`` feedback row for the
+    committed turn, then trigger retune. ``maybe_retune`` self-gates (no-op when
+    the turn had no rejects), so this is safe to call on every accept — explicit
+    variant selection or implicit auto-commit. Keyed on ``chat.current_turn`` /
+    ``chat.world_id`` / ``chat.text_model_id``.
+    """
+    from app.services import retune_service
+
+    await feedback_db.create(ChatGenerationFeedback(
+        id=snowflake_svc.generate_id(),
+        session_id=session_id,
+        turn_number=chat.current_turn,
+        verdict="approved",
+        scope=None,
+        comment=None,
+        content_snapshot=accepted_content,
+        plan_snapshot=accepted_plan_json,
+        created_at=datetime.now(timezone.utc),
+    ))
+    await retune_service.maybe_retune(
+        session_id=session_id,
+        user_id=user_id,
+        world_id=chat.world_id,
+        turn_number=chat.current_turn,
+        accepted_content=accepted_content,
+        model_id=chat.text_model_id,
+        emitter=emitter,
+    )
+
+
 async def continue_chat(session_id: int, user_id: int, variant_index: int) -> None:
     """Select a variant from generation_variants: replace active assistant message, clear variants."""
     from app.services import snowflake as snowflake_svc
@@ -609,29 +650,14 @@ async def continue_chat(session_id: int, user_id: int, variant_index: int) -> No
     chat.modified_at = datetime.now(timezone.utc)
     await chats_db.update_session(chat)
 
-    # Accept hook (Feature 014): record one approved feedback row for the turn,
-    # then trigger retune. maybe_retune self-gates (no-op when the turn had no
-    # rejects). continue_chat is non-streaming, so no emitter is available here.
-    from app.services import retune_service
-
-    await feedback_db.create(ChatGenerationFeedback(
-        id=snowflake_svc.generate_id(),
-        session_id=session_id,
-        turn_number=chat.current_turn,
-        verdict="approved",
-        scope=None,
-        comment=None,
-        content_snapshot=chosen.content,
-        plan_snapshot=chosen.generation_plan.model_dump_json() if chosen.generation_plan else None,
-        created_at=datetime.now(timezone.utc),
-    ))
-    await retune_service.maybe_retune(
+    # Accept hook (Feature 014): explicit variant selection. continue_chat is
+    # non-streaming, so no emitter is available here.
+    await _record_accept_and_retune(
         session_id=session_id,
         user_id=user_id,
-        world_id=chat.world_id,
-        turn_number=chat.current_turn,
+        chat=chat,
         accepted_content=chosen.content,
-        model_id=chat.text_model_id,
+        accepted_plan_json=chosen.generation_plan.model_dump_json() if chosen.generation_plan else None,
         emitter=None,
     )
 

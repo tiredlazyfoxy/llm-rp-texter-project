@@ -371,6 +371,22 @@ def generate_simple_response(
             await continue_chat(session_id, chat.user_id, variant_index)
             chat = await chats_db.get_session_by_id(session_id)
         elif variants:
+            # No specific variant chosen — auto-commit the currently-active
+            # assistant message for the committed turn (kept as-is). Record the
+            # implicit accept + trigger retune BEFORE clearing variants, keyed on
+            # the committed turn (chat.current_turn, not the new turn). maybe_retune
+            # self-gates, so a clean turn is a no-op. (Feature 014 bug-fix.)
+            from app.services.chat_service import _record_accept_and_retune
+            committed_asst = await chats_db.get_active_assistant_at_turn(session_id, chat.current_turn)
+            if committed_asst is not None:
+                await _record_accept_and_retune(
+                    session_id=session_id,
+                    user_id=chat.user_id,
+                    chat=chat,
+                    accepted_content=committed_asst.content,
+                    accepted_plan_json=committed_asst.generation_plan,
+                    emitter=None,
+                )
             _save_variants(chat, [])
             await chats_db.update_session(chat)
 

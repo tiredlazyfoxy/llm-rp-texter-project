@@ -52,6 +52,20 @@
 - `frontend/src/user/components/chats/ChatInput.tsx` — bottom regenerate mirrors the same chain-mode three-affordance set + comment input showing the latest assistant content; non-chain keeps plain regenerate
 - `frontend/src/user/components/chats/ChatSettingsPanel.tsx` — editor+/admin- and chain-gated preferences section (editable `plan_tuning`/`tone_tuning` Textareas, Save + Revert), seeded from `state.tuningProfile`, reseeded live on `tuning_update`; loads the profile when opened in chain mode if unloaded
 
+## Bug Fixes
+
+### Step 004 — retune never fired on implicit accept (keep-and-continue) (2026-07-02)
+Root cause: `retune_service.maybe_retune` was only reachable via `chat_service.continue_chat`, which runs only on EXPLICIT variant selection. Keeping a regenerated message and sending the next message carries `variant_index=None`, hitting the `elif variants:` auto-commit branch in the generation services, which cleared variants without writing an `approved` feedback row or calling `maybe_retune` — so the profile was never upserted (`plan_tuning`/`tone_tuning` stayed empty).
+- `backend/app/services/chat_service.py` — factored the accept-and-retune tail (approved-row write + `maybe_retune`) out of `continue_chat` into reusable `_record_accept_and_retune(session_id, user_id, chat, accepted_content, accepted_plan_json, emitter=None)`, keyed on `chat.current_turn`/`world_id`/`text_model_id`; `continue_chat`'s tail now calls it (identical explicit-path behavior).
+- `backend/app/services/chain_generation_service.py` — auto-commit branch now loads the active assistant message for the committed turn (`get_active_assistant_at_turn(session_id, chat.current_turn)`) and calls `_record_accept_and_retune` (emitter=None) before clearing variants.
+- `backend/app/services/simple_generation_service.py` — same wiring in its auto-commit branch.
+
+### Step 004 — retune ran but `tuning_update` never emitted on streaming implicit accept (2026-07-02)
+Root cause: the streaming implicit-accept path (chain `elif variants:` auto-commit branch) called `_record_accept_and_retune(..., emitter=None)`, so `maybe_retune` upserted the profile but never emitted its editor-only `tuning_update` SSE frame — the debug preferences panel only refreshed on a manual reopen, matching "it generates the tune but doesn't update on UI without refresh".
+- `backend/app/services/chain_generation_service.py` — auto-commit branch now builds an editor-gated async emitter (`_emit`, gated `caller_role != "player"`) that buffers `sse(name, payload)` frames into a local `pending_frames` list (a callback can't `yield` into the generator), passes it to `_record_accept_and_retune`, then yields the buffered frame(s) on the active stream before clearing variants. Existing `user_ack`/`variants_update` + DB-write behavior unchanged.
+- `backend/app/services/chat_service.py` — tightened `_record_accept_and_retune`'s `emitter` param type from `Any | None` to `RetuneEmitter | None` (via `TYPE_CHECKING` import, no runtime cycle); no behavior change.
+- Simple path (`simple_generation_service.py`) left `emitter=None` on purpose: feature is chain-only for v1, simple mode writes no rejected rows (so `maybe_retune` self-gates to a no-op) and `generate_simple_response` has no `caller_role` to gate on.
+
 ## Skeleton
 
 ### Step 006 — frozen interface (2026-06-30)
@@ -158,6 +172,16 @@ Contract notes for downstream roles:
   - DoD-6: stub `RetuneEmitter` captures one `tuning_update` event whose payload carries post-retune `plan_tuning` (retuned), `tone_tuning` (unchanged), `world_id == str(world_id)`, all values str.
   - Harness: LLM mocked at consuming seams — `retune_service.get_llm_client_for_model` (non-tool `chat` → constant `"RETUNED"`, call count = targeted-dimension count; patched with `raising=False` so the seam can be set before the coder imports the symbol) and, for DoD-5, `chain_generation_service.get_llm_client_for_model`. Profiles/feedback seeded directly via `db/tuning_profiles` + `db/generation_feedback` (FK enforcement off in test DB). Red-gate: `maybe_retune` stub raises `NotImplementedError` (wired into `continue_chat`), so all tests fail for the right reason until implemented.
 - Coverage: DoD-1 ✓, DoD-2 ✓, DoD-3 ✓, DoD-4 ✓, DoD-5 ✓, DoD-6 ✓, DoD-7 [manual/live, no test]
+
+### Step 004 — bug-fix repro (2026-07-02)
+- `backend/tests/test_retune_service.py::test_implicit_accept_autocommit_triggers_retune__bugfix` — defends DoD-5 / context.md decision 2 (retune on accept after >=1 reject; implicit accept counts).
+  - reproduces: after regenerate + keep-and-continue (send next message, `variant_index=None`), `plan_tuning`/`tone_tuning` stay empty because the auto-commit branch clears variants without writing an `approved` row or calling `maybe_retune`.
+  - Asserts SPEC-CORRECT (post-fix) behavior: regenerate (null scope) at turn 1 then `generate_chain_response(..., variant_index=None)` -> profile for `(user, world)` retuned on BOTH dimensions (`plan_tuning == tone_tuning == "RETUNED"`) AND exactly one `verdict="approved"` row for turn 1. RED against current auto-commit branch.
+
+### Step 004 — bug-fix repro (live tuning_update) (2026-07-02)
+- `backend/tests/test_retune_service.py::test_streaming_implicit_accept_emits_tuning_update_frame__bugfix` — defends the editor-only `tuning_update` live-refresh contract (context.md "SSE protocol" / step-006 DoD-5, emitted per step 004).
+  - reproduces: "it's generating the tune, but it doesn't update on UI without the refresh" — the streaming implicit-accept path retunes with `emitter=None`, so no `tuning_update` SSE frame is emitted on the active generation stream.
+  - Asserts SPEC-CORRECT (post-fix) behavior: regenerate (null scope) at turn 1 then drive `generate_chain_response(..., "editor", ..., variant_index=None)` collecting yielded frames; an inline `_find_sse_events` parser finds exactly one `event: tuning_update` frame whose `data:` JSON has `plan_tuning == tone_tuning == "RETUNED"` and `world_id == str(chat.world_id)` (str). RED now (emitter=None → no frame).
 
 ### Step 005 — tests (2026-06-30)
 - `backend/tests/test_tuning_profile_api.py` — covers DoD-1, DoD-2, DoD-3 — GET/PUT tuning-profile endpoints via the real FastAPI app with an authenticated player caller (`http_client` + `player_user`); rows seeded via `db/tuning_profiles`.

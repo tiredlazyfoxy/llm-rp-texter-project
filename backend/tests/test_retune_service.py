@@ -31,6 +31,7 @@ spec-correct behavior and (correctly) fail until the coder implements the
 service.
 """
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -489,6 +490,169 @@ async def test_accept_writes_exactly_one_approved_feedback_row__DoD5(
     rows = await feedback_db.list_by_turn(chat.id, 1)
     approved = [r for r in rows if r.verdict == "approved"]
     assert len(approved) == 1
+
+
+# ===========================================================================
+# BUG-FIX REPRO — implicit accept (auto-commit) must retune.
+# Defends step-004 DoD-5 / context.md decision 2: "Retune trigger = on accept,
+# only after the turn had >=1 reject." Keeping a regenerated message and
+# sending the next message (variant_index=None with variants present) IS an
+# accept and MUST fire the same accept-and-retune path as the explicit accept.
+#
+# reproduces: after regenerate + keep-and-continue, plan_tuning/tone_tuning stay
+# empty because the auto-commit branch clears variants without writing an
+# `approved` feedback row or calling maybe_retune.
+#
+# Assertions below are the SPEC-CORRECT (post-fix) behavior, so this test is
+# RED against the current auto-commit branch and turns green only once that
+# branch performs the accept-and-retune.
+# ===========================================================================
+
+
+async def test_implicit_accept_autocommit_triggers_retune__bugfix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Turn 1 is regenerated (whole chain, null scope) -> one `rejected` row +
+    # a discarded variant on the session. The user keeps the regenerated output
+    # and sends the NEXT message with variant_index=None, which routes into the
+    # implicit-accept auto-commit branch. Per decision 2 this is an accept of a
+    # turn that had a reject, so: (a) the (user, world) profile is retuned on
+    # BOTH dimensions (null-scope reject counts as both) and (b) exactly one
+    # `approved` feedback row is written for turn 1.
+    chain_fake = FakeChainLLM()
+
+    async def _chain_factory(model_id):
+        return chain_fake
+
+    monkeypatch.setattr(
+        "app.services.chain_generation_service.get_llm_client_for_model",
+        _chain_factory,
+    )
+    _install_fake_retune_llm(monkeypatch)
+
+    chat, user_id = await _setup_chain_chat()
+    pipeline = _make_chain_pipeline()
+
+    # No profile exists before the interaction.
+    assert await profiles_db.get(user_id, chat.world_id) is None
+
+    # Regenerate (whole chain, null scope) -> writes a `rejected` row at turn 1
+    # and leaves a discarded variant on the session.
+    async for _ in chain_generation_service.regenerate_chain_response(
+        chat.id, user_id, "editor", pipeline, scope=None, comment=None
+    ):
+        pass
+
+    # Implicit accept: send the next message with variant_index=None while a
+    # variant is pending -> the auto-commit branch keeps turn 1's output and
+    # must accept-and-retune it.
+    async for _ in chain_generation_service.generate_chain_response(
+        chat.id, user_id, "The next thing I do.", "editor", pipeline, variant_index=None
+    ):
+        pass
+
+    # (a) The turn had a null-scope reject -> both dimensions retuned + persisted.
+    stored = await profiles_db.get(user_id, chat.world_id)
+    assert stored is not None
+    assert stored.plan_tuning == RETUNED
+    assert stored.tone_tuning == RETUNED
+
+    # (b) Exactly one `approved` feedback row for the accepted turn 1.
+    rows = await feedback_db.list_by_turn(chat.id, 1)
+    approved = [r for r in rows if r.verdict == "approved"]
+    assert len(approved) == 1
+
+
+# ===========================================================================
+# BUG-FIX REPRO — streaming implicit accept must EMIT the `tuning_update`
+# SSE frame live to an editor caller.
+#
+# Defends context.md "SSE protocol" (the editor-only `tuning_update` event so
+# the debug preferences panel refreshes live) / step-006 DoD-5, emitted per
+# step 004. The retune runs and persists on the streaming implicit-accept path,
+# but that path calls the accept helper with emitter=None, so no `tuning_update`
+# frame is emitted on the active generation stream — the panel only updates
+# after a manual refresh.
+#
+# reproduces: "I see it's generating the tune, but it doesn't update on UI
+# without the refresh" — no `tuning_update` frame is yielded by the streaming
+# accept path.
+#
+# The assertions below are the SPEC-CORRECT (post-fix) behavior: a single
+# `tuning_update` frame IS emitted to the editor carrying the retuned profile.
+# The test is therefore RED now (emitter=None -> no frame) and turns green once
+# the streaming accept path emits the frame.
+# ===========================================================================
+
+
+def _find_sse_events(frames: list[str], name: str) -> list[dict]:
+    """Parse yielded SSE frame strings and return the JSON payloads of every
+    frame whose event line is ``event: <name>``.
+
+    Each frame is ``f"event: {name}\\ndata: {json}\\n\\n"`` (see the ``sse()``
+    helper): the first line is ``event: <name>`` and the ``data: `` line is
+    compact JSON.
+    """
+    found: list[dict] = []
+    for frame in frames:
+        lines = frame.split("\n")
+        if not lines:
+            continue
+        if lines[0].strip() != f"event: {name}":
+            continue
+        for line in lines[1:]:
+            if line.startswith("data: "):
+                found.append(json.loads(line[len("data: ") :]))
+                break
+    return found
+
+
+async def test_streaming_implicit_accept_emits_tuning_update_frame__bugfix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Turn 1 is regenerated (whole chain, null scope) -> one `rejected` row + a
+    # discarded variant. The editor keeps that output and sends the NEXT message
+    # with variant_index=None, routing into the streaming implicit-accept
+    # auto-commit branch. Per the SSE protocol this accept-and-retune of an
+    # editor's stream MUST yield an editor-only `tuning_update` frame carrying
+    # the post-retune profile (a null-scope reject retunes BOTH dims -> both
+    # "RETUNED").
+    chain_fake = FakeChainLLM()
+
+    async def _chain_factory(model_id):
+        return chain_fake
+
+    monkeypatch.setattr(
+        "app.services.chain_generation_service.get_llm_client_for_model",
+        _chain_factory,
+    )
+    _install_fake_retune_llm(monkeypatch)
+
+    chat, user_id = await _setup_chain_chat()
+    pipeline = _make_chain_pipeline()
+
+    # Regenerate (whole chain, null scope) -> writes a `rejected` row at turn 1
+    # and leaves a discarded variant on the session.
+    async for _ in chain_generation_service.regenerate_chain_response(
+        chat.id, user_id, "editor", pipeline, scope=None, comment=None
+    ):
+        pass
+
+    # Streaming implicit accept AS EDITOR: collect the yielded SSE frames.
+    frames: list[str] = []
+    async for frame in chain_generation_service.generate_chain_response(
+        chat.id, user_id, "The next thing I do.", "editor", pipeline, variant_index=None
+    ):
+        frames.append(frame)
+
+    updates = _find_sse_events(frames, "tuning_update")
+    assert len(updates) == 1  # exactly one live `tuning_update` frame to the editor
+    payload = updates[0]
+    # Null-scope reject retunes both dimensions -> both become RETUNED.
+    assert payload["plan_tuning"] == RETUNED
+    assert payload["tone_tuning"] == RETUNED
+    assert payload["world_id"] == str(chat.world_id)  # world id carried as a string
+    assert isinstance(payload["world_id"], str)
 
 
 # ===========================================================================

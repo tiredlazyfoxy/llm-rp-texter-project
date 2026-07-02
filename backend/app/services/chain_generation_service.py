@@ -214,6 +214,23 @@ def _build_placeholder_values(
     }
 
 
+def _merge_reject_comment(user_instructions: str | None, comment: str | None) -> str | None:
+    """Merge a chain-mode reject comment (framed as feedback) into the per-turn
+    user_instructions for the immediate whole-chain re-generation.
+
+    A None/empty/whitespace-only comment leaves user_instructions unchanged
+    (identity). Otherwise the trimmed comment is framed as reject feedback and
+    combined with any existing user_instructions.
+    """
+    if comment is None or not comment.strip():
+        return user_instructions
+
+    framed = f"The player rejected the previous attempt with this feedback: {comment.strip()}"
+    if user_instructions and user_instructions.strip():
+        return f"{user_instructions}\n\n{framed}"
+    return framed
+
+
 def _resolve_tool_prompt(
     stage, context: ChatContext, chat: Any, turn_facts: str, turn_decisions: str,
     tools_desc: str, decision: str = "", user_instructions: str | None = None,
@@ -807,7 +824,34 @@ def generate_chain_response(
             await continue_chat(session_id, chat.user_id, variant_index)
             chat = await chats_db.get_session_by_id(session_id)  # reload after swap
         elif variants:
-            # No specific variant chosen — clear variants (auto-commit current)
+            # No specific variant chosen — auto-commit the currently-active
+            # assistant message for the committed turn (kept as-is). Record the
+            # implicit accept + trigger retune BEFORE clearing variants, keyed on
+            # the committed turn (chat.current_turn, not the new turn). maybe_retune
+            # self-gates, so a clean turn is a no-op. (Feature 014 bug-fix.)
+            from app.services.chat_service import _record_accept_and_retune
+            committed_asst = await chats_db.get_active_assistant_at_turn(session_id, chat.current_turn)
+            if committed_asst is not None:
+                # Bridge maybe_retune's async emitter callback → this SSE
+                # generator via a local buffer (a callback cannot yield into the
+                # generator). The emitter is editor-only, mirroring the file's
+                # caller_role gate, so players never receive tuning_update.
+                pending_frames: list[str] = []
+
+                async def _emit(name: str, payload: dict[str, str]) -> None:
+                    if caller_role != "player":
+                        pending_frames.append(sse(name, payload))
+
+                await _record_accept_and_retune(
+                    session_id=session_id,
+                    user_id=chat.user_id,
+                    chat=chat,
+                    accepted_content=committed_asst.content,
+                    accepted_plan_json=committed_asst.generation_plan,
+                    emitter=_emit,
+                )
+                for frame in pending_frames:
+                    yield frame
             _save_variants(chat, [])
             await chats_db.update_session(chat)
 
@@ -934,6 +978,9 @@ def regenerate_chain_response(
         user_msg = await chats_db.get_user_message_at_turn(session_id, turn)
         user_content = user_msg.content if user_msg else ""
         user_instructions = user_msg.user_instructions if user_msg else None
+        # Thread the reject comment (framed as feedback) into user_instructions so
+        # it steers both the planning and writer stages of the immediate re-run.
+        user_instructions = _merge_reject_comment(user_instructions, comment)
 
         # Restore stats and location from previous snapshot
         prev_snap = await chats_db.get_snapshot_at_turn(session_id, turn - 1)
