@@ -1,6 +1,7 @@
 import { makeAutoObservable, observable, runInAction } from "mobx";
 import * as chatApi from "../../api/chat";
 import { getTuningProfile, updateTuningProfile } from "../../api/tuningProfile";
+import { triggerRetune, stopRetune as stopRetuneApi, getRetuneStatus } from "../../api/retune";
 import { refreshSidebarChats } from "../components/userSidebarState";
 import { extractUserInstructions } from "../../utils/oocParser";
 import type { TuningProfile, UpdateTuningProfile } from "../../types/tuningProfile";
@@ -67,15 +68,23 @@ export class ChatPageState {
 
   // Editor/debug-gated preference profile (plan_tuning / tone_tuning) for the
   // current (user, world). Loaded from the profile API; refreshed live by the
-  // `tuning_update` SSE event.
+  // background-retune status poll on the running->idle edge.
   tuningProfile: TuningProfile | null = null;
 
+  // Feature 015: background retune polling. `retuneRunning` mirrors the last
+  // status poll; `retuneJustFinished` is the gear-blink flag raised on the
+  // running->idle edge (consumed/cleared by step 006 when the panel opens).
+  retuneRunning = false;
+  retuneJustFinished = false;
+
   streamCtrl: AbortController | null = null;
+  // Non-observable interval handle for the status-poll loop (see streamCtrl).
+  retunePollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(chatId: string) {
     this.chatId = chatId;
     this.debugMode = localStorage.getItem("chatDebugMode") === "true";
-    makeAutoObservable(this, { streamCtrl: false });
+    makeAutoObservable(this, { streamCtrl: false, retunePollTimer: false });
   }
 
   get activeMessages(): ChatMessage[] {
@@ -136,10 +145,11 @@ export class ChatPageState {
     return this.currentSnapshot;
   }
 
-  /** Aborts any active SSE stream owned by this page. */
+  /** Aborts any active SSE stream owned by this page and stops retune polling. */
   dispose(): void {
     this.streamCtrl?.abort();
     this.streamCtrl = null;
+    stopRetunePolling(this);
   }
 }
 
@@ -346,7 +356,6 @@ export async function sendMessage(
       onPhase: (phase) => runInAction(() => { state.currentPhase = phase; }),
       onStatus: (text) => runInAction(() => { state.currentStatus = text; }),
       onStatUpdate: (data) => runInAction(() => { applyStatUpdate(state, data); }),
-      onTuningUpdate: (data) => applyTuningUpdate(state, data),
       onDone: (message) => {
         console.debug("[Chat] done, message:", message.id);
         runInAction(() => {
@@ -418,7 +427,6 @@ export async function regenerate(state: ChatPageState): Promise<void> {
       onPhase: (phase) => runInAction(() => { state.currentPhase = phase; }),
       onStatus: (text) => runInAction(() => { state.currentStatus = text; }),
       onStatUpdate: (data) => runInAction(() => { applyStatUpdate(state, data); }),
-      onTuningUpdate: (data) => applyTuningUpdate(state, data),
       onVariantsUpdate: (variants) => runInAction(() => {
         if (!state.currentChat) return;
         const cur = state.currentChat.variants;
@@ -501,7 +509,6 @@ export async function regenerateAtTurn(state: ChatPageState, turnNumber: number)
       onPhase: (phase) => runInAction(() => { state.currentPhase = phase; }),
       onStatus: (text) => runInAction(() => { state.currentStatus = text; }),
       onStatUpdate: (data) => runInAction(() => { applyStatUpdate(state, data); }),
-      onTuningUpdate: (data) => applyTuningUpdate(state, data),
       onVariantsUpdate: (variants) => runInAction(() => {
         if (!state.currentChat) return;
         const cur = state.currentChat.variants;
@@ -609,7 +616,6 @@ async function streamRegenerate(
         onPhase: (phase) => runInAction(() => { state.currentPhase = phase; }),
         onStatus: (text) => runInAction(() => { state.currentStatus = text; }),
         onStatUpdate: (data) => runInAction(() => { applyStatUpdate(state, data); }),
-        onTuningUpdate: (data) => applyTuningUpdate(state, data),
         onVariantsUpdate: (variants) => runInAction(() => {
           if (!state.currentChat) return;
           const cur = state.currentChat.variants;
@@ -692,19 +698,93 @@ export async function rejectWithComment(state: ChatPageState): Promise<void> {
   });
 }
 
+// --- Feature 015: background retune polling ---------------------------------
+
+const RETUNE_POLL_INTERVAL_MS = 3_000;
+
 /**
- * Apply a `tuning_update` SSE payload: overwrite the in-memory profile with the
- * event's `plan_tuning` / `tone_tuning`. Wired into the SSE handler objects.
+ * One status poll. Keeps the previous `retuneRunning` value so the
+ * running->idle edge (true->false) can be detected in the same callback; on
+ * that edge raises the gear-blink flag and refreshes `tuningProfile` from the
+ * payload's `plan_tuning` / `tone_tuning` / `world_id`. Network errors are
+ * swallowed so the interval keeps polling.
  */
-export function applyTuningUpdate(state: ChatPageState, data: TuningUpdate): void {
+async function pollRetuneStatus(state: ChatPageState): Promise<void> {
+  let status;
+  try {
+    status = await getRetuneStatus(state.chatId);
+  } catch {
+    return;
+  }
   runInAction(() => {
-    state.tuningProfile = {
-      id: state.tuningProfile?.id ?? "",
-      world_id: data.world_id,
-      plan_tuning: data.plan_tuning,
-      tone_tuning: data.tone_tuning,
-    };
+    const wasRunning = state.retuneRunning;
+    state.retuneRunning = status.running;
+    if (wasRunning && !status.running) {
+      state.retuneJustFinished = true;
+      state.tuningProfile = {
+        id: state.tuningProfile?.id ?? "",
+        world_id: status.world_id,
+        plan_tuning: status.plan_tuning,
+        tone_tuning: status.tone_tuning,
+      };
+    }
   });
+}
+
+/**
+ * Begin a periodic `getRetuneStatus(chatId)` loop (interval-based). On each
+ * poll set `retuneRunning` from the payload; on the running->idle EDGE (was
+ * true, now false) set `retuneJustFinished = true` and refresh
+ * `state.tuningProfile` from the status payload. Idempotent — a second call
+ * must not create a second interval. Started on chat open.
+ */
+export function startRetunePolling(state: ChatPageState): void {
+  if (state.retunePollTimer !== null) return;
+  state.retunePollTimer = setInterval(() => {
+    void pollRetuneStatus(state);
+  }, RETUNE_POLL_INTERVAL_MS);
+}
+
+/** Clear the active status-poll interval (if any). Called on dispose. */
+export function stopRetunePolling(state: ChatPageState): void {
+  if (state.retunePollTimer !== null) {
+    clearInterval(state.retunePollTimer);
+    state.retunePollTimer = null;
+  }
+}
+
+/**
+ * Manually start a background retune for the current session: call
+ * `triggerRetune(chatId)`, optimistically set `retuneRunning = true`, and
+ * ensure the poll loop is active.
+ */
+export async function triggerRetuneNow(state: ChatPageState): Promise<void> {
+  try {
+    await triggerRetune(state.chatId);
+    runInAction(() => { state.retuneRunning = true; });
+    startRetunePolling(state);
+  } catch (err) {
+    runInAction(() => { state.error = err instanceof Error ? err.message : String(err); });
+  }
+}
+
+/**
+ * Cancel the running background retune for the current session (no restart):
+ * call the retune stop API then set `retuneRunning = false`. Distinct from
+ * `stopGeneration` — this does not touch `streamCtrl`.
+ */
+export async function stopRetune(state: ChatPageState): Promise<void> {
+  try {
+    await stopRetuneApi(state.chatId);
+    runInAction(() => { state.retuneRunning = false; });
+  } catch (err) {
+    runInAction(() => { state.error = err instanceof Error ? err.message : String(err); });
+  }
+}
+
+/** Reset the gear-blink flag. Consumed by step 006 when the panel opens. */
+export function clearRetuneBlink(state: ChatPageState): void {
+  runInAction(() => { state.retuneJustFinished = false; });
 }
 
 /** Load the current (user, world) tuning profile into `state.tuningProfile`. */

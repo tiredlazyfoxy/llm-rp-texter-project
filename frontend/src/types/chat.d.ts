@@ -152,12 +152,6 @@ interface RegenerateRequest {
   comment?: string;
 }
 
-interface TuningUpdate {
-  plan_tuning: string;
-  tone_tuning: string;
-  world_id: string;
-}
-
 interface CreateChatRequest {
   world_id: string;
   character_name: string;

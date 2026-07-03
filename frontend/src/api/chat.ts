@@ -13,7 +13,6 @@ export interface ChatSSEHandlers {
   onStatUpdate?: (data: { character_stats: Record<string, number | string | string[]>; world_stats: Record<string, number | string | string[]>; turn_number: number }) => void;
   onUserAck?: (ack: { id: string; turn_number: number; created_at: string }) => void;
   onVariantsUpdate?: (variants: GenerationVariant[]) => void;
-  onTuningUpdate?: (data: TuningUpdate) => void;
   onDone?: (message: ChatMessage) => void;
   onError?: (detail: string) => void;
 }
@@ -294,10 +293,6 @@ function _streamChat(
             case "variants_update":
               console.debug("[SSE] variants_update:", parsed.variants);
               handlers.onVariantsUpdate?.(parsed.variants as GenerationVariant[]);
-              break;
-            case "tuning_update":
-              console.debug("[SSE] tuning_update:", parsed);
-              handlers.onTuningUpdate?.(parsed as unknown as TuningUpdate);
               break;
             case "user_ack":
               console.debug("[SSE] user_ack:", parsed);

@@ -8,7 +8,7 @@ import {
 } from "@mantine/core";
 import { IconAdjustmentsAlt, IconSettings } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
-import { ChatPageState, loadChat, openStatDrawer } from "./chatPageState";
+import { ChatPageState, loadChat, openStatDrawer, startRetunePolling } from "./chatPageState";
 import { MessageHistory } from "../components/chats/MessageHistory";
 import { ChatInput } from "../components/chats/ChatInput";
 import { StatsPanel } from "../components/chats/StatsPanel";
@@ -28,6 +28,7 @@ export const ChatViewPage = observer(function ChatViewPage({ chatId }: ChatViewP
   useEffect(() => {
     const ctrl = new AbortController();
     loadChat(state, ctrl.signal);
+    startRetunePolling(state);
     return () => {
       ctrl.abort();
       state.dispose();

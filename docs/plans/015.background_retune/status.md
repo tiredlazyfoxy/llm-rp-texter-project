@@ -6,7 +6,7 @@
 | 002  | `002.retune_task_registry.md`     | done    | PASS     | 2026-07-03 |
 | 003  | `003.accept_fire_and_forget.md`   | done    | PASS     | 2026-07-03 |
 | 004  | `004.retune_rest_api.md`          | done    | PASS     | 2026-07-03 |
-| 005  | `005.frontend_transport_polling.md` | pending | —      | —    |
+| 005  | `005.frontend_transport_polling.md` | done    | PASS     | 2026-07-03 |
 | 006  | `006.frontend_ui_gear_panel.md`   | pending | —        | —    |
 
 ## Files Changed
@@ -29,6 +29,10 @@
 - `backend/app/services/tuning_service.py` — filled `trigger_retune`/`stop_retune`/`get_retune_status`; added `_load_owned_chat` (404-only ownership) + `_build_status` (shared status view: sync `retune_tasks.status` + profile read, None→empty strings, `world_id` stringified)
 - `backend/app/models/schemas/chat.py` — `RetuneStatusResponse` schema (skeleton-provided; unchanged)
 - `backend/app/routes/chat.py` — three retune routes (skeleton-provided; unchanged)
+
+### Step 005 — Frontend transport + polling
+- `frontend/src/user/pages/chatPageState.ts` — filled 5 retune actions (`startRetunePolling` idempotent 3s `setInterval` loop with running->idle edge detection + profile refresh, `stopRetunePolling`, `triggerRetuneNow`, `stopRetune`, `clearRetuneBlink`); added `pollRetuneStatus` helper + `RETUNE_POLL_INTERVAL_MS`; cleaned stale `tuning_update` comment
+- `frontend/src/user/pages/ChatViewPage.tsx` — wired `startRetunePolling(state)` into the chat-open `useEffect` (mount side of the existing `dispose()`/`stopRetunePolling` teardown), per brief instruction
 
 ## Skeleton
 
