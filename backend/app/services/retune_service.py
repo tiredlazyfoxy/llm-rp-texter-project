@@ -1,13 +1,13 @@
-"""Chat preference retune service (Feature 014).
+"""Chat preference retune service (Feature 014 / 015).
 
-On accept of a turn that had >=1 reject, re-tunes the user's (user, world)
-ChatTuningProfile via an LLM call and emits an editor-only ``tuning_update``
-event. Self-gating: a clean turn (zero rejected feedback rows) never reaches the
-LLM call.
+Session-scoped retune core: re-tunes the user's (user, world) ChatTuningProfile
+via an LLM call, reading ALL reject rows across the whole session as evidence.
+No turn gate and no SSE emitter live here — the core persists to the profile
+only; the accept-turn gate and background scheduling live at the call sites
+(steps 002/003).
 """
 
 import logging
-from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from llm.message import LLMMessage
@@ -21,13 +21,6 @@ from app.services.llm_chat import get_llm_client_for_model
 from app.services.prompts import build_retune_prompt
 
 logger = logging.getLogger(__name__)
-
-# Emitter abstraction for the editor-only ``tuning_update`` SSE event.
-# Called as ``await emitter(event_name, payload)``. The caller (accept hook or
-# generation flow) owns editor-role gating and the queue/transport; maybe_retune
-# only invokes it with the post-retune values when one is supplied. The
-# non-streaming accept hook passes ``None``.
-RetuneEmitter = Callable[[str, dict[str, str]], Awaitable[None]]
 
 
 def _now() -> datetime:
@@ -52,27 +45,30 @@ async def _retune_dimension(
     return (result or "").strip()
 
 
-async def maybe_retune(
+async def retune_session(
     session_id: int,
     user_id: int,
     world_id: int,
     turn_number: int,
     accepted_content: str,
     model_id: str | None,
-    emitter: RetuneEmitter | None = None,
 ) -> None:
-    """Retune the (user, world) tuning profile if the turn had >=1 reject.
+    """Retune the (user, world) tuning profile from ALL session rejects.
 
-    Loads the turn's feedback rows; returns immediately (no LLM call) when there
-    are zero rejected rows. Otherwise partitions rejects by scope, retunes the
-    targeted dimension(s) via the shared LLM client using ``model_id``, upserts
-    the profile, and emits ``tuning_update`` with the post-retune values when an
-    emitter is supplied.
+    Session-scoped retune core (Feature 015). Reads every reject row for the
+    session across all turns via ``feedback_db.list_by_session`` — no turn gate
+    lives here. No-ops (no LLM call, no upsert) when ``model_id is None`` or the
+    session has zero reject rows. Otherwise partitions rejects by scope
+    (``plan``/``null`` -> plan dim, ``text``/``null`` -> tone dim), retunes the
+    targeted dimension(s) via ``model_id`` using the reused ``_retune_dimension``
+    helper, and upserts via ``tuning_profiles_db.upsert``. ``turn_number`` is
+    retained for prompt/logging only and never gates. Persists to the profile
+    only — no SSE emission.
     """
-    rows = await feedback_db.list_by_turn(session_id, turn_number)
+    rows = await feedback_db.list_by_session(session_id)
     rejections = [r for r in rows if r.verdict == "rejected"]
     if not rejections:
-        # Clean accept: no LLM call, no profile change, no emission (DoD-1).
+        # No session rejects: no LLM call, no profile change (DoD-5).
         return
 
     # A null-scope (whole-chain) reject counts toward BOTH dimensions.
@@ -82,7 +78,7 @@ async def maybe_retune(
     retune_tone = bool(tone_rejects)
 
     if model_id is None:
-        # No model to call — cannot produce revised text; no-op (see Notes).
+        # No model to call — cannot produce revised text; no-op (DoD-4).
         logger.info(
             "Skipping retune for (user=%d, world=%d) turn=%d: no text model on session",
             user_id, world_id, turn_number,
@@ -122,14 +118,4 @@ async def maybe_retune(
         profile.tone_tuning = new_tone
         profile.modified_at = now
 
-    saved = await tuning_profiles_db.upsert(profile)
-
-    if emitter is not None:
-        await emitter(
-            "tuning_update",
-            {
-                "plan_tuning": saved.plan_tuning,
-                "tone_tuning": saved.tone_tuning,
-                "world_id": str(world_id),
-            },
-        )
+    await tuning_profiles_db.upsert(profile)

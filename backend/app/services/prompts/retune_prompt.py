@@ -2,22 +2,24 @@
 
 PURPOSE
     Builds the system/instruction prompt for the in-chat preference *retune*
-    LLM call (Feature 014). Given the existing tuning text for one dimension
-    (plan_tuning or tone_tuning), the rejected feedback rows of a turn, and the
-    finally accepted content, it instructs the model to produce a revised,
-    concise tuning string that would have reduced the rejection.
+    LLM call (Feature 014/015). Given the existing tuning text for one dimension
+    (plan_tuning or tone_tuning), the rejected feedback rows gathered across the
+    whole session, and the finally accepted content, it instructs the model to
+    produce a revised, concise tuning string that would have reduced the
+    rejections.
 
 USAGE
-    Called by retune_service.maybe_retune once per targeted dimension, before
+    Called by retune_service.retune_session once per targeted dimension, before
     the non-tool LLM completion. The returned string is the system prompt for
     that completion.
 
 VARIABLES
     dimension          — Targeted tuning dimension label ("plan" or "text").
     current_tuning     — The existing tuning text for that dimension (may be "").
-    rejections         — The turn's rejected ChatGenerationFeedback rows; each
-                         carries scope, comment, and content_snapshot.
-    accepted_content   — The finally accepted assistant content for the turn.
+    rejections         — The session's rejected ChatGenerationFeedback rows,
+                         aggregated across all turns; each carries scope,
+                         comment, and content_snapshot.
+    accepted_content   — The finally accepted assistant content.
 
 DESIGN RATIONALE
     One builder for both dimensions keeps the retune contract single-sourced;
@@ -27,6 +29,9 @@ DESIGN RATIONALE
 CHANGELOG
     014_step004 — Skeleton created (raises NotImplementedError).
     014_step004 — Full prompt implementation.
+    015_step001 — Evidence is now session-wide (rejects aggregated across all
+                  turns), not a single turn's rejects; prose/docstring reworded
+                  to drop "the turn's" framing. Builder signature unchanged.
 """
 
 from app.models.chat_generation_feedback import ChatGenerationFeedback
@@ -103,7 +108,7 @@ def build_retune_prompt(
         f"Return ONLY the revised {dim_label} instruction as plain text — no "
         "preamble, no quotes, no explanation. Keep it concise (a few short "
         "sentences or bullet directives). It must read as standing guidance for "
-        "future turns, not as commentary on this specific turn. Preserve any "
+        "future turns, not as commentary on these specific rejections. Preserve any "
         "still-valid guidance from the current instruction and merge in what the "
         "rejection teaches."
     )

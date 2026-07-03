@@ -26,6 +26,16 @@ async def list_by_turn(session_id: int, turn_number: int) -> list[ChatGeneration
         )).all())
 
 
+async def list_by_session(session_id: int) -> list[ChatGenerationFeedback]:
+    session = await get_standalone_session()
+    async with session:
+        return list((await session.exec(
+            select(ChatGenerationFeedback)
+            .where(ChatGenerationFeedback.session_id == session_id)
+            .order_by(ChatGenerationFeedback.created_at)  # type: ignore[arg-type]
+        )).all())
+
+
 async def delete_by_session(session_id: int) -> int:
     session = await get_standalone_session()
     async with session:

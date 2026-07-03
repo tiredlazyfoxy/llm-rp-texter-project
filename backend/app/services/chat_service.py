@@ -4,12 +4,9 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastapi import HTTPException, status
-
-if TYPE_CHECKING:
-    from app.services.retune_service import RetuneEmitter
 
 from app.db import chats as chats_db
 from app.db import generation_feedback as feedback_db
@@ -564,7 +561,7 @@ async def _record_accept_and_retune(
     chat: ChatSession,
     accepted_content: str,
     accepted_plan_json: str | None,
-    emitter: "RetuneEmitter | None" = None,
+    emitter: Any = None,
 ) -> None:
     """Accept hook (Feature 014): write one ``approved`` feedback row for the
     committed turn, then trigger retune. ``maybe_retune`` self-gates (no-op when
@@ -585,14 +582,15 @@ async def _record_accept_and_retune(
         plan_snapshot=accepted_plan_json,
         created_at=datetime.now(timezone.utc),
     ))
-    await retune_service.maybe_retune(
+    # Feature 015: session-wide retune core, no SSE emitter. The vestigial
+    # ``emitter`` param above is left for the step-003 fire-and-forget rewire.
+    await retune_service.retune_session(
         session_id=session_id,
         user_id=user_id,
         world_id=chat.world_id,
         turn_number=chat.current_turn,
         accepted_content=accepted_content,
         model_id=chat.text_model_id,
-        emitter=emitter,
     )
 
 
