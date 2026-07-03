@@ -19,6 +19,7 @@ from app.models.schemas.chat import (
     CreateChatRequest,
     EditMessageRequest,
     RegenerateRequest,
+    RetuneStatusResponse,
     RewindRequest,
     SendMessageRequest,
     TuningProfileResponse,
@@ -255,6 +256,34 @@ async def update_tuning_profile(
     caller: User = Depends(_require_player),
 ) -> TuningProfileResponse:
     return await tuning_service.update_profile(caller.id, int(world_id), req)
+
+
+# ---------------------------------------------------------------------------
+# Background retune — session-scoped trigger / stop / status (Feature 015)
+# ---------------------------------------------------------------------------
+
+@router.post("/{chat_id}/retune", response_model=RetuneStatusResponse)
+async def trigger_retune(
+    chat_id: str,
+    caller: User = Depends(_require_player),
+) -> RetuneStatusResponse:
+    return await tuning_service.trigger_retune(int(chat_id), caller.id)
+
+
+@router.post("/{chat_id}/retune/stop", response_model=RetuneStatusResponse)
+async def stop_retune(
+    chat_id: str,
+    caller: User = Depends(_require_player),
+) -> RetuneStatusResponse:
+    return await tuning_service.stop_retune(int(chat_id), caller.id)
+
+
+@router.get("/{chat_id}/retune/status", response_model=RetuneStatusResponse)
+async def get_retune_status(
+    chat_id: str,
+    caller: User = Depends(_require_player),
+) -> RetuneStatusResponse:
+    return await tuning_service.get_retune_status(int(chat_id), caller.id)
 
 
 @router.put("/{chat_id}/archive", response_model=dict)

@@ -256,3 +256,22 @@ class TuningProfileResponse(BaseModel):
 class UpdateTuningProfileRequest(BaseModel):
     plan_tuning: str
     tone_tuning: str
+
+
+# ---------------------------------------------------------------------------
+# Background retune status — session-scoped trigger/stop/status (Feature 015)
+# ---------------------------------------------------------------------------
+
+
+class RetuneStatusResponse(BaseModel):
+    """Combined view for the retune status poll: running flag + current profile.
+
+    Response body for POST /{chat_id}/retune, POST /{chat_id}/retune/stop, and
+    GET /{chat_id}/retune/status. A single poll learns both the running->idle
+    edge and the new profile values. IDs serialize as strings.
+    """
+
+    running: bool
+    plan_tuning: str
+    tone_tuning: str
+    world_id: str

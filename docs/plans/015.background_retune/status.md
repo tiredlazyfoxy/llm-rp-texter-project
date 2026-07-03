@@ -5,7 +5,7 @@
 | 001  | `001.session_wide_retune_core.md` | done    | PASS     | 2026-07-03 |
 | 002  | `002.retune_task_registry.md`     | done    | PASS     | 2026-07-03 |
 | 003  | `003.accept_fire_and_forget.md`   | done    | PASS     | 2026-07-03 |
-| 004  | `004.retune_rest_api.md`          | pending | —        | —    |
+| 004  | `004.retune_rest_api.md`          | done    | PASS     | 2026-07-03 |
 | 005  | `005.frontend_transport_polling.md` | pending | —      | —    |
 | 006  | `006.frontend_ui_gear_panel.md`   | pending | —        | —    |
 
@@ -24,6 +24,11 @@
 - `backend/app/services/chain_generation_service.py` — auto-commit calls emitter-free hook (skeleton already dropped `_emit`/`pending_frames`/flush); verified compiles
 - `backend/app/services/simple_generation_service.py` — auto-commit calls emitter-free hook; verified compiles
 - `backend/app/services/retune_service.py` — unchanged (already emitter-free since step 001)
+
+### Step 004 — Retune REST API (trigger / stop / status)
+- `backend/app/services/tuning_service.py` — filled `trigger_retune`/`stop_retune`/`get_retune_status`; added `_load_owned_chat` (404-only ownership) + `_build_status` (shared status view: sync `retune_tasks.status` + profile read, None→empty strings, `world_id` stringified)
+- `backend/app/models/schemas/chat.py` — `RetuneStatusResponse` schema (skeleton-provided; unchanged)
+- `backend/app/routes/chat.py` — three retune routes (skeleton-provided; unchanged)
 
 ## Skeleton
 
@@ -52,6 +57,32 @@
   - `simple_generation_service.py` auto-commit — removed `emitter=None` argument.
 
 **Note:** module imports still resolve `Any` and `sse` (used elsewhere in their files); any now-unused import is left as coder cleanup, not a compile blocker. `_record_accept_and_retune`'s body still performs the old inline retune — that is preserved existing behavior; the new gate/background behavior is unimplemented and belongs to the coder.
+
+### Step 004 — frozen interface (2026-07-03)
+Schema — `backend/app/models/schemas/chat.py`:
+- `class RetuneStatusResponse(BaseModel): running: bool; plan_tuning: str; tone_tuning: str; world_id: str` — new. `world_id` serialized as string (house style). `started_at` deliberately OMITTED — DoD strictly requires only these four fields and the running→idle edge is carried by `running`; kept minimal.
+
+Service — `backend/app/services/tuning_service.py` (bodies `raise NotImplementedError`):
+- `async def trigger_retune(chat_id: int, user_id: int) -> RetuneStatusResponse` — new
+- `async def stop_retune(chat_id: int, user_id: int) -> RetuneStatusResponse` — new
+- `async def get_retune_status(chat_id: int, user_id: int) -> RetuneStatusResponse` — new
+- New module imports added (unused until coder fills bodies): `from fastapi import HTTPException, status`, `from app.db import chats as chats_db`, `from app.services import retune_tasks`, plus `RetuneStatusResponse` on the schema import.
+
+Routes — `backend/app/routes/chat.py` (thin; `int(chat_id)` cast, `caller.id`; `_require_player` auth dep; `response_model=RetuneStatusResponse`):
+- `POST /{chat_id}/retune` → `trigger_retune(chat_id, caller)` → `tuning_service.trigger_retune(int(chat_id), caller.id)` — new
+- `POST /{chat_id}/retune/stop` → `stop_retune(chat_id, caller)` → `tuning_service.stop_retune(int(chat_id), caller.id)` — new
+- `GET /{chat_id}/retune/status` → `get_retune_status(chat_id, caller)` → `tuning_service.get_retune_status(int(chat_id), caller.id)` — new
+- Import edit: added `RetuneStatusResponse` to the `app.models.schemas.chat` import block.
+- Caller-compile edits (out of Source-files scope): None.
+
+**Binding decisions (frozen — coder must honor, test-coder binds to):**
+- **session_id = chat.id** — `ChatSession` has NO `session_id` field; the record's own `id: int` IS the session id. Registry `start`/`stop`/`status` receive `chat.id`.
+- **model_id = chat.text_model_id** (`str | None`) — same accessor the accept path uses.
+- **world_id = chat.world_id** (`int`) — stringified in the response.
+- **Ownership = 404-only.** `chat = await chats_db.get_session_by_id(chat_id)`; `if chat is None or chat.user_id != user_id: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found")`. There is NO 403 path (step DoD said "404/403 per convention"; actual chat-route convention is uniform 404 — froze 404).
+- **Manual trigger passes `turn_number=None`** to `retune_tasks.start(...)` — ignores the D2 gate (manual button always fires).
+- **`retune_tasks.status(chat.id)` is SYNC** — read without `await`; the async `start`/`stop` are awaited.
+- **All three endpoints return `RetuneStatusResponse`** (uniform status shape) so the frontend polls one shape; profile read via `await tuning_profiles_db.get(user_id, chat.world_id)` (None → empty strings, mirroring `get_profile`). Datetimes (if ever added) would be `.isoformat()`'d in the service; no schema-level serializer.
 
 ## Tests
 
@@ -92,6 +123,32 @@
   - DoD-6: `test_retune_service_has_no_emitter_surface__DoD6` — no `RetuneEmitter`,
     no `maybe_retune`, no `emitter` param on `retune_session`.
 - Coverage: DoD-1 ✓, DoD-2 ✓, DoD-3 ✓, DoD-4 ✓, DoD-5 ✓, DoD-6 ✓, DoD-7 [manual/live, no test]
+
+### Step 004 — tests (2026-07-03)
+- `backend/tests/routes/test_retune_api.py` — covers DoD-1..DoD-5 — retune
+  trigger/stop/status REST endpoints reached through the real FastAPI app
+  (`http_client`) with an authenticated player (`player_user`); chats persisted
+  via `db/chats` (session_id == chat.id), profiles seeded via `db/tuning_profiles`.
+  DoD-1/DoD-2 drive the real `retune_tasks` registry with a blocking fake core
+  patched at `app.services.retune_service.retune_session`; DoD-5 spies the
+  scheduler at `app.services.retune_tasks.start`.
+  - DoD-1: `test_trigger_starts_background_job_and_returns_status__DoD1` — POST
+    /retune schedules a live job (registry running=True), returns a valid
+    RetuneStatusResponse (200) whose `running` reflects the live job.
+  - DoD-2: `test_stop_cancels_running_job_then_status_idle__DoD2` — POST
+    /retune/stop cancels the running job; subsequent GET /status reports
+    running=false.
+  - DoD-3: `test_status_returns_profile_values_and_string_world_id__DoD3` — GET
+    /status surfaces the seeded (user, world) profile's plan_tuning/tone_tuning
+    with running=false and world_id serialized as a string.
+  - DoD-4: `test_non_owner_rejected_404__DoD4` (trigger/stop/status parametrize)
+    — a non-owner player gets 404 "Chat not found" on all three endpoints
+    (404-only; no 403 path).
+  - DoD-5: `test_manual_trigger_ignores_turn_gate_turn_number_none__DoD5` — with
+    zero session rejects the manual trigger still calls `retune_tasks.start`
+    once with `turn_number=None` and session/user/world/model bindings from the
+    chat (session_id==chat.id, model_id==chat.text_model_id, world_id==chat.world_id).
+- Coverage: DoD-1 ✓, DoD-2 ✓, DoD-3 ✓, DoD-4 ✓, DoD-5 ✓, DoD-6 [manual/live, no test]
 
 ## Notes & Issues
 
