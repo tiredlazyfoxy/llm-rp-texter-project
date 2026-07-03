@@ -561,15 +561,15 @@ async def _record_accept_and_retune(
     chat: ChatSession,
     accepted_content: str,
     accepted_plan_json: str | None,
-    emitter: Any = None,
 ) -> None:
-    """Accept hook (Feature 014): write one ``approved`` feedback row for the
-    committed turn, then trigger retune. ``maybe_retune`` self-gates (no-op when
-    the turn had no rejects), so this is safe to call on every accept — explicit
-    variant selection or implicit auto-commit. Keyed on ``chat.current_turn`` /
+    """Accept hook (Feature 014/015): write one ``approved`` feedback row for the
+    committed turn, then apply the D2 auto-trigger gate. If the accepted turn had
+    at least one ``rejected`` row, schedule a background, session-wide retune via
+    the step-002 registry (fire-and-forget — the LLM never blocks accept). A clean
+    turn (no rejects) schedules nothing. Keyed on ``chat.current_turn`` /
     ``chat.world_id`` / ``chat.text_model_id``.
     """
-    from app.services import retune_service
+    from app.services import retune_tasks
 
     await feedback_db.create(ChatGenerationFeedback(
         id=snowflake_svc.generate_id(),
@@ -582,16 +582,20 @@ async def _record_accept_and_retune(
         plan_snapshot=accepted_plan_json,
         created_at=datetime.now(timezone.utc),
     ))
-    # Feature 015: session-wide retune core, no SSE emitter. The vestigial
-    # ``emitter`` param above is left for the step-003 fire-and-forget rewire.
-    await retune_service.retune_session(
-        session_id=session_id,
-        user_id=user_id,
-        world_id=chat.world_id,
-        turn_number=chat.current_turn,
-        accepted_content=accepted_content,
-        model_id=chat.text_model_id,
-    )
+    # D2 auto-trigger gate: only fire the background retune when the accepted turn
+    # had at least one reject. The gate is turn-scoped; the retune evidence itself
+    # is session-wide and lives inside the core (retune_tasks -> retune_session).
+    turn_rows = await feedback_db.list_by_turn(session_id, chat.current_turn)
+    if any(row.verdict == "rejected" for row in turn_rows):
+        # Fire-and-forget: ``start`` awaits the per-session lock + old-task teardown
+        # but returns before the retune LLM runs, so accept is not blocked on it.
+        await retune_tasks.start(
+            session_id=session_id,
+            user_id=user_id,
+            world_id=chat.world_id,
+            model_id=chat.text_model_id,
+            turn_number=chat.current_turn,
+        )
 
 
 async def continue_chat(session_id: int, user_id: int, variant_index: int) -> None:
@@ -656,7 +660,6 @@ async def continue_chat(session_id: int, user_id: int, variant_index: int) -> No
         chat=chat,
         accepted_content=chosen.content,
         accepted_plan_json=chosen.generation_plan.model_dump_json() if chosen.generation_plan else None,
-        emitter=None,
     )
 
 

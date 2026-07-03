@@ -832,26 +832,13 @@ def generate_chain_response(
             from app.services.chat_service import _record_accept_and_retune
             committed_asst = await chats_db.get_active_assistant_at_turn(session_id, chat.current_turn)
             if committed_asst is not None:
-                # Bridge maybe_retune's async emitter callback → this SSE
-                # generator via a local buffer (a callback cannot yield into the
-                # generator). The emitter is editor-only, mirroring the file's
-                # caller_role gate, so players never receive tuning_update.
-                pending_frames: list[str] = []
-
-                async def _emit(name: str, payload: dict[str, str]) -> None:
-                    if caller_role != "player":
-                        pending_frames.append(sse(name, payload))
-
                 await _record_accept_and_retune(
                     session_id=session_id,
                     user_id=chat.user_id,
                     chat=chat,
                     accepted_content=committed_asst.content,
                     accepted_plan_json=committed_asst.generation_plan,
-                    emitter=_emit,
                 )
-                for frame in pending_frames:
-                    yield frame
             _save_variants(chat, [])
             await chats_db.update_session(chat)
 

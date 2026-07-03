@@ -385,7 +385,6 @@ def generate_simple_response(
                     chat=chat,
                     accepted_content=committed_asst.content,
                     accepted_plan_json=committed_asst.generation_plan,
-                    emitter=None,
                 )
             _save_variants(chat, [])
             await chats_db.update_session(chat)
