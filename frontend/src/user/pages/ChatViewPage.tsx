@@ -3,12 +3,13 @@ import {
   ActionIcon,
   Badge,
   Group,
+  Indicator,
   Text,
   Tooltip,
 } from "@mantine/core";
 import { IconAdjustmentsAlt, IconSettings } from "@tabler/icons-react";
 import { observer } from "mobx-react-lite";
-import { ChatPageState, loadChat, openStatDrawer, startRetunePolling } from "./chatPageState";
+import { ChatPageState, clearRetuneBlink, loadChat, openStatDrawer, startRetunePolling } from "./chatPageState";
 import { MessageHistory } from "../components/chats/MessageHistory";
 import { ChatInput } from "../components/chats/ChatInput";
 import { StatsPanel } from "../components/chats/StatsPanel";
@@ -87,9 +88,25 @@ export const ChatViewPage = observer(function ChatViewPage({ chatId }: ChatViewP
             </Tooltip>
           )}
           <Tooltip label="Settings">
-            <ActionIcon variant="subtle" color="gray" size="md" onClick={() => setSettingsOpen(true)}>
-              <IconSettings size={18} />
-            </ActionIcon>
+            <Indicator
+              color="blue"
+              processing
+              disabled={!state.retuneJustFinished}
+              offset={4}
+              size={10}
+            >
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="md"
+                onClick={() => {
+                  clearRetuneBlink(state);
+                  setSettingsOpen(true);
+                }}
+              >
+                <IconSettings size={18} />
+              </ActionIcon>
+            </Indicator>
           </Tooltip>
         </Group>
       </Group>

@@ -7,7 +7,7 @@
 | 003  | `003.accept_fire_and_forget.md`   | done    | PASS     | 2026-07-03 |
 | 004  | `004.retune_rest_api.md`          | done    | PASS     | 2026-07-03 |
 | 005  | `005.frontend_transport_polling.md` | done    | PASS     | 2026-07-03 |
-| 006  | `006.frontend_ui_gear_panel.md`   | pending | —        | —    |
+| 006  | `006.frontend_ui_gear_panel.md`   | done    | PASS     | 2026-07-03 |
 
 ## Files Changed
 
@@ -33,6 +33,10 @@
 ### Step 005 — Frontend transport + polling
 - `frontend/src/user/pages/chatPageState.ts` — filled 5 retune actions (`startRetunePolling` idempotent 3s `setInterval` loop with running->idle edge detection + profile refresh, `stopRetunePolling`, `triggerRetuneNow`, `stopRetune`, `clearRetuneBlink`); added `pollRetuneStatus` helper + `RETUNE_POLL_INTERVAL_MS`; cleaned stale `tuning_update` comment
 - `frontend/src/user/pages/ChatViewPage.tsx` — wired `startRetunePolling(state)` into the chat-open `useEffect` (mount side of the existing `dispose()`/`stopRetunePolling` teardown), per brief instruction
+
+### Step 006 — Frontend UI: gear blink + panel running-state
+- `frontend/src/user/pages/ChatViewPage.tsx` — added `Indicator` to Mantine import + `clearRetuneBlink` import; wrapped the settings-gear `ActionIcon` in a `processing` `Indicator` (shown when `state.retuneJustFinished`); gear `onClick` now calls `clearRetuneBlink(state)` before `setSettingsOpen(true)`
+- `frontend/src/user/components/chats/ChatSettingsPanel.tsx` — added `Loader` import + `stopRetune`/`triggerRetuneNow` imports; tuning block now branches on `state.retuneRunning`: running → grayed/disabled textareas + `Loader` line + red Stop button (Save/Revert hidden); idle → editable textareas + Save/Revert + new "Retune now" button; post-retune reseed relies on the existing profile-driven `useEffect` (step-005 poll replaces `tuningProfile`)
 
 ## Skeleton
 

@@ -4,6 +4,7 @@ import {
   Divider,
   Drawer,
   Group,
+  Loader,
   Select,
   Slider,
   Stack,
@@ -18,7 +19,9 @@ import {
   loadTuningProfile,
   revertTuningProfile,
   saveTuningProfile,
+  stopRetune,
   toggleDebugMode,
+  triggerRetuneNow,
   updateSettings,
 } from "../../pages/chatPageState";
 import { request } from "../../../api/client";
@@ -209,6 +212,12 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
               Learned plan/tone guidance injected into chain generation. Updates
               automatically as you accept and reject generations.
             </Text>
+            {state.retuneRunning && (
+              <Group gap="xs">
+                <Loader size="xs" />
+                <Text size="xs" c="dimmed">Retuning… recomputing plan/tone guidance.</Text>
+              </Group>
+            )}
             <Textarea
               label="Plan tuning"
               value={planTuning}
@@ -217,6 +226,7 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
               maxRows={10}
               autosize
               size="xs"
+              disabled={state.retuneRunning}
             />
             <Textarea
               label="Tone tuning"
@@ -226,13 +236,25 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
               maxRows={10}
               autosize
               size="xs"
+              disabled={state.retuneRunning}
             />
-            <Group gap="xs">
-              <Button size="xs" onClick={handleSaveTuning} loading={tuningSaving}>Save</Button>
-              <Button size="xs" variant="subtle" onClick={handleRevertTuning} disabled={tuningSaving}>
-                Revert
-              </Button>
-            </Group>
+            {state.retuneRunning ? (
+              <Group gap="xs">
+                <Button size="xs" color="red" variant="light" onClick={() => stopRetune(state)}>
+                  Stop
+                </Button>
+              </Group>
+            ) : (
+              <Group gap="xs">
+                <Button size="xs" onClick={handleSaveTuning} loading={tuningSaving}>Save</Button>
+                <Button size="xs" variant="subtle" onClick={handleRevertTuning} disabled={tuningSaving}>
+                  Revert
+                </Button>
+                <Button size="xs" variant="light" onClick={() => triggerRetuneNow(state)}>
+                  Retune now
+                </Button>
+              </Group>
+            )}
           </>
         )}
       </Stack>
