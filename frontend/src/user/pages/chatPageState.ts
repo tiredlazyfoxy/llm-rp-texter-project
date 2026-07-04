@@ -754,17 +754,27 @@ export function stopRetunePolling(state: ChatPageState): void {
 }
 
 /**
- * Manually start a background retune for the current session: call
- * `triggerRetune(chatId)`, optimistically set `retuneRunning = true`, and
- * ensure the poll loop is active.
+ * Manually start a background retune for the current session. Optimistically
+ * flips `retuneRunning = true` and starts polling BEFORE the network round-trip
+ * so the panel switches to the running/Stop affordance with no dead window. On
+ * success reconciles the flag with the trigger response's live `running`; on
+ * failure rolls the flag back to `false` and surfaces `state.error` so the
+ * button never silently looks broken.
  */
 export async function triggerRetuneNow(state: ChatPageState): Promise<void> {
+  runInAction(() => {
+    state.retuneRunning = true;
+    state.error = null;
+  });
+  startRetunePolling(state);
   try {
-    await triggerRetune(state.chatId);
-    runInAction(() => { state.retuneRunning = true; });
-    startRetunePolling(state);
+    const status = await triggerRetune(state.chatId);
+    runInAction(() => { state.retuneRunning = status.running; });
   } catch (err) {
-    runInAction(() => { state.error = err instanceof Error ? err.message : String(err); });
+    runInAction(() => {
+      state.retuneRunning = false;
+      state.error = err instanceof Error ? err.message : String(err);
+    });
   }
 }
 

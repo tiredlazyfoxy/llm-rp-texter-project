@@ -158,6 +158,12 @@ Routes — `backend/app/routes/chat.py` (thin; `int(chat_id)` cast, `caller.id`;
     chat (session_id==chat.id, model_id==chat.text_model_id, world_id==chat.world_id).
 - Coverage: DoD-1 ✓, DoD-2 ✓, DoD-3 ✓, DoD-4 ✓, DoD-5 ✓, DoD-6 [manual/live, no test]
 
+## Bug Fixes
+
+### Step 005/006 — "Retune now" button had a dead window and invisible failures (2026-07-03)
+- `frontend/src/user/pages/chatPageState.ts` — `triggerRetuneNow` now flips `retuneRunning=true` (and clears `error`) and starts polling BEFORE the await (optimistic, no dead window), reconciles the flag with the trigger response's `running` on success, and rolls the flag back to `false` + sets `state.error` on failure
+- `frontend/src/user/components/chats/ChatSettingsPanel.tsx` — surface `state.error` as a red line in the tuning section so a trigger failure is visible in the panel
+
 ## Notes & Issues
 
 _populated by the coder when worth saying_

@@ -255,6 +255,9 @@ export const ChatSettingsPanel = observer(function ChatSettingsPanel({ state, op
                 </Button>
               </Group>
             )}
+            {state.error && (
+              <Text size="xs" c="red">{state.error}</Text>
+            )}
           </>
         )}
       </Stack>
